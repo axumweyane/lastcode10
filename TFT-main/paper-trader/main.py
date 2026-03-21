@@ -60,6 +60,7 @@ from strategies.stocks.sector_rotation import SectorRotationStrategy
 from strategies.options.strategies.vol_arb import VolatilityArbitrage
 
 # Ensemble & Infrastructure
+from strategies.ensemble.bayesian_updater import BayesianWeightUpdater
 from strategies.ensemble.combiner import EnsembleCombiner, TFTAdapter
 from strategies.ensemble.portfolio_optimizer import PortfolioOptimizer
 from strategies.regime.detector import RegimeDetector
@@ -68,7 +69,8 @@ from strategies.signals.publisher import SignalPublisher
 
 # Production trading infrastructure
 from trading.broker.alpaca import AlpacaBroker
-from trading.broker.base import OrderRequest, OrderSide
+from trading.broker.base import OrderRequest, OrderResult, OrderSide, OrderStatus
+from trading.execution.vwap import VWAPExecutionModel, VWAPExecutionResult, VolumeProfileCache
 from trading.notifications.alerts import NotificationManager, AlertMessage, DiscordWebhookSender, EmailSender
 from trading.persistence.audit import AuditLogger
 from trading.risk.circuit_breaker import CircuitBreaker, CircuitBreakerConfig, DrawdownConfig, DrawdownMethod
@@ -175,10 +177,40 @@ CREATE TABLE IF NOT EXISTS paper_risk_reports (
     raw_json        JSONB DEFAULT '{}'
 );
 
+CREATE TABLE IF NOT EXISTS bayesian_weight_state (
+    strategy_name   VARCHAR(64) PRIMARY KEY,
+    alpha           DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+    beta            DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+    n_updates       INTEGER NOT NULL DEFAULT 0,
+    state_json      JSONB DEFAULT '{}',
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS paper_execution_stats (
+    id              SERIAL PRIMARY KEY,
+    execution_time  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ticker          VARCHAR(10) NOT NULL,
+    side            VARCHAR(4) NOT NULL,
+    total_requested DOUBLE PRECISION NOT NULL,
+    total_filled    DOUBLE PRECISION NOT NULL DEFAULT 0,
+    expected_price  DOUBLE PRECISION,
+    filled_avg_price DOUBLE PRECISION,
+    slippage_bps    DOUBLE PRECISION DEFAULT 0,
+    fill_rate       DOUBLE PRECISION DEFAULT 0,
+    num_slices      INTEGER DEFAULT 0,
+    used_fallback   BOOLEAN DEFAULT FALSE,
+    adv_capped      BOOLEAN DEFAULT FALSE,
+    elapsed_s       DOUBLE PRECISION DEFAULT 0,
+    slices_json     JSONB DEFAULT '[]',
+    error           TEXT DEFAULT ''
+);
+
 CREATE INDEX IF NOT EXISTS idx_pt_date ON paper_trades(trade_date);
 CREATE INDEX IF NOT EXISTS idx_pds_date ON paper_daily_snapshots(snapshot_date);
 CREATE INDEX IF NOT EXISTS idx_pss_date ON paper_strategy_signals(signal_date);
 CREATE INDEX IF NOT EXISTS idx_prr_time ON paper_risk_reports(report_time);
+CREATE INDEX IF NOT EXISTS idx_exec_stats_time ON paper_execution_stats(execution_time);
+CREATE INDEX IF NOT EXISTS idx_exec_stats_ticker ON paper_execution_stats(ticker);
 """
 
 
@@ -212,6 +244,10 @@ circuit_breaker: Optional[CircuitBreaker] = None
 db_pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
 broker: Optional[AlpacaBroker] = None
 risk_manager: Optional[PortfolioRiskManager] = None
+bayesian_updater: Optional[BayesianWeightUpdater] = None
+USE_BAYESIAN_WEIGHTS = os.getenv("ENSEMBLE_USE_BAYESIAN_WEIGHTS", "false").lower() in ("true", "1", "yes")
+USE_VWAP_EXECUTION = os.getenv("EXECUTION_USE_VWAP", "false").lower() in ("true", "1", "yes")
+vwap_model: Optional[VWAPExecutionModel] = None
 
 # Safety guardrails (March 10 incident prevention)
 signal_guard = SignalVarianceGuard()
@@ -375,6 +411,102 @@ def load_historical_returns(days: int = 30) -> List[float]:
     except Exception as e:
         logger.warning("Failed to load historical returns: %s", e)
         return []
+    finally:
+        if conn:
+            return_db_conn(conn)
+
+
+def save_bayesian_state(updater: BayesianWeightUpdater) -> bool:
+    """Persist Bayesian weight state to PostgreSQL."""
+    conn = None
+    try:
+        conn = get_db_conn()
+        with conn.cursor() as cur:
+            for row in updater.save_to_rows():
+                cur.execute(
+                    """INSERT INTO bayesian_weight_state
+                       (strategy_name, alpha, beta, n_updates, state_json, updated_at)
+                       VALUES (%s, %s, %s, %s, %s, NOW())
+                       ON CONFLICT (strategy_name) DO UPDATE SET
+                           alpha = EXCLUDED.alpha,
+                           beta = EXCLUDED.beta,
+                           n_updates = EXCLUDED.n_updates,
+                           state_json = EXCLUDED.state_json,
+                           updated_at = NOW()""",
+                    row,
+                )
+        conn.commit()
+        return_db_conn(conn)
+        conn = None
+        return True
+    except Exception as e:
+        logger.warning("Failed to save Bayesian state: %s", e)
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        return False
+    finally:
+        if conn:
+            return_db_conn(conn)
+
+
+def load_bayesian_state(updater: BayesianWeightUpdater) -> int:
+    """Load Bayesian weight state from PostgreSQL. Returns number of strategies loaded."""
+    conn = None
+    try:
+        conn = get_db_conn()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT strategy_name, alpha, beta, n_updates, state_json FROM bayesian_weight_state"
+            )
+            rows = cur.fetchall()
+        return_db_conn(conn)
+        conn = None
+        if rows:
+            updater.load_from_rows(rows)
+        return len(rows)
+    except Exception as e:
+        logger.warning("Failed to load Bayesian state: %s", e)
+        return 0
+    finally:
+        if conn:
+            return_db_conn(conn)
+
+
+def log_execution_stats(result: VWAPExecutionResult) -> bool:
+    """Persist VWAP execution result to PostgreSQL."""
+    conn = None
+    try:
+        conn = get_db_conn()
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO paper_execution_stats
+                   (ticker, side, total_requested, total_filled, expected_price,
+                    filled_avg_price, slippage_bps, fill_rate, num_slices,
+                    used_fallback, adv_capped, elapsed_s, slices_json, error)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                (result.ticker, result.side, result.total_requested,
+                 result.total_filled, result.expected_price,
+                 result.filled_avg_price, result.slippage_bps, result.fill_rate,
+                 len(result.slices), result.used_fallback, result.adv_capped,
+                 result.elapsed_s,
+                 Json([s.__dict__ for s in result.slices]),
+                 result.error),
+            )
+        conn.commit()
+        return_db_conn(conn)
+        conn = None
+        return True
+    except Exception as e:
+        logger.warning("Failed to log execution stats: %s", e)
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        return False
     finally:
         if conn:
             return_db_conn(conn)
@@ -597,10 +729,14 @@ async def run_daily_pipeline():
                         pass
 
         # 6. Combine via ensemble
-        combiner = EnsembleCombiner(EnsembleConfig(
-            enabled=True, weighting_method="bayesian",
-            max_total_positions=20, max_gross_leverage=1.5,
-        ))
+        combiner = EnsembleCombiner(
+            config=EnsembleConfig(
+                enabled=True, weighting_method="bayesian",
+                max_total_positions=20, max_gross_leverage=1.5,
+                use_bayesian_updater=USE_BAYESIAN_WEIGHTS,
+            ),
+            bayesian_updater=bayesian_updater,
+        )
         combined = combiner.combine(strategy_outputs, regime_state)
 
         # 6a. GUARDRAIL: Signal variance check (March 10 incident prevention)
@@ -777,12 +913,40 @@ async def run_daily_pipeline():
                     except Exception:
                         pass
 
-                order_req = OrderRequest(
-                    ticker=symbol,
-                    side=OrderSide.BUY if side == "buy" else OrderSide.SELL,
-                    quantity=qty,
-                )
-                result = await broker.submit_order(order_req)
+                order_side = OrderSide.BUY if side == "buy" else OrderSide.SELL
+
+                # VWAP execution or direct market order
+                if vwap_model is not None:
+                    # Compute average daily volume for ADV cap
+                    adv = 0.0
+                    if "volume" in sym_data.columns:
+                        vol_series = sym_data["volume"].dropna()
+                        if len(vol_series) >= 20:
+                            adv = float(vol_series.tail(20).mean())
+                        elif len(vol_series) > 0:
+                            adv = float(vol_series.mean())
+
+                    vwap_result = await vwap_model.execute(
+                        ticker=symbol, side=order_side, quantity=qty,
+                        current_price=price, adv=adv,
+                    )
+                    log_execution_stats(vwap_result)
+
+                    # Synthesize OrderResult for downstream tracking
+                    result = OrderResult(
+                        success=(vwap_result.total_filled > 0),
+                        order_id=vwap_result.slices[0].order_id if vwap_result.slices else None,
+                        status=OrderStatus.FILLED if vwap_result.total_filled > 0 else OrderStatus.CANCELLED,
+                        message=f"VWAP: filled {vwap_result.total_filled}/{vwap_result.total_requested}",
+                    )
+                    qty = vwap_result.total_filled or qty
+                    if vwap_result.filled_avg_price > 0:
+                        price = vwap_result.filled_avg_price
+                else:
+                    order_req = OrderRequest(
+                        ticker=symbol, side=order_side, quantity=qty,
+                    )
+                    result = await broker.submit_order(order_req)
 
                 # GUARDRAIL: Record execution outcome for failure rate tracking
                 exec_monitor.record(bool(result and result.success))
@@ -820,6 +984,18 @@ async def run_daily_pipeline():
         # Feed today's return to persistent risk manager
         if risk_manager is not None:
             risk_manager.record_portfolio_return(daily_return)
+
+        # Update Bayesian weights based on per-strategy profitability
+        if bayesian_updater is not None and strategy_outputs:
+            outcomes = {}
+            for output in strategy_outputs:
+                strat_return = sum(s.score * (1 if daily_return > 0 else -1)
+                                  for s in output.scores) / max(len(output.scores), 1)
+                outcomes[output.strategy_name] = (strat_return > 0)
+            bayesian_updater.update(outcomes)
+            save_bayesian_state(bayesian_updater)
+            logger.info("Bayesian weights updated: %s",
+                        {k: f"{v:.3f}" for k, v in bayesian_updater.get_weights().items()})
 
         positions = await broker.get_positions()
         if isinstance(positions, list) and len(positions) > 0:
@@ -893,6 +1069,18 @@ async def run_daily_pipeline():
             for o in strategy_outputs if o.scores
         ) or "none"
 
+        # VWAP execution stats for report
+        vwap_line = ""
+        if vwap_model is not None:
+            vs = vwap_model.get_execution_stats()
+            if vs["total_executions"] > 0:
+                vwap_line = (
+                    f"\nVWAP: {vs['total_executions']} orders, "
+                    f"avg slip {vs['avg_slippage_bps']:.1f}bps, "
+                    f"fill rate {vs['avg_fill_rate']:.1%}, "
+                    f"{vs['fallback_count']} fallbacks"
+                )
+
         report = (
             f"**Day {state.day_count}/30**\n"
             f"Portfolio: ${state.portfolio_value:,.2f}\n"
@@ -904,6 +1092,7 @@ async def run_daily_pipeline():
             f"Gross Lev: {target.gross_leverage:.2f} | Net Lev: {target.net_leverage:.2f}\n"
             f"Strategies: {len(strategy_outputs)}/{len(strategy_map)} active ({strat_summary})\n"
             f"Weights: {state.last_weights}"
+            f"{vwap_line}"
         )
 
         if notification_manager is not None:
@@ -980,7 +1169,7 @@ async def _send_discord_fallback(report: str):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global model_manager, signal_publisher, notification_manager, audit_logger
-    global circuit_breaker, db_pool, broker, risk_manager
+    global circuit_breaker, db_pool, broker, risk_manager, bayesian_updater, vwap_model
 
     # Database connection pool
     try:
@@ -1068,6 +1257,29 @@ async def lifespan(app: FastAPI):
     for ret in historical_returns:
         risk_manager.record_portfolio_return(ret)
     logger.info("PortfolioRiskManager initialized with %d historical returns", len(historical_returns))
+
+    # Bayesian weight updater (adaptive ensemble weights)
+    if USE_BAYESIAN_WEIGHTS:
+        bayesian_updater = BayesianWeightUpdater(
+            decay_factor=float(os.getenv("ENSEMBLE_BAYESIAN_DECAY", "0.995")),
+        )
+        n_loaded = load_bayesian_state(bayesian_updater)
+        logger.info("BayesianWeightUpdater initialized (loaded %d strategies from DB)", n_loaded)
+    else:
+        logger.info("BayesianWeightUpdater disabled (set ENSEMBLE_USE_BAYESIAN_WEIGHTS=true to enable)")
+
+    # VWAP execution model (wraps AlpacaBroker for time-sliced execution)
+    if USE_VWAP_EXECUTION:
+        vwap_model = VWAPExecutionModel(
+            broker=broker,
+            num_slices=int(os.getenv("VWAP_NUM_SLICES", "5")),
+            slice_interval_s=int(os.getenv("VWAP_SLICE_INTERVAL_S", "60")),
+            adv_cap_pct=float(os.getenv("VWAP_ADV_CAP_PCT", "0.10")),
+        )
+        logger.info("VWAPExecutionModel initialized (%d slices, %ds interval)",
+                     vwap_model.num_slices, vwap_model.slice_interval_s)
+    else:
+        logger.info("VWAP execution disabled (set EXECUTION_USE_VWAP=true to enable)")
 
     # Circuit breaker
     try:
@@ -1219,6 +1431,28 @@ async def history():
 @app.get("/weights")
 async def weights():
     return state.last_weights
+
+
+@app.get("/weights/bayesian")
+async def weights_bayesian():
+    """Return current Bayesian weight updater state: alpha, beta, weight per strategy."""
+    if bayesian_updater is None:
+        return {"enabled": False, "message": "Set ENSEMBLE_USE_BAYESIAN_WEIGHTS=true to enable"}
+    return {
+        "enabled": True,
+        "strategies": bayesian_updater.get_state_dicts(),
+        "normalized_weights": bayesian_updater.get_weights(),
+    }
+
+
+@app.get("/execution/stats")
+async def execution_stats():
+    """Return VWAP execution statistics and recent history."""
+    if vwap_model is None:
+        return {"enabled": False, "message": "Set EXECUTION_USE_VWAP=true to enable"}
+    stats = vwap_model.get_execution_stats()
+    recent = [r.to_dict() for r in vwap_model.get_execution_history(20)]
+    return {"enabled": True, "stats": stats, "recent": recent}
 
 
 @app.get("/dashboard", response_class=HTMLResponse)

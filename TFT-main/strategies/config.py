@@ -163,6 +163,10 @@ class EnsembleConfig:
     var_confidence: float = 0.99          # 99% VaR
     correlation_alert_threshold: float = 0.6  # alert if strategies correlate
 
+    # Bayesian weight updater (Beta-Binomial adaptive weights)
+    use_bayesian_updater: bool = False     # ENSEMBLE_USE_BAYESIAN_WEIGHTS=true to enable
+    bayesian_decay: float = 0.995          # exponential forgetting factor
+
     @classmethod
     def from_env(cls) -> "EnsembleConfig":
         return cls(
@@ -178,6 +182,8 @@ class EnsembleConfig:
             portfolio_max_drawdown=_env_float("STRATEGY_ENSEMBLE_MAX_DD", 0.20),
             var_confidence=_env_float("STRATEGY_ENSEMBLE_VAR_CONF", 0.99),
             correlation_alert_threshold=_env_float("STRATEGY_ENSEMBLE_CORR_ALERT", 0.6),
+            use_bayesian_updater=_env_bool("ENSEMBLE_USE_BAYESIAN_WEIGHTS", False),
+            bayesian_decay=_env_float("ENSEMBLE_BAYESIAN_DECAY", 0.995),
         )
 
 

@@ -52,7 +52,7 @@ class AlpacaBroker(BaseBroker):
 
     async def connect(self) -> None:
         if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
+            self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
         logger.info("AlpacaBroker connected (base_url=%s)", self.base_url)
 
     async def disconnect(self) -> None:

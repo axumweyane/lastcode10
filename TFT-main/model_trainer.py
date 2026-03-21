@@ -17,6 +17,7 @@ from sklearn.preprocessing import RobustScaler
 import mlflow
 import mlflow.pytorch
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import os
 import logging
 from typing import Dict, List, Tuple
@@ -233,10 +234,13 @@ def train_tft_model_from_database():
         df['month'] = df['timestamp'].dt.month
         df['quarter'] = df['timestamp'].dt.quarter
         
-        # Market session indicators
-        df['is_market_open'] = ((df['hour'] >= 9) & (df['hour'] < 16)).astype(int)
-        df['is_premarket'] = ((df['hour'] >= 4) & (df['hour'] < 9)).astype(int)
-        df['is_afterhours'] = ((df['hour'] >= 16) | (df['hour'] < 4)).astype(int)
+        # Market session indicators (timezone-aware: convert to US/Eastern)
+        eastern = ZoneInfo("America/New_York")
+        ts_eastern = df['timestamp'].dt.tz_localize('UTC', ambiguous='NaT', nonexistent='NaT').dt.tz_convert(eastern) if df['timestamp'].dt.tz is None else df['timestamp'].dt.tz_convert(eastern)
+        et_hour = ts_eastern.dt.hour
+        df['is_market_open'] = ((et_hour >= 9) & (et_hour < 16)).astype(int)
+        df['is_premarket'] = ((et_hour >= 4) & (et_hour < 9)).astype(int)
+        df['is_afterhours'] = ((et_hour >= 16) | (et_hour < 4)).astype(int)
         
         return df
     

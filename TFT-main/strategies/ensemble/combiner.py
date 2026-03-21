@@ -36,6 +36,7 @@ from strategies.base import (
     StrategyPerformance,
 )
 from strategies.config import EnsembleConfig
+from strategies.ensemble.bayesian_updater import BayesianWeightUpdater
 from strategies.regime.detector import RegimeDetector, RegimeState
 
 logger = logging.getLogger(__name__)
@@ -76,9 +77,11 @@ class EnsembleCombiner:
         self,
         config: Optional[EnsembleConfig] = None,
         regime_detector: Optional[RegimeDetector] = None,
+        bayesian_updater: Optional[BayesianWeightUpdater] = None,
     ):
         self.config = config or EnsembleConfig.from_env()
         self.regime_detector = regime_detector
+        self.bayesian_updater = bayesian_updater
         self._performance_history: Dict[str, StrategyPerformance] = {}
         self._weight_history: List[Dict[str, StrategyWeight]] = []
 
@@ -295,14 +298,29 @@ class EnsembleCombiner:
     ) -> Dict[str, StrategyWeight]:
         """
         Normalize raw weights, blend with regime weights, clamp to bounds.
+
+        When use_bayesian_updater is enabled and a bayesian_updater is provided,
+        the 60% performance component uses Beta-Binomial weights instead of
+        Sharpe-based weights.
         """
         total_raw = sum(raw_weights.values())
         if total_raw <= 0:
             total_raw = 1.0
 
+        # If Bayesian updater is active, use its weights for the performance component
+        use_updater = (
+            self.config.use_bayesian_updater
+            and self.bayesian_updater is not None
+        )
+        bayesian_weights = self.bayesian_updater.get_weights() if use_updater else {}
+
         result = {}
         for name, output in strategies.items():
-            raw_w = raw_weights.get(name, 0.0) / total_raw
+            if use_updater and name in bayesian_weights:
+                raw_w = bayesian_weights[name]
+            else:
+                raw_w = raw_weights.get(name, 0.0) / total_raw
+
             regime_w = self._get_regime_weight(name, regime_state)
 
             # Blend: 60% performance-based, 40% regime-based

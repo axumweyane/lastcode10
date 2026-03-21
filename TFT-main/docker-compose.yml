@@ -9,6 +9,11 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   postgres:
     image: timescale/timescaledb:latest-pg15
@@ -34,7 +39,8 @@ services:
       - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:9092
       - REDIS_URL=redis://redis:6379
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     extra_hosts:
       - "kafka:127.0.0.1"
@@ -50,8 +56,10 @@ services:
       - REDIS_URL=redis://redis:6379
       - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:9092
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_healthy
     volumes:
       - ./data/models:/app/models
     restart: unless-stopped
@@ -69,8 +77,10 @@ services:
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - MODEL_ARTIFACT_PATH=/app/models
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_healthy
     volumes:
       - ./data/models:/app/models
       - ./data/mlflow:/mlflow
@@ -97,8 +107,10 @@ services:
       - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
       - ALPACA_BASE_URL=https://paper-api.alpaca.markets
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   orchestrator:
@@ -116,12 +128,18 @@ services:
       - TFT_PREDICTOR_URL=http://tft-predictor:8003
       - TRADING_ENGINE_URL=http://trading-engine:8004
     depends_on:
-      - postgres
-      - redis
-      - data-ingestion
-      - sentiment-engine
-      - tft-predictor
-      - trading-engine
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      data-ingestion:
+        condition: service_started
+      sentiment-engine:
+        condition: service_started
+      tft-predictor:
+        condition: service_started
+      trading-engine:
+        condition: service_started
     restart: unless-stopped
 
   mlflow:
@@ -176,8 +194,10 @@ services:
       - PAPER_SCHEDULE_MINUTE=${PAPER_SCHEDULE_MINUTE:-0}
       - PAPER_INITIAL_CAPITAL=${PAPER_INITIAL_CAPITAL:-100000}
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     volumes:
       - ./strategies:/app/strategies
@@ -225,7 +245,8 @@ services:
     environment:
       - REDIS_HOSTS=local:redis:6379
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
 
 volumes:
   redis_data:

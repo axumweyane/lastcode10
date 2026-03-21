@@ -173,6 +173,39 @@ CREATE TABLE IF NOT EXISTS paper_risk_reports (
 
 CREATE INDEX IF NOT EXISTS idx_prr_time ON paper_risk_reports(report_time);
 
+-- Bayesian weight state (adaptive ensemble weights)
+CREATE TABLE IF NOT EXISTS bayesian_weight_state (
+    strategy_name   VARCHAR(64) PRIMARY KEY,
+    alpha           DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+    beta            DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+    n_updates       INTEGER NOT NULL DEFAULT 0,
+    state_json      JSONB DEFAULT '{}',
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- VWAP execution statistics (slippage tracking)
+CREATE TABLE IF NOT EXISTS paper_execution_stats (
+    id              SERIAL PRIMARY KEY,
+    execution_time  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ticker          VARCHAR(10) NOT NULL,
+    side            VARCHAR(4) NOT NULL,
+    total_requested DOUBLE PRECISION NOT NULL,
+    total_filled    DOUBLE PRECISION NOT NULL DEFAULT 0,
+    expected_price  DOUBLE PRECISION,
+    filled_avg_price DOUBLE PRECISION,
+    slippage_bps    DOUBLE PRECISION DEFAULT 0,
+    fill_rate       DOUBLE PRECISION DEFAULT 0,
+    num_slices      INTEGER DEFAULT 0,
+    used_fallback   BOOLEAN DEFAULT FALSE,
+    adv_capped      BOOLEAN DEFAULT FALSE,
+    elapsed_s       DOUBLE PRECISION DEFAULT 0,
+    slices_json     JSONB DEFAULT '[]',
+    error           TEXT DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_exec_stats_time ON paper_execution_stats(execution_time);
+CREATE INDEX IF NOT EXISTS idx_exec_stats_ticker ON paper_execution_stats(ticker);
+
 -- Create indexes for performance optimization
 
 -- OHLCV indexes
