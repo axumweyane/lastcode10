@@ -206,6 +206,23 @@ CREATE TABLE IF NOT EXISTS paper_execution_stats (
 CREATE INDEX IF NOT EXISTS idx_exec_stats_time ON paper_execution_stats(execution_time);
 CREATE INDEX IF NOT EXISTS idx_exec_stats_ticker ON paper_execution_stats(ticker);
 
+-- LLM signal analyses (daily analyst reports)
+CREATE TABLE IF NOT EXISTS paper_signal_analyses (
+    id              SERIAL PRIMARY KEY,
+    analysis_time   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    regime          VARCHAR(32),
+    summary         TEXT NOT NULL,
+    patterns        TEXT,
+    confidence      VARCHAR(8),
+    flags_json      JSONB DEFAULT '{}',
+    top_signals     JSONB DEFAULT '[]',
+    model_used      VARCHAR(64),
+    latency_s       DOUBLE PRECISION DEFAULT 0,
+    raw_json        JSONB DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS idx_signal_analyses_time ON paper_signal_analyses(analysis_time);
+
 -- Create indexes for performance optimization
 
 -- OHLCV indexes

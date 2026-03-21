@@ -381,6 +381,7 @@ class EnsembleCombiner:
 
             # Cross-asset
             "kronos": "tft",  # forecasting model, weight like TFT
+            "sentiment": "tft",  # sentiment-driven, weight like TFT
 
             # Adapters
             "tft": "tft",

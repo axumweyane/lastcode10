@@ -58,6 +58,7 @@ from strategies.tdgf.strategy import TDGFStrategy
 from strategies.stocks.mean_reversion import MeanReversionStrategy
 from strategies.stocks.sector_rotation import SectorRotationStrategy
 from strategies.options.strategies.vol_arb import VolatilityArbitrage
+from strategies.sentiment.strategy import SentimentStrategy
 
 # Ensemble & Infrastructure
 from strategies.ensemble.bayesian_updater import BayesianWeightUpdater
@@ -79,12 +80,21 @@ from trading.safety.guardrails import (
     ExecutionFailureMonitor,
 )
 
+# LLM signal analyst
+from agents.signal_analyst import SignalAnalyst, SignalAnalysis
+
+# Signal provider API
+from api.signal_provider import create_signal_api, SignalCache
+
+# Prometheus metrics
+from monitoring.metrics import PrometheusMetrics
+
 # Configuration
 from strategies.config import (
     MomentumConfig, StatArbConfig, EnsembleConfig, RegimeConfig, FXConfig,
     KronosConfig, DeepSurrogateConfig, TDGFConfig,
     MeanReversionConfig, SectorRotationConfig, FXMomentumConfig, FXVolBreakoutConfig,
-    StrategyMasterConfig,
+    SentimentConfig, StrategyMasterConfig,
 )
 from strategies.options.config import VolArbConfig
 from strategies.base import StrategyPerformance
@@ -211,6 +221,22 @@ CREATE INDEX IF NOT EXISTS idx_pss_date ON paper_strategy_signals(signal_date);
 CREATE INDEX IF NOT EXISTS idx_prr_time ON paper_risk_reports(report_time);
 CREATE INDEX IF NOT EXISTS idx_exec_stats_time ON paper_execution_stats(execution_time);
 CREATE INDEX IF NOT EXISTS idx_exec_stats_ticker ON paper_execution_stats(ticker);
+
+CREATE TABLE IF NOT EXISTS paper_signal_analyses (
+    id              SERIAL PRIMARY KEY,
+    analysis_time   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    regime          VARCHAR(32),
+    summary         TEXT NOT NULL,
+    patterns        TEXT,
+    confidence      VARCHAR(8),
+    flags_json      JSONB DEFAULT '{}',
+    top_signals     JSONB DEFAULT '[]',
+    model_used      VARCHAR(64),
+    latency_s       DOUBLE PRECISION DEFAULT 0,
+    raw_json        JSONB DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS idx_signal_analyses_time ON paper_signal_analyses(analysis_time);
 """
 
 
@@ -248,6 +274,13 @@ bayesian_updater: Optional[BayesianWeightUpdater] = None
 USE_BAYESIAN_WEIGHTS = os.getenv("ENSEMBLE_USE_BAYESIAN_WEIGHTS", "false").lower() in ("true", "1", "yes")
 USE_VWAP_EXECUTION = os.getenv("EXECUTION_USE_VWAP", "false").lower() in ("true", "1", "yes")
 vwap_model: Optional[VWAPExecutionModel] = None
+LLM_ANALYST_ENABLED = os.getenv("LLM_ANALYST_ENABLED", "false").lower() in ("true", "1", "yes")
+signal_analyst: Optional[SignalAnalyst] = None
+SIGNAL_API_ENABLED = os.getenv("SIGNAL_API_ENABLED", "false").lower() in ("true", "1", "yes")
+SIGNAL_API_KEY = os.getenv("SIGNAL_API_KEY", "")
+signal_cache = SignalCache()
+METRICS_ENABLED = os.getenv("METRICS_ENABLED", "true").lower() in ("true", "1", "yes")
+prom_metrics: Optional[PrometheusMetrics] = PrometheusMetrics() if METRICS_ENABLED else None
 
 # Safety guardrails (March 10 incident prevention)
 signal_guard = SignalVarianceGuard()
@@ -512,6 +545,39 @@ def log_execution_stats(result: VWAPExecutionResult) -> bool:
             return_db_conn(conn)
 
 
+def log_signal_analysis(analysis: SignalAnalysis) -> bool:
+    """Persist LLM signal analysis to PostgreSQL."""
+    conn = None
+    try:
+        conn = get_db_conn()
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO paper_signal_analyses
+                   (regime, summary, patterns, confidence, flags_json,
+                    top_signals, model_used, latency_s, raw_json)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                (analysis.regime, analysis.summary, analysis.patterns,
+                 analysis.confidence, Json(analysis.flags.to_dict()),
+                 Json(analysis.top_signals), analysis.model_used,
+                 analysis.latency_s, Json(analysis.to_dict())),
+            )
+        conn.commit()
+        return_db_conn(conn)
+        conn = None
+        return True
+    except Exception as e:
+        logger.warning("Failed to log signal analysis: %s", e)
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        return False
+    finally:
+        if conn:
+            return_db_conn(conn)
+
+
 # ============================================================
 # DATA FETCHING
 # ============================================================
@@ -627,13 +693,17 @@ def build_strategies(config: StrategyMasterConfig, mgr: Optional[ModelManager]) 
     if vol_arb_enabled:
         strategies["vol_arb"] = VolatilityArbitrage(VolArbConfig.from_env())
 
+    # Sentiment strategy (contrarian / momentum confirmation)
+    if config.sentiment.enabled and mgr is not None:
+        strategies["sentiment"] = SentimentStrategy(config=config.sentiment, manager=mgr)
+
     return strategies
 
 
 # ============================================================
 # MAIN PIPELINE
 # ============================================================
-async def run_daily_pipeline():
+async def run_daily_pipeline(is_manual: bool = False):
     """Execute the full ensemble pipeline."""
     if state.is_running:
         logger.warning("Pipeline already running, skipping")
@@ -824,6 +894,54 @@ async def run_daily_pipeline():
                 name: round(w.final_weight, 3) for name, w in weight_hist[-1].items()
             }
 
+        # 6c. Cache signals for signal provider API
+        signal_dicts = [
+            {"symbol": s.symbol, "combined_score": s.combined_score,
+             "confidence": s.confidence, "direction": s.direction.value,
+             "contributing_strategies": s.contributing_strategies}
+            for s in combined
+        ]
+        try:
+            bay_w = bayesian_updater.get_weights() if bayesian_updater else None
+            bay_s = bayesian_updater.get_state_dicts() if bayesian_updater else None
+            regime_detail = {
+                "regime": regime_state.regime.value,
+                "vix_level": regime_state.vix_level,
+                "is_volatile": regime_state.is_volatile,
+                "is_trending": regime_state.is_trending,
+                "confidence": regime_state.confidence,
+                "exposure_scalar": regime_state.exposure_scalar,
+            } if regime_state else {}
+            signal_cache.refresh(
+                signals=signal_dicts,
+                weights=state.last_weights,
+                regime=state.last_regime,
+                regime_detail=regime_detail,
+                bayesian_weights=bay_w,
+                bayesian_state=bay_s,
+            )
+        except Exception as e:
+            logger.warning("Signal cache refresh failed: %s", e)
+
+        # 6d. LLM signal analysis (after ensemble, before optimization)
+        llm_analysis = None
+        if signal_analyst is not None:
+            try:
+                risk_dict = risk_assessment.to_dict() if risk_assessment else {}
+                llm_analysis = await signal_analyst.analyze(
+                    signals=signal_dicts,
+                    weights=state.last_weights,
+                    regime=state.last_regime or "unknown",
+                    risk_summary=risk_dict,
+                    is_manual=is_manual,
+                )
+                if llm_analysis is not None:
+                    log_signal_analysis(llm_analysis)
+                    logger.info("LLM analysis: %s (confidence=%s)",
+                                llm_analysis.summary[:100], llm_analysis.confidence)
+            except Exception as e:
+                logger.warning("LLM signal analysis failed (non-critical): %s", e)
+
         # 7. Optimize portfolio
         optimizer = PortfolioOptimizer(EnsembleConfig(
             enabled=True, max_total_positions=15,
@@ -931,6 +1049,8 @@ async def run_daily_pipeline():
                         current_price=price, adv=adv,
                     )
                     log_execution_stats(vwap_result)
+                    if prom_metrics is not None and vwap_result.total_filled > 0:
+                        prom_metrics.observe_slippage(symbol, vwap_result.slippage_bps)
 
                     # Synthesize OrderResult for downstream tracking
                     result = OrderResult(
@@ -1081,6 +1201,11 @@ async def run_daily_pipeline():
                     f"{vs['fallback_count']} fallbacks"
                 )
 
+        # LLM analysis for report
+        llm_line = ""
+        if llm_analysis is not None:
+            llm_line = f"\n{llm_analysis.to_report_line()}"
+
         report = (
             f"**Day {state.day_count}/30**\n"
             f"Portfolio: ${state.portfolio_value:,.2f}\n"
@@ -1093,6 +1218,7 @@ async def run_daily_pipeline():
             f"Strategies: {len(strategy_outputs)}/{len(strategy_map)} active ({strat_summary})\n"
             f"Weights: {state.last_weights}"
             f"{vwap_line}"
+            f"{llm_line}"
         )
 
         if notification_manager is not None:
@@ -1120,6 +1246,29 @@ async def run_daily_pipeline():
         elapsed = (state.last_run - run_start).total_seconds()
         logger.info("Pipeline complete in %.1fs — P&L: $%+.2f (%+.2f%%)",
                      elapsed, daily_pnl, daily_return * 100)
+
+        # 12. Update Prometheus metrics
+        if prom_metrics is not None:
+            try:
+                prom_metrics.update_signals(signal_dicts)
+                prom_metrics.update_weights(
+                    state.last_weights,
+                    bayesian_weights=bayesian_updater.get_weights() if bayesian_updater else None,
+                )
+                prom_metrics.update_regime(
+                    regime=state.last_regime or "unknown",
+                    is_volatile=regime_state.is_volatile if regime_state else False,
+                    is_trending=regime_state.is_trending if regime_state else False,
+                )
+                if risk_assessment is not None:
+                    prom_metrics.update_risk(
+                        drawdown=risk_assessment.portfolio_drawdown,
+                        var_99=risk_assessment.var.parametric_var if risk_assessment.var else 0,
+                        cvar_95=risk_assessment.var.cvar_95 if risk_assessment.var else 0,
+                    )
+                prom_metrics.observe_pipeline_duration(elapsed)
+            except Exception as e_metrics:
+                logger.warning("Prometheus metrics update failed: %s", e_metrics)
 
     except Exception as e:
         logger.error("Pipeline failed: %s", e, exc_info=True)
@@ -1170,6 +1319,7 @@ async def _send_discord_fallback(report: str):
 async def lifespan(app: FastAPI):
     global model_manager, signal_publisher, notification_manager, audit_logger
     global circuit_breaker, db_pool, broker, risk_manager, bayesian_updater, vwap_model
+    global signal_analyst
 
     # Database connection pool
     try:
@@ -1281,6 +1431,13 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("VWAP execution disabled (set EXECUTION_USE_VWAP=true to enable)")
 
+    # LLM signal analyst
+    if LLM_ANALYST_ENABLED:
+        signal_analyst = SignalAnalyst()
+        logger.info("SignalAnalyst initialized (model=%s)", signal_analyst.client.model)
+    else:
+        logger.info("LLM signal analyst disabled (set LLM_ANALYST_ENABLED=true to enable)")
+
     # Circuit breaker
     try:
         import redis.asyncio as aioredis
@@ -1373,6 +1530,40 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Mount signal provider API
+if SIGNAL_API_ENABLED and SIGNAL_API_KEY:
+    def _db_query(query: str, params: tuple) -> list:
+        """Execute a read-only DB query for the signal API."""
+        conn = None
+        try:
+            conn = get_db_conn()
+            with conn.cursor() as cur:
+                cur.execute(query, params)
+                rows = cur.fetchall()
+            return_db_conn(conn)
+            conn = None
+            return rows
+        except Exception:
+            if conn:
+                return_db_conn(conn)
+            raise
+
+    signal_api = create_signal_api(
+        api_key=SIGNAL_API_KEY,
+        cache=signal_cache,
+        db_query_fn=_db_query,
+    )
+    app.mount("/api/v1", signal_api)
+    logger.info("Signal provider API mounted at /api/v1/")
+else:
+    if SIGNAL_API_ENABLED and not SIGNAL_API_KEY:
+        logger.warning("SIGNAL_API_ENABLED=true but SIGNAL_API_KEY is empty — API not mounted")
+
+# Mount Prometheus /metrics endpoint
+if prom_metrics is not None:
+    app.mount("/metrics", prom_metrics.get_asgi_app())
+    logger.info("Prometheus metrics endpoint mounted at /metrics")
+
 
 @app.get("/health")
 async def health():
@@ -1414,7 +1605,7 @@ async def health():
 async def run_now():
     if state.is_running:
         return {"status": "already_running"}
-    asyncio.create_task(run_daily_pipeline())
+    asyncio.create_task(run_daily_pipeline(is_manual=True))
     return {"status": "started"}
 
 
@@ -1453,6 +1644,17 @@ async def execution_stats():
     stats = vwap_model.get_execution_stats()
     recent = [r.to_dict() for r in vwap_model.get_execution_history(20)]
     return {"enabled": True, "stats": stats, "recent": recent}
+
+
+@app.get("/analysis/latest")
+async def analysis_latest():
+    """Return the most recent LLM signal analysis."""
+    if signal_analyst is None:
+        return {"enabled": False, "message": "Set LLM_ANALYST_ENABLED=true to enable"}
+    analysis = signal_analyst.last_analysis
+    if analysis is None:
+        return {"enabled": True, "analysis": None, "message": "No analysis yet — waiting for first pipeline run"}
+    return {"enabled": True, "analysis": analysis.to_dict()}
 
 
 @app.get("/dashboard", response_class=HTMLResponse)

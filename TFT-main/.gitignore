@@ -98,8 +98,20 @@ data/
 # Docker
 .dockerignore
 
-# Monitoring & Metrics
-monitoring/
+# Monitoring & Metrics (runtime data)
+# Track config files but not runtime data
+!monitoring/
+monitoring/**
+!monitoring/__init__.py
+!monitoring/metrics.py
+!monitoring/grafana/
+monitoring/grafana/**
+!monitoring/grafana/dashboards/
+!monitoring/grafana/dashboards/*.json
+!monitoring/grafana/datasources/
+!monitoring/grafana/datasources/*.yml
+!monitoring/prometheus/
+!monitoring/prometheus/*.yml
 reports/
 output/
 

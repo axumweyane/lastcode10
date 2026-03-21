@@ -1,5 +1,7 @@
 # APEX — Multi-Strategy Algorithmic Trading Platform
 
+![CI](https://github.com/axumweyane/lastcode10/actions/workflows/ci.yml/badge.svg)
+
 A production-grade trading platform built around the Temporal Fusion Transformer (TFT), with a 10-model ensemble spanning equities, FX, and options. The system combines 6 independent alpha strategies through a Bayesian regime-adaptive ensemble combiner, with paper trading execution via Alpaca and real-time signal distribution via Redis pub/sub.
 
 ## Features

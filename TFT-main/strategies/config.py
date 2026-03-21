@@ -507,6 +507,32 @@ class TDGFConfig:
 
 
 # ---------------------------------------------------------------------------
+# Sentiment (contrarian / momentum confirmation)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class SentimentConfig:
+    enabled: bool = False
+
+    max_positions_per_side: int = 10
+    initial_weight: float = 0.10   # 10% default ensemble weight
+
+    # Risk
+    strategy_max_drawdown: float = 0.20
+    strategy_kill_sharpe: float = -1.0
+
+    @classmethod
+    def from_env(cls) -> "SentimentConfig":
+        return cls(
+            enabled=_env_bool("STRATEGY_SENTIMENT_ENABLED", False),
+            max_positions_per_side=_env_int("STRATEGY_SENTIMENT_MAX_POS", 10),
+            initial_weight=_env_float("STRATEGY_SENTIMENT_INITIAL_WEIGHT", 0.10),
+            strategy_max_drawdown=_env_float("STRATEGY_SENTIMENT_MAX_DD", 0.20),
+            strategy_kill_sharpe=_env_float("STRATEGY_SENTIMENT_KILL_SHARPE", -1.0),
+        )
+
+
+# ---------------------------------------------------------------------------
 # Walk-Forward Validation
 # ---------------------------------------------------------------------------
 
@@ -553,6 +579,7 @@ class StrategyMasterConfig:
     sector_rotation: SectorRotationConfig = field(default_factory=SectorRotationConfig)
     fx_momentum: FXMomentumConfig = field(default_factory=FXMomentumConfig)
     fx_vol_breakout: FXVolBreakoutConfig = field(default_factory=FXVolBreakoutConfig)
+    sentiment: SentimentConfig = field(default_factory=SentimentConfig)
 
     @classmethod
     def from_env(cls) -> "StrategyMasterConfig":
@@ -569,6 +596,7 @@ class StrategyMasterConfig:
             sector_rotation=SectorRotationConfig.from_env(),
             fx_momentum=FXMomentumConfig.from_env(),
             fx_vol_breakout=FXVolBreakoutConfig.from_env(),
+            sentiment=SentimentConfig.from_env(),
         )
         enabled = []
         if cfg.momentum.enabled:
@@ -595,6 +623,8 @@ class StrategyMasterConfig:
             enabled.append("fx_momentum")
         if cfg.fx_vol_breakout.enabled:
             enabled.append("fx_vol_breakout")
+        if cfg.sentiment.enabled:
+            enabled.append("sentiment")
 
         if enabled:
             logger.info("Enabled strategies: %s", ", ".join(enabled))

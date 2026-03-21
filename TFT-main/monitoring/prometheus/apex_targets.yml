@@ -1,0 +1,9 @@
+scrape_configs:
+  - job_name: "apex-paper-trader"
+    scrape_interval: 15s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["paper-trader:8010"]
+        labels:
+          service: "apex-paper-trader"
+          env: "paper"
