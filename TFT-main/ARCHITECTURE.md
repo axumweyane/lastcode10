@@ -15,7 +15,7 @@
 4. [Data Flow: Market Data to Trade Execution](#4-data-flow-market-data-to-trade-execution)
 5. [Data Pipelines](#5-data-pipelines)
 6. [Model Layer (10 Models)](#6-model-layer-10-models)
-7. [Strategy Layer (11 Strategies)](#7-strategy-layer-11-strategies)
+7. [Strategy Layer (12 Strategies)](#7-strategy-layer-12-strategies)
 8. [Ensemble System](#8-ensemble-system)
 9. [Regime Detection](#9-regime-detection)
 10. [Portfolio Optimization](#10-portfolio-optimization)
@@ -31,18 +31,22 @@
 19. [Scheduling](#19-scheduling)
 20. [Model Training Pipeline](#20-model-training-pipeline)
 21. [Testing](#21-testing)
-22. [Deployment Status](#22-deployment-status)
+22. [Data Retention & TimescaleDB](#22-data-retention--timescaledb)
+23. [Deployment Status](#23-deployment-status)
+24. [Monitoring & Observability](#24-monitoring--observability)
+25. [Signal Provider REST API](#25-signal-provider-rest-api)
+26. [CI/CD Pipeline](#26-cicd-pipeline)
 
 ---
 
 ## 1. System Overview
 
-APEX is a multi-strategy algorithmic trading platform built around the Temporal Fusion Transformer (TFT). It combines 10 AI/statistical models across 4 asset classes through 11 trading strategies, fused via a Bayesian ensemble with regime-adaptive weighting, and executed through a production paper-trading service connected to Alpaca.
+APEX is a multi-strategy algorithmic trading platform built around the Temporal Fusion Transformer (TFT). It combines 10 AI/statistical models across 4 asset classes through 12 trading strategies, fused via a Bayesian ensemble with regime-adaptive weighting, and executed through a production paper-trading service connected to Alpaca.
 
 The system has three layers that can operate independently:
 
 1. **Core TFT Pipeline** — Train TFT models, generate predictions, rank stocks, construct portfolios. Two backends: legacy SQLite and PostgreSQL.
-2. **Multi-Strategy Ensemble** — 11 strategies producing alpha signals, combined via Bayesian weighting, optimized into a risk-constrained portfolio, executed daily via the paper trader.
+2. **Multi-Strategy Ensemble** — 12 strategies producing alpha signals, combined via Bayesian weighting, optimized into a risk-constrained portfolio, executed daily via the paper trader.
 3. **Microservices Layer** — 5 FastAPI services coordinated via Kafka for distributed deployment (Docker/K8s).
 
 ---
@@ -56,7 +60,7 @@ The system has three layers that can operate independently:
 │                                                                             │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                  │
 │  │  Data Layer   │    │  Model Layer  │    │ Strategy Layer│                  │
-│  │              │    │  (10 models)  │    │(11 strategies)│                  │
+│  │              │    │  (10 models)  │    │(12 strategies)│                  │
 │  │  yfinance    │───>│  TFT Stocks   │───>│  Momentum     │                  │
 │  │  Polygon.io  │    │  TFT Forex    │    │  Pairs/StatArb│                  │
 │  │  TimescaleDB │    │  TFT Vol      │    │  Mean Revert  │                  │
@@ -68,6 +72,7 @@ The system has three layers that can operate independently:
 │                      │  Macro        │    │  TDGF         │                  │
 │                      │  Microstr     │    │  Vol Arb      │                  │
 │                      └──────────────┘    │  Kronos       │                  │
+│                                          │  Sentiment    │                  │
 │                                          └───────┬───────┘                  │
 │                                                  │                          │
 │  ┌──────────────┐    ┌──────────────┐    ┌───────▼───────┐                  │
@@ -144,7 +149,7 @@ TFT-main/
 │   ├── macro_model.py              #   MacroRegimeModel (yield curve)
 │   └── microstructure_model.py     #   MicrostructureModel (volume/VWAP)
 │
-├── strategies/                     # 11 trading strategies
+├── strategies/                     # 12 trading strategies
 │   ├── base.py                     #   BaseStrategy ABC, AlphaScore, StrategyOutput
 │   ├── config.py                   #   StrategyMasterConfig (all configs from env)
 │   ├── momentum/
@@ -168,6 +173,8 @@ TFT-main/
 │   │   └── vol_arb.py              #   Strategy #10: Vol Surface Arbitrage
 │   ├── kronos/
 │   │   └── strategy.py             #   Strategy #11: Kronos Forecasting
+│   ├── sentiment/
+│   │   └── strategy.py             #   Strategy #12: Sentiment (contrarian/momentum)
 │   ├── ensemble/
 │   │   ├── combiner.py             #   EnsembleCombiner (Bayesian fusion)
 │   │   └── portfolio_optimizer.py  #   PortfolioOptimizer (risk constraints)
@@ -177,6 +184,22 @@ TFT-main/
 │   │   └── portfolio_risk.py       #   PortfolioRiskManager (VaR, kill switches)
 │   └── signals/
 │       └── publisher.py            #   SignalPublisher (Redis pub/sub)
+│
+├── agents/
+│   └── signal_analyst.py           # LLM Signal Analyst (Ollama, ~500 lines)
+│
+├── api/
+│   └── signal_provider.py          # Signal Provider REST API (API key auth, rate limiting)
+│
+├── monitoring/
+│   ├── metrics.py                  # PrometheusMetrics (signal, risk, pipeline gauges)
+│   ├── grafana/dashboards/
+│   │   └── apex_ensemble.json      # Pre-configured Grafana dashboard
+│   └── prometheus/
+│       └── apex_targets.yml        # Prometheus scrape targets
+│
+├── .github/workflows/
+│   └── ci.yml                      # CI/CD: lint, test, security, docker (4 jobs)
 │
 ├── paper-trader/
 │   └── main.py                     # FastAPI daily pipeline (port 8010)
@@ -272,7 +295,8 @@ Step 4: STRATEGY EXECUTION (parallel-safe, sequential in practice)
     │   ├── (Deep Surrogates) ──────── disabled
     │   ├── (TDGF) ─────────────────── disabled
     │   ├── (Vol Arb) ──────────────── disabled
-    │   └── (Kronos) ───────────────── disabled
+    │   ├── (Kronos) ───────────────── disabled
+    │   └── Sentiment ────────────── 0 signals (contrarian/momentum)
     │
 Step 5: RISK ASSESSMENT
     │   PortfolioRiskManager.assess()
@@ -427,7 +451,7 @@ class ModelPrediction:
 
 ---
 
-## 7. Strategy Layer (11 Strategies)
+## 7. Strategy Layer (12 Strategies)
 
 All strategies extend `BaseStrategy` (ABC in `strategies/base.py`) and produce `StrategyOutput` containing `List[AlphaScore]` — z-scored per-symbol alpha signals.
 
@@ -473,6 +497,7 @@ class AlphaScore:
 | 9 | TDGF American Options | `tdgf/strategy.py` | PDE-based American option valuation. Mispricing detection. | TDGFModel via ModelManager |
 | 10 | Vol Surface Arbitrage | `options/strategies/vol_arb.py` | IV-RV spread analysis, vol surface shape arbitrage. | None (IV-RV spread) |
 | 11 | Kronos Forecasting | `kronos/strategy.py` | K-line foundation model predictions for stocks and forex. | KronosModel via ModelManager |
+| 12 | Sentiment | `sentiment/strategy.py` | NLP sentiment contrarian/momentum signals. Divergence multiplier 1.5x, alignment 0.8x. | SentimentModel (#7) via ModelManager |
 
 ### Strategy Activation (Environment Variables)
 
@@ -489,6 +514,7 @@ STRATEGY_KRONOS_ENABLED=false        # needs /opt/kronos
 STRATEGY_DEEP_SURROGATES_ENABLED=false  # needs /opt/deep_surrogate
 STRATEGY_TDGF_ENABLED=false          # needs /opt/tdgf
 STRATEGY_VOL_ARB_ENABLED=false
+STRATEGY_SENTIMENT_ENABLED=true
 ```
 
 ---
@@ -522,7 +548,7 @@ Strategies map to 4 regime weight buckets:
 | `momentum` | cross_sectional_momentum, sector_rotation, fx_momentum |
 | `mean_reversion` | mean_reversion |
 | `pairs` | pairs_trading, fx_vol_breakout, deep_surrogates, tdgf, vol_arb |
-| `tft` | fx_carry_trend, kronos |
+| `tft` | fx_carry_trend, kronos, sentiment |
 
 Each `MarketRegime` state provides different weights for these 4 buckets (configured in `RegimeConfig`).
 
@@ -1065,6 +1091,13 @@ ALERT_COOLDOWN_MINUTES=15
 | GET | `/history` | Last 30 pipeline run records |
 | GET | `/weights` | Current strategy weight distribution |
 | GET | `/dashboard` | Live HTML dashboard with all strategy panels |
+| GET | `/dlq` | Dead letter queue statistics |
+| GET | `/metrics` | Prometheus metrics (ASGI app) |
+| GET | `/api/v1/signals` | Signal Provider REST API (API key auth, rate limiting) |
+| GET | `/api/v1/signals/{symbol}` | Per-symbol signal with ETag caching |
+| GET | `/api/v1/signals/history/{symbol}` | Historical signals for symbol |
+| GET | `/api/v1/signals/regime` | Current regime state |
+| GET | `/api/v1/signals/weights` | Current strategy weights |
 
 ### Legacy API (Port 8000, `api.py`)
 
@@ -1344,4 +1377,57 @@ Three materialized views with automatic refresh policies:
 
 ---
 
-*Version 3.0.0. ~179 Python files, 10 models, 11 strategies, 635 tests, 26+ database tables, 13 Kafka topics, 4 Redis channels.*
+## 24. Monitoring & Observability
+
+### Prometheus Metrics (`monitoring/metrics.py`)
+
+`PrometheusMetrics` class with dedicated `CollectorRegistry`. Exposes metrics via ASGI app at `/metrics`.
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `apex_signal_score` | Gauge | Per-symbol ensemble signal score |
+| `apex_strategy_weight` | Gauge | Per-strategy weight in ensemble |
+| `apex_regime_state` | Info | Current market regime classification |
+| `apex_ensemble_confidence` | Histogram | Distribution of signal confidence values |
+| `apex_execution_slippage_bps` | Histogram | Execution slippage in basis points |
+| `apex_pipeline_duration_seconds` | Histogram | Pipeline run duration |
+| `apex_risk_*` | Gauges | max_drawdown, var_99, cvar_95 |
+
+### Grafana Dashboard
+
+Pre-configured dashboard at `monitoring/grafana/dashboards/apex_ensemble.json` with panels for signal scores, strategy weights, risk metrics, and pipeline performance.
+
+### LLM Signal Analyst (`agents/signal_analyst.py`)
+
+`SignalAnalyst` class using local Ollama (default model: `qwen2.5:32b`). Detects patterns in ensemble output:
+- **Consensus** (>80% agreement), **Conflict** (40-60% split)
+- **Weight shifts** (>10% change), **Regime changes**
+
+Constructs structured prompts, parses JSON responses with fallback. Outputs `SignalAnalysis` dataclass with narrative summary and actionable insights.
+
+## 25. Signal Provider REST API (`api/signal_provider.py`)
+
+External signal distribution API mounted at `/api/v1/`. Created via `create_signal_api()` factory.
+
+**Security:**
+- API key authentication via `X-API-Key` header (`SIGNAL_API_KEY` env var)
+- In-memory rate limiting: 100 requests/minute per key
+
+**Caching:**
+- `SignalCache` with configurable TTL
+- ETag support for conditional requests (304 Not Modified)
+
+## 26. CI/CD Pipeline (`.github/workflows/ci.yml`)
+
+Four-job GitHub Actions pipeline triggered on push/PR:
+
+| Job | Steps |
+|-----|-------|
+| `lint` | black --check, flake8, mypy, yamllint |
+| `test` | pytest with JUnit XML output |
+| `security` | pip-audit (dependency vulnerabilities), detect-secrets |
+| `docker` | Build + verify Docker image (push to main/master only) |
+
+---
+
+*Version 3.0.0. ~179 Python files, 10 models, 12 strategies, 635 tests, 26+ database tables, 13 Kafka topics, 4 Redis channels.*

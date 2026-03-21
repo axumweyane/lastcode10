@@ -31,6 +31,44 @@ Complete production hardening across data retention, security, and fault toleran
 - `utils/env_validator.py` — startup validation of required env vars with placeholder detection
 - Environment validation wired into paper-trader lifespan (`strict=True`)
 
+### Added — Monitoring & Observability
+
+- `monitoring/metrics.py` — `PrometheusMetrics` with dedicated `CollectorRegistry`: signal scores, strategy weights, regime state, confidence histograms, execution slippage, pipeline duration, risk gauges
+- `monitoring/grafana/dashboards/apex_ensemble.json` — Pre-configured Grafana dashboard for ensemble monitoring
+- `monitoring/prometheus/apex_targets.yml` — Prometheus scrape target configuration
+- `/metrics` endpoint on paper-trader (ASGI app via `make_asgi_app()`)
+
+### Added — LLM Signal Analyst
+
+- `agents/signal_analyst.py` — `SignalAnalyst` class (~500 lines) using local Ollama (default: `qwen2.5:32b`)
+- Pattern detection: consensus (>80%), conflict (40-60%), weight shifts (>10%), regime changes
+- Structured prompt construction, JSON response parsing with fallback
+- `PatternFlags` and `SignalAnalysis` dataclasses for typed output
+
+### Added — Signal Provider REST API
+
+- `api/signal_provider.py` — FastAPI sub-app mounted at `/api/v1/`
+- API key authentication via `X-API-Key` header (`SIGNAL_API_KEY` env var)
+- In-memory `RateLimiter` (100 requests/minute per key)
+- `SignalCache` with configurable TTL and ETag support (304 Not Modified)
+- Endpoints: `/signals`, `/signals/{symbol}`, `/signals/history/{symbol}`, `/signals/regime`, `/signals/weights`
+
+### Added — Sentiment Strategy (#12)
+
+- `strategies/sentiment/strategy.py` — `SentimentStrategy` extending `BaseStrategy`
+- Contrarian/momentum signals from NLP sentiment (divergence multiplier 1.5x, alignment 0.8x)
+- Uses `SentimentModel` (#7) via `ModelManager`
+- Maps to `"tft"` regime weight bucket in ensemble combiner
+- Strategy count: 11 → 12
+
+### Added — CI/CD Pipeline
+
+- `.github/workflows/ci.yml` — 4-job GitHub Actions pipeline (push/PR trigger)
+- `lint`: black --check, flake8, mypy, yamllint
+- `test`: pytest with JUnit XML output
+- `security`: pip-audit (dependency vulnerabilities), detect-secrets (leaked credentials)
+- `docker`: Build + verify Docker image (push to main/master only)
+
 ### Added — Tests
 
 - `tests/test_production_hardening.py` — 38 tests (Kafka retention, TimescaleDB, schema registry)

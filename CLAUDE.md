@@ -132,6 +132,7 @@ Each strategy extends `BaseStrategy` (ABC in `strategies/base.py`) and produces 
 | 9 | TDGF American Options | `tdgf/strategy.py` | options | TDGFModel via ModelManager |
 | 10 | Vol Surface Arbitrage | `options/strategies/vol_arb.py` | options | None (IV-RV spread) |
 | 11 | Kronos Forecasting | `kronos/strategy.py` | stocks+forex | KronosModel via ModelManager |
+| 12 | Sentiment | `sentiment/strategy.py` | cross-asset | SentimentModel (#7) via ModelManager |
 
 Supporting modules:
 - `ensemble/combiner.py` — Bayesian signal fusion with regime-adaptive weighting
@@ -155,7 +156,7 @@ Strategies map to 4 regime weight buckets in `combiner.py` — `[momentum, mean_
 - `cross_sectional_momentum`, `sector_rotation`, `fx_momentum` → `"momentum"`
 - `mean_reversion` → `"mean_reversion"`
 - `pairs_trading`, `fx_vol_breakout`, `deep_surrogates`, `tdgf`, `vol_arb` → `"pairs"`
-- `fx_carry_trend`, `kronos` → `"tft"`
+- `fx_carry_trend`, `kronos`, `sentiment` → `"tft"`
 
 #### Strategy Activation
 All strategies are **disabled by default**. Enable via `.env`:
@@ -171,6 +172,7 @@ STRATEGY_KRONOS_ENABLED=true
 STRATEGY_DEEP_SURROGATES_ENABLED=true
 STRATEGY_TDGF_ENABLED=true
 STRATEGY_VOL_ARB_ENABLED=true
+STRATEGY_SENTIMENT_ENABLED=true
 ```
 
 ### Safety Guardrails (`trading/safety/guardrails.py`)
@@ -200,7 +202,7 @@ FastAPI service on port 8010. Production-grade daily pipeline with full infrastr
 1. Fetch OHLCV via yfinance (stocks + SPY for regime, FX pairs)
 2. Circuit breaker check (Redis-backed drawdown limits)
 3. Detect market regime
-4. Build and run all enabled strategies (up to 11: momentum, pairs, mean reversion, sector rotation, FX carry/momentum/vol breakout, kronos, deep surrogates, TDGF, vol arb)
+4. Build and run all enabled strategies (up to 12: momentum, pairs, mean reversion, sector rotation, FX carry/momentum/vol breakout, kronos, deep surrogates, TDGF, vol arb, sentiment)
 5. Combine via Bayesian ensemble
 6. **GUARDRAIL: Signal variance check** — halt if scores collapse
 7. **RISK ASSESSMENT**: `PortfolioRiskManager.assess()` — kill switch halts all trades, killed strategies filtered, correlated strategies reduced, risk report logged to `paper_risk_reports`
@@ -213,7 +215,8 @@ FastAPI service on port 8010. Production-grade daily pipeline with full infrastr
 14. Feed daily return to persistent `PortfolioRiskManager`
 15. Publish signals to Redis (optional, fire-and-forget)
 16. Send reports via `NotificationManager` (Discord + Email, from `trading/notifications/alerts.py`)
-17. Serve live dashboard at `/dashboard` with panels for all 11 strategies
+17. LLM signal analysis via `SignalAnalyst` (Ollama, pattern detection, narrative summary)
+18. Serve live dashboard at `/dashboard` with panels for all 12 strategies
 
 **Production infrastructure wired in:**
 - `AlpacaBroker` (283 lines) replaces the simplified PaperBroker
@@ -225,8 +228,11 @@ FastAPI service on port 8010. Production-grade daily pipeline with full infrastr
 - `SignalVarianceGuard` / `LeverageGate` / `ExecutionFailureMonitor` — Safety guardrails (`trading/safety/guardrails.py`)
 - `DeadLetterQueue` — PostgreSQL-backed DLQ with exponential backoff retry (`services/common/dlq.py`)
 - `EnvValidator` — Startup environment validation (`utils/env_validator.py`)
+- `SignalAnalyst` (~500 lines) — LLM-powered signal analysis via Ollama (`agents/signal_analyst.py`)
+- `PrometheusMetrics` (185 lines) — Signal, risk, and pipeline metrics (`monitoring/metrics.py`)
+- Signal Provider REST API — API key auth, rate limiting, ETag caching (`api/signal_provider.py`)
 
-Endpoints: `/health` (10 models, 11 strategies, infrastructure status), `/run-now` (manual trigger), `/positions`, `/history`, `/weights`, `/dashboard`, `/dlq` (dead letter queue stats).
+Endpoints: `/health` (10 models, 12 strategies, infrastructure status), `/run-now` (manual trigger), `/positions`, `/history`, `/weights`, `/dashboard`, `/dlq` (dead letter queue stats), `/metrics` (Prometheus), `/api/v1/signals` (Signal Provider REST API).
 
 Database: PostgreSQL on port **5432**, database **`tft_trading`** (tables: `paper_trades`, `paper_daily_snapshots`, `paper_strategy_signals`, `paper_risk_reports`).
 

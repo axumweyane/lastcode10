@@ -7,7 +7,7 @@
 
 ## System Overview
 
-APEX is a production-grade multi-strategy algorithmic trading platform built around the Temporal Fusion Transformer (TFT). It combines **10 AI/statistical models** across 4 asset classes through **11 trading strategies**, fused via a Bayesian ensemble with regime-adaptive weighting, protected by **5 automated safety guardrails**, and executed through a paper-trading service connected to Alpaca.
+APEX is a production-grade multi-strategy algorithmic trading platform built around the Temporal Fusion Transformer (TFT). It combines **10 AI/statistical models** across 4 asset classes through **12 trading strategies**, fused via a Bayesian ensemble with regime-adaptive weighting, protected by **5 automated safety guardrails**, and executed through a paper-trading service connected to Alpaca.
 
 ### Key Metrics
 
@@ -15,13 +15,16 @@ APEX is a production-grade multi-strategy algorithmic trading platform built aro
 |--------|-------|
 | Python files | ~179 |
 | Models | 10 (6 deep learning, 4 statistical/rule-based) |
-| Strategies | 11 (stocks, FX, options) |
+| Strategies | 12 (stocks, FX, options, cross-asset) |
 | Safety guardrails | 5 (pre-trade checks) |
 | Tests | 635 across 30 test modules |
 | Asset classes | Stocks, Forex, Options/Volatility, Cross-Asset |
 | Data retention | TimescaleDB hypertables + continuous aggregates |
 | Message recovery | Dead Letter Queue with exponential backoff |
 | Security | Env-only credentials, startup validation, no hardcoded secrets |
+| Monitoring | Prometheus metrics, Grafana dashboards, LLM signal analysis |
+| External API | Signal Provider REST API with API key auth and rate limiting |
+| CI/CD | GitHub Actions: lint, test, security scan, Docker build |
 
 ---
 
@@ -82,7 +85,7 @@ All models extend `BaseTFTModel` (ABC in `models/base.py`) and return `List[Mode
 
 ---
 
-## Strategy Layer (11 Strategies)
+## Strategy Layer (12 Strategies)
 
 All strategies extend `BaseStrategy` (ABC in `strategies/base.py`) and produce `StrategyOutput` containing `List[AlphaScore]` — z-scored per-symbol alpha signals.
 
@@ -99,6 +102,9 @@ All strategies extend `BaseStrategy` (ABC in `strategies/base.py`) and produce `
 | 9 | TDGF American Options | `tdgf/strategy.py` | options | TDGFModel |
 | 10 | Vol Surface Arbitrage | `options/strategies/vol_arb.py` | options | None |
 | 11 | Kronos Forecasting | `kronos/strategy.py` | stocks+forex | KronosModel |
+| 12 | Sentiment | `sentiment/strategy.py` | cross-asset | SentimentModel (#7) |
+
+**Sentiment Strategy (#12)** — Contrarian/momentum signals from NLP sentiment. When sentiment diverges from price action, applies 1.5x multiplier (contrarian signal). When aligned, uses 0.8x multiplier. Trend window: 5 days. Maps to `"tft"` regime weight bucket.
 
 ### Strategy Activation
 
@@ -116,6 +122,7 @@ STRATEGY_KRONOS_ENABLED=false            # needs /opt/kronos
 STRATEGY_DEEP_SURROGATES_ENABLED=false   # needs /opt/deep_surrogate
 STRATEGY_TDGF_ENABLED=false              # needs /opt/tdgf
 STRATEGY_VOL_ARB_ENABLED=false
+STRATEGY_SENTIMENT_ENABLED=true
 ```
 
 ---
@@ -330,6 +337,61 @@ Run: `pytest tests/ -v`
 
 ### Testing
 635 tests across 30 files including production hardening (38), security (22), and DLQ (39) tests.
+
+---
+
+## Monitoring & Observability
+
+### Prometheus Metrics (`monitoring/metrics.py`)
+
+`PrometheusMetrics` class with dedicated `CollectorRegistry`, exposed via ASGI app at `/metrics`.
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `apex_signal_score` | Gauge | Per-symbol ensemble signal score |
+| `apex_strategy_weight` | Gauge | Per-strategy weight in ensemble |
+| `apex_regime_state` | Info | Current market regime classification |
+| `apex_ensemble_confidence` | Histogram | Distribution of signal confidence values |
+| `apex_execution_slippage_bps` | Histogram | Execution slippage in basis points |
+| `apex_pipeline_duration_seconds` | Histogram | Pipeline run duration |
+| `apex_risk_*` | Gauges | max_drawdown, var_99, cvar_95 |
+
+### Grafana Dashboard
+
+Pre-configured dashboard at `monitoring/grafana/dashboards/apex_ensemble.json` with panels for signal scores, strategy weights, risk metrics, and pipeline performance.
+
+### LLM Signal Analyst (`agents/signal_analyst.py`)
+
+`SignalAnalyst` class (~500 lines) using local Ollama (default model: `qwen2.5:32b`). Detects patterns: consensus (>80%), conflict (40-60%), weight shifts (>10%), regime changes. Produces `SignalAnalysis` with narrative summary and actionable insights.
+
+---
+
+## Signal Provider REST API (`api/signal_provider.py`)
+
+External signal distribution API mounted at `/api/v1/`. Created via `create_signal_api()` factory.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/signals` | All current ensemble signals |
+| GET | `/api/v1/signals/{symbol}` | Per-symbol signal with ETag caching |
+| GET | `/api/v1/signals/history/{symbol}` | Historical signals for symbol |
+| GET | `/api/v1/signals/regime` | Current regime state |
+| GET | `/api/v1/signals/weights` | Current strategy weights |
+
+**Security:** API key authentication via `X-API-Key` header (`SIGNAL_API_KEY` env var). In-memory rate limiting: 100 requests/minute per key. ETag support for conditional requests.
+
+---
+
+## CI/CD Pipeline (`.github/workflows/ci.yml`)
+
+Four-job GitHub Actions pipeline triggered on push and pull requests:
+
+| Job | Steps | Purpose |
+|-----|-------|---------|
+| `lint` | black --check, flake8, mypy, yamllint | Code quality |
+| `test` | pytest with JUnit XML output | Functional verification |
+| `security` | pip-audit, detect-secrets | Vulnerability and secret scanning |
+| `docker` | Build + verify Docker image | Container readiness (push to main only) |
 
 ---
 
