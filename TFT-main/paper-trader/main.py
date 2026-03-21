@@ -1529,8 +1529,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="APEX Paper Trader",
-    description="Multi-strategy paper trading runner with 10 models, 11 strategies, and live dashboard",
-    version="2.0.0",
+    description="Multi-strategy paper trading runner with 10 models, 12 strategies, and live dashboard",
+    version="3.0.0",
     lifespan=lifespan,
 )
 
@@ -1573,7 +1573,7 @@ if prom_metrics is not None:
 async def health():
     result = {
         "status": "running",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "day_count": state.day_count,
         "last_run": str(state.last_run) if state.last_run else None,
         "portfolio_value": state.portfolio_value,
