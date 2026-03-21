@@ -162,9 +162,23 @@ CREATE TABLE IF NOT EXISTS paper_strategy_signals (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS paper_risk_reports (
+    id              SERIAL PRIMARY KEY,
+    report_time     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    drawdown        DOUBLE PRECISION,
+    var_99          DOUBLE PRECISION,
+    cvar_95         DOUBLE PRECISION,
+    sharpe_21       DOUBLE PRECISION,
+    killed_strategies TEXT[] DEFAULT '{}',
+    correlation_alerts JSONB DEFAULT '[]',
+    portfolio_breached BOOLEAN DEFAULT FALSE,
+    raw_json        JSONB DEFAULT '{}'
+);
+
 CREATE INDEX IF NOT EXISTS idx_pt_date ON paper_trades(trade_date);
 CREATE INDEX IF NOT EXISTS idx_pds_date ON paper_daily_snapshots(snapshot_date);
 CREATE INDEX IF NOT EXISTS idx_pss_date ON paper_strategy_signals(signal_date);
+CREATE INDEX IF NOT EXISTS idx_prr_time ON paper_risk_reports(report_time);
 """
 
 
@@ -197,6 +211,7 @@ audit_logger: Optional[AuditLogger] = None
 circuit_breaker: Optional[CircuitBreaker] = None
 db_pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
 broker: Optional[AlpacaBroker] = None
+risk_manager: Optional[PortfolioRiskManager] = None
 
 # Safety guardrails (March 10 incident prevention)
 signal_guard = SignalVarianceGuard()
@@ -317,6 +332,49 @@ def log_signals(signal_date, strategy_name, signals_df):
                 conn.rollback()
             except Exception:
                 pass
+    finally:
+        if conn:
+            return_db_conn(conn)
+
+
+def log_risk_report(report) -> bool:
+    """Log a RiskReport to the paper_risk_reports table."""
+    return _safe_db_write(
+        "log_risk_report",
+        """INSERT INTO paper_risk_reports
+           (report_time, drawdown, var_99, cvar_95, sharpe_21,
+            killed_strategies, correlation_alerts, portfolio_breached, raw_json)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+        (report.timestamp, report.portfolio_drawdown,
+         report.var.parametric_var, report.var.cvar_95,
+         report.portfolio_sharpe_21d,
+         report.killed_strategies or [],
+         Json([{"a": a.strategy_a, "b": a.strategy_b, "corr": a.correlation}
+               for a in report.correlation_alerts]),
+         report.portfolio_breached,
+         Json(report.to_dict())),
+    )
+
+
+def load_historical_returns(days: int = 30) -> List[float]:
+    """Load recent daily returns from paper_daily_snapshots to seed the risk manager."""
+    conn = None
+    try:
+        conn = get_db_conn()
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT daily_return_pct FROM paper_daily_snapshots
+                   ORDER BY snapshot_date DESC LIMIT %s""",
+                (days,),
+            )
+            rows = cur.fetchall()
+        return_db_conn(conn)
+        conn = None
+        # Reverse to chronological order, convert from pct to decimal
+        return [row[0] / 100.0 for row in reversed(rows)] if rows else []
+    except Exception as e:
+        logger.warning("Failed to load historical returns: %s", e)
+        return []
     finally:
         if conn:
             return_db_conn(conn)
@@ -563,18 +621,56 @@ async def run_daily_pipeline():
                     )
                 return
 
-        # 6b. Portfolio risk assessment
+        # 6b. Portfolio risk assessment (HI-1 fix: use persistent risk_manager)
+        risk_assessment = None
         try:
-            risk_mgr = PortfolioRiskManager()
-            risk_assessment = risk_mgr.assess()
-            if risk_assessment and hasattr(risk_assessment, 'kill_switch_triggered') and risk_assessment.kill_switch_triggered:
-                logger.warning("Portfolio risk kill switch triggered: %s", risk_assessment.kill_reason)
-                if notification_manager is not None:
-                    await notification_manager.send(AlertMessage(
-                        title="Risk Kill Switch",
-                        body=f"Portfolio risk limit breached: {risk_assessment.kill_reason}",
-                        severity="critical",
-                    ))
+            if risk_manager is not None:
+                # Feed strategy returns for correlation monitoring
+                for output in strategy_outputs:
+                    strat_return = sum(s.score for s in output.scores) / max(len(output.scores), 1)
+                    risk_manager.record_strategy_return(output.strategy_name, strat_return)
+
+                risk_assessment = risk_manager.assess()
+                log_risk_report(risk_assessment)
+
+                # Kill switch: halt ALL trades
+                if risk_assessment.kill_switch_triggered:
+                    logger.critical("Portfolio risk kill switch triggered: %s", risk_assessment.kill_reason)
+                    if notification_manager is not None:
+                        await notification_manager.send(AlertMessage(
+                            title="RISK KILL SWITCH — All Trading Halted",
+                            body=f"Portfolio risk limit breached: {risk_assessment.kill_reason}",
+                            severity="critical",
+                        ))
+                    else:
+                        await _send_discord_fallback(
+                            f"**RISK KILL SWITCH**\n{risk_assessment.kill_reason}"
+                        )
+                    return
+
+                # Killed strategies: filter from combined signals
+                killed = risk_manager.get_killed_strategies()
+                if killed:
+                    killed_names = set(killed.keys())
+                    logger.warning("Killed strategies excluded: %s", killed_names)
+                    combined = [
+                        s for s in combined
+                        if not any(k in s.contributing_strategies for k in killed_names)
+                    ] if combined else combined
+
+                # Correlation-based weight reduction
+                if risk_assessment.correlation_alerts and combined:
+                    for alert in risk_assessment.correlation_alerts:
+                        if alert.correlation > 0.85:
+                            # Reduce the younger (later-listed) strategy's signals by 50%
+                            younger = alert.strategy_b
+                            logger.warning(
+                                "Correlation %.3f between %s and %s — reducing %s weight by 50%%",
+                                alert.correlation, alert.strategy_a, alert.strategy_b, younger,
+                            )
+                            for sig in combined:
+                                if hasattr(sig, 'contributing_strategies') and younger in sig.contributing_strategies:
+                                    sig.combined_score *= 0.5
         except Exception as e:
             logger.warning("Risk assessment failed (continuing): %s", e)
 
@@ -720,6 +816,10 @@ async def run_daily_pipeline():
         state.total_return_pct = (state.portfolio_value / INITIAL_CAPITAL - 1) * 100
         state.daily_returns.append(daily_return)
         state.day_count += 1
+
+        # Feed today's return to persistent risk manager
+        if risk_manager is not None:
+            risk_manager.record_portfolio_return(daily_return)
 
         positions = await broker.get_positions()
         if isinstance(positions, list) and len(positions) > 0:
@@ -880,7 +980,7 @@ async def _send_discord_fallback(report: str):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global model_manager, signal_publisher, notification_manager, audit_logger
-    global circuit_breaker, db_pool, broker
+    global circuit_breaker, db_pool, broker, risk_manager
 
     # Database connection pool
     try:
@@ -957,6 +1057,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.info("AuditLogger not available: %s", e)
         audit_logger = None
+
+    # Portfolio risk manager (HI-1 fix: persistent instance with historical data)
+    risk_manager = PortfolioRiskManager(
+        max_portfolio_drawdown=float(os.getenv("RISK_MAX_DRAWDOWN", "0.20")),
+        var_confidence=0.99,
+        correlation_alert_threshold=float(os.getenv("RISK_CORRELATION_THRESHOLD", "0.85")),
+    )
+    historical_returns = load_historical_returns(days=30)
+    for ret in historical_returns:
+        risk_manager.record_portfolio_return(ret)
+    logger.info("PortfolioRiskManager initialized with %d historical returns", len(historical_returns))
 
     # Circuit breaker
     try:

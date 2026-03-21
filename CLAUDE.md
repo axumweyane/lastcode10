@@ -137,16 +137,18 @@ Supporting modules:
 - `ensemble/combiner.py` — Bayesian signal fusion with regime-adaptive weighting
 - `ensemble/portfolio_optimizer.py` — Risk-constrained portfolio construction
 - `regime/detector.py` — 4-state market regime classifier (calm/volatile × trending/choppy)
-- `risk/portfolio_risk.py` — Portfolio-level risk management
+- `risk/portfolio_risk.py` — Portfolio-level risk management (persistent, fed historical + live data)
 - `signals/publisher.py` — Redis pub/sub signal distribution (additive, not required)
-- `config.py` — All strategy configs loaded from environment variables
+- `validation/walk_forward.py` — Walk-forward cross-validation engine (rolling window, embargo gap, per-fold normalization)
+- `config.py` — All strategy configs loaded from environment variables (includes `WalkForwardConfig`)
 
 #### Ensemble Flow
 1. All enabled strategies call `generate_signals(data)` → `StrategyOutput`
 2. `EnsembleCombiner.combine()` weights signals via Bayesian method (60% Sharpe-based + 40% regime-based)
 3. Weights clamped to `[min_weight, max_weight]` and renormalized
-4. `PortfolioOptimizer.optimize()` applies position limits, leverage constraints, target vol
-5. Paper trader executes via Alpaca, logs to PostgreSQL
+4. **Risk assessment**: `PortfolioRiskManager.assess()` — kill switch halts all trades, killed strategies filtered out, correlated strategies (>0.85) reduced by 50%
+5. `PortfolioOptimizer.optimize()` applies position limits, leverage constraints, target vol
+6. Paper trader executes via Alpaca, logs to PostgreSQL + `paper_risk_reports`
 
 #### Regime → Strategy Weight Mapping
 Strategies map to 4 regime weight buckets in `combiner.py` — `[momentum, mean_reversion, pairs, tft]`:
@@ -198,31 +200,32 @@ FastAPI service on port 8010. Production-grade daily pipeline with full infrastr
 2. Circuit breaker check (Redis-backed drawdown limits)
 3. Detect market regime
 4. Build and run all enabled strategies (up to 11: momentum, pairs, mean reversion, sector rotation, FX carry/momentum/vol breakout, kronos, deep surrogates, TDGF, vol arb)
-5. Portfolio risk assessment via `PortfolioRiskManager`
-6. Combine via Bayesian ensemble
-7. **GUARDRAIL: Signal variance check** — halt if scores collapse
+5. Combine via Bayesian ensemble
+6. **GUARDRAIL: Signal variance check** — halt if scores collapse
+7. **RISK ASSESSMENT**: `PortfolioRiskManager.assess()` — kill switch halts all trades, killed strategies filtered, correlated strategies reduced, risk report logged to `paper_risk_reports`
 8. Optimize portfolio with risk constraints
 9. **GUARDRAIL: Leverage gate** — skip orders if leverage > limit
 10. **GUARDRAIL: Execution failure monitor** — pause if failure rate spikes
 11. Execute trades via production `AlpacaBroker` (from `trading/broker/alpaca.py`)
 12. Audit trail logging via `AuditLogger` (from `trading/persistence/audit.py`)
 13. Log trades, snapshots, and signals to PostgreSQL (connection pooled)
-14. Publish signals to Redis (optional, fire-and-forget)
-15. Send reports via `NotificationManager` (Discord + Email, from `trading/notifications/alerts.py`)
-16. Serve live dashboard at `/dashboard` with panels for all 11 strategies
+14. Feed daily return to persistent `PortfolioRiskManager`
+15. Publish signals to Redis (optional, fire-and-forget)
+16. Send reports via `NotificationManager` (Discord + Email, from `trading/notifications/alerts.py`)
+17. Serve live dashboard at `/dashboard` with panels for all 11 strategies
 
 **Production infrastructure wired in:**
 - `AlpacaBroker` (283 lines) replaces the simplified PaperBroker
 - `CircuitBreaker` (405 lines) — Redis-backed drawdown circuit breaker checked before every trade
 - `AuditLogger` (277 lines) — PostgreSQL audit trail for all pipeline events
 - `NotificationManager` (202 lines) — Discord + Email alert system
-- `PortfolioRiskManager` (479 lines) — VaR, correlation alerts, kill switches
+- `PortfolioRiskManager` (~500 lines) — Persistent instance, seeded with 30 days historical returns at startup, fed live daily returns. VaR/CVaR, correlation monitoring (>0.85 triggers 50% weight reduction), per-strategy kill switches (drawdown/Sharpe), portfolio-level kill switch. Reports logged to `paper_risk_reports`
 - `ThreadedConnectionPool` — PostgreSQL connection pooling (2-10 connections)
 - `SignalVarianceGuard` / `LeverageGate` / `ExecutionFailureMonitor` — Safety guardrails (`trading/safety/guardrails.py`)
 
 Endpoints: `/health` (10 models, 11 strategies, infrastructure status), `/run-now` (manual trigger), `/positions`, `/history`, `/weights`, `/dashboard`.
 
-Database: PostgreSQL on port **5432**, database **`tft_trading`** (tables: `paper_trades`, `paper_daily_snapshots`, `paper_strategy_signals`).
+Database: PostgreSQL on port **5432**, database **`tft_trading`** (tables: `paper_trades`, `paper_daily_snapshots`, `paper_strategy_signals`, `paper_risk_reports`).
 
 ### Core Flow (Original TFT Pipeline)
 1. **Data ingestion** — Polygon.io OHLCV, Reddit sentiment, fundamentals → database
@@ -274,24 +277,22 @@ Infrastructure: TimescaleDB (PostgreSQL 15), Redis, Kafka, Prometheus, Grafana, 
 ## Known Bugs (audited 2026-03-21)
 
 ### Still broken
-- **CF-5**: CVaR-95 never computed — `strategies/risk/portfolio_risk.py:184-226` only has VaR, no tail expectation
-- **CF-6**: `circuit_breaker.start()` never called in paper-trader startup (`paper-trader/main.py:883-893`); PostgreSQL fallback fails if `audit_logger` is None
-- **CF-7**: All 4 Kafka consumers use default `auto.commit=True` — offsets committed before processing completes
-- **CF-9**: No shutdown timeout — `scheduler.shutdown()` can hang indefinitely (`paper-trader/main.py:922-925`)
-- **HI-1**: `PortfolioRiskManager` is instantiated fresh each run with no data — dead code path
-- **HI-4**: Bear regime `exposure_scalar` scales ALL signals including shorts (`strategies/ensemble/portfolio_optimizer.py:134-136`) — should only scale longs
-
-### Partially fixed
-- **CF-3**: Sharpe uses `sqrt(252)` everywhere — correct for daily data but no frequency guard exists
 - **CF-8**: Alpaca `_api_call()` has 15s timeout, but `ClientSession()` has no default timeout
 - **HI-5**: Paper trader scheduler uses `timezone="US/Eastern"` (fixed), but `model_trainer.py:237-239` hardcodes raw hours
 - **HI-8**: Redis AOF enabled in docker-compose, app-level ping exists, but no Docker healthcheck directive
 
 ### Fixed
+- **CF-1/CF-2/CF-4**: Walk-forward cross-validation system built (`strategies/validation/walk_forward.py`) — rolling window with embargo gap, deploy most recent fold, per-fold normalization stats, frequency-aware Sharpe
+- **CF-3**: Walk-forward Sharpe uses frequency-aware annualization (`sqrt(252)` daily, `sqrt(252*390)` minute)
+- **CF-5**: CVaR-95 (Expected Shortfall) added to `PortfolioRiskManager._compute_var()`
+- **CF-6**: `circuit_breaker.start()/stop()` called in lifespan; fail-closed on Redis failure
+- **CF-7**: All 4 Kafka consumers use `enable_auto_commit=False` with explicit `consumer.commit()`
+- **CF-9**: Shutdown wrapped in `asyncio.wait_for(timeout=30)` with SIGTERM/SIGINT handlers
 - **CF-10**: Duplicate docker-compose service definitions removed
+- **HI-1**: `PortfolioRiskManager` wired as persistent global in paper-trader — loads 30 days of historical returns at startup, fed live daily returns each cycle, `assess()` called before execution with kill switch and killed strategy filtering, correlation monitoring reduces correlated strategy weights by 50%, risk reports logged to `paper_risk_reports` table
+- **HI-4**: Bear regime `exposure_scalar` only scales longs (shorts preserved)
 
 ### Not found in codebase
-- CF-1/CF-2/CF-4 (walk-forward system does not exist)
 - HI-3 (Platt calibration does not exist)
 - Bug-A (limits.yaml does not exist)
 - Bug-B (lean_alpha/signal_engine modules do not exist)

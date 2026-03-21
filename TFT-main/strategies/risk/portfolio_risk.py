@@ -85,6 +85,45 @@ class RiskReport:
     active_strategy_count: int
     killed_strategy_count: int
 
+    portfolio_breached: bool = False  # portfolio-level drawdown limit hit
+
+    @property
+    def kill_switch_triggered(self) -> bool:
+        """True if portfolio drawdown exceeds limit — halts ALL trading."""
+        return self.portfolio_breached
+
+    @property
+    def killed_strategies(self) -> List[str]:
+        """Names of all strategies currently killed."""
+        return [e.strategy_name for e in self.kill_events]
+
+    @property
+    def kill_reason(self) -> str:
+        reasons = []
+        if self.portfolio_breached:
+            reasons.append(f"Portfolio drawdown {self.portfolio_drawdown:.1%} exceeds limit")
+        for e in self.kill_events:
+            reasons.append(f"{e.strategy_name}: {e.reason}")
+        return "; ".join(reasons) if reasons else ""
+
+    def to_dict(self) -> dict:
+        return {
+            "timestamp": self.timestamp.isoformat(),
+            "portfolio_drawdown": self.portfolio_drawdown,
+            "portfolio_breached": self.portfolio_breached,
+            "var_99": self.var.parametric_var,
+            "cvar_95": self.var.cvar_95,
+            "sharpe_21d": self.portfolio_sharpe_21d,
+            "sharpe_63d": self.portfolio_sharpe_63d,
+            "total_strategies": self.total_strategy_count,
+            "active_strategies": self.active_strategy_count,
+            "killed_strategies": self.killed_strategies,
+            "correlation_alerts": [
+                {"a": a.strategy_a, "b": a.strategy_b, "corr": a.correlation}
+                for a in self.correlation_alerts
+            ],
+        }
+
 
 class PortfolioRiskManager:
     """
@@ -166,6 +205,7 @@ class PortfolioRiskManager:
             total_strategy_count=len(self._strategy_performances),
             active_strategy_count=active,
             killed_strategy_count=len(self._killed_strategies),
+            portfolio_breached=self.is_portfolio_breached(),
         )
 
         # Log summary

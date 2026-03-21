@@ -157,6 +157,22 @@ CREATE TABLE IF NOT EXISTS training_jobs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Paper trading risk reports (HI-1 fix: risk manager wiring)
+CREATE TABLE IF NOT EXISTS paper_risk_reports (
+    id              SERIAL PRIMARY KEY,
+    report_time     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    drawdown        DOUBLE PRECISION,
+    var_99          DOUBLE PRECISION,
+    cvar_95         DOUBLE PRECISION,
+    sharpe_21       DOUBLE PRECISION,
+    killed_strategies TEXT[] DEFAULT '{}',
+    correlation_alerts JSONB DEFAULT '[]',
+    portfolio_breached BOOLEAN DEFAULT FALSE,
+    raw_json        JSONB DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS idx_prr_time ON paper_risk_reports(report_time);
+
 -- Create indexes for performance optimization
 
 -- OHLCV indexes

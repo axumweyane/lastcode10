@@ -501,6 +501,34 @@ class TDGFConfig:
 
 
 # ---------------------------------------------------------------------------
+# Walk-Forward Validation
+# ---------------------------------------------------------------------------
+
+@dataclass
+class WalkForwardConfig:
+    """Walk-forward cross-validation configuration."""
+    is_window: int = 252          # in-sample window (trading days)
+    oos_window: int = 63          # out-of-sample window (trading days)
+    embargo_bars: int = 5         # embargo gap between IS and OOS
+    min_sharpe: float = 0.0       # minimum Sharpe to consider a fold viable
+    frequency: str = "daily"      # "daily" or "minute"
+    norm_stats_dir: str = "models/norm_stats"  # where to save normalization sidecars
+    sharpe_warning_threshold: float = 0.5  # warn if latest fold Sharpe is this much below best
+
+    @classmethod
+    def from_env(cls) -> "WalkForwardConfig":
+        return cls(
+            is_window=_env_int("WF_IS_WINDOW", 252),
+            oos_window=_env_int("WF_OOS_WINDOW", 63),
+            embargo_bars=_env_int("WF_EMBARGO_BARS", 5),
+            min_sharpe=_env_float("WF_MIN_SHARPE", 0.0),
+            frequency=_env_str("WF_FREQUENCY", "daily"),
+            norm_stats_dir=_env_str("WF_NORM_STATS_DIR", "models/norm_stats"),
+            sharpe_warning_threshold=_env_float("WF_SHARPE_WARNING_THRESHOLD", 0.5),
+        )
+
+
+# ---------------------------------------------------------------------------
 # Master config loader
 # ---------------------------------------------------------------------------
 

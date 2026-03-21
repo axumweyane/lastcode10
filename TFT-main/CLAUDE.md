@@ -178,27 +178,32 @@ FastAPI service on port 8010. Production-grade daily pipeline with full infrastr
 2. Circuit breaker check (Redis-backed drawdown limits)
 3. Detect market regime
 4. Build and run all enabled strategies (up to 11: momentum, pairs, mean reversion, sector rotation, FX carry/momentum/vol breakout, kronos, deep surrogates, TDGF, vol arb)
-5. Portfolio risk assessment via `PortfolioRiskManager`
-6. Combine via Bayesian ensemble
-7. Optimize portfolio with risk constraints
-8. Execute trades via production `AlpacaBroker` (from `trading/broker/alpaca.py`)
-9. Audit trail logging via `AuditLogger` (from `trading/persistence/audit.py`)
-10. Log trades, snapshots, and signals to PostgreSQL (connection pooled)
-11. Publish signals to Redis (optional, fire-and-forget)
-12. Send reports via `NotificationManager` (Discord + Email, from `trading/notifications/alerts.py`)
-13. Serve live dashboard at `/dashboard` with panels for all 11 strategies
+5. Combine via Bayesian ensemble
+6. **GUARDRAIL: Signal variance check** — halt if scores collapse
+7. **RISK ASSESSMENT**: `PortfolioRiskManager.assess()` — kill switch halts all trades, killed strategies filtered, correlated strategies (>0.85) reduced by 50%, risk report logged to `paper_risk_reports`
+8. Optimize portfolio with risk constraints
+9. **GUARDRAIL: Leverage gate** — skip orders if leverage > limit
+10. **GUARDRAIL: Execution failure monitor** — pause if failure rate spikes
+11. Execute trades via production `AlpacaBroker` (from `trading/broker/alpaca.py`)
+12. Audit trail logging via `AuditLogger` (from `trading/persistence/audit.py`)
+13. Log trades, snapshots, and signals to PostgreSQL (connection pooled)
+14. Feed daily return to persistent `PortfolioRiskManager`
+15. Publish signals to Redis (optional, fire-and-forget)
+16. Send reports via `NotificationManager` (Discord + Email, from `trading/notifications/alerts.py`)
+17. Serve live dashboard at `/dashboard` with panels for all 11 strategies
 
 **Production infrastructure wired in:**
 - `AlpacaBroker` (283 lines) replaces the simplified PaperBroker
 - `CircuitBreaker` (405 lines) — Redis-backed drawdown circuit breaker checked before every trade
 - `AuditLogger` (277 lines) — PostgreSQL audit trail for all pipeline events
 - `NotificationManager` (202 lines) — Discord + Email alert system
-- `PortfolioRiskManager` (479 lines) — VaR, correlation alerts, kill switches
+- `PortfolioRiskManager` (~500 lines) — Persistent instance, seeded with 30 days historical returns at startup, fed live daily returns. VaR/CVaR, correlation monitoring (>0.85 triggers 50% weight reduction), per-strategy kill switches, portfolio-level kill switch. Reports logged to `paper_risk_reports`
 - `ThreadedConnectionPool` — PostgreSQL connection pooling (2-10 connections)
+- `SignalVarianceGuard` / `LeverageGate` / `ExecutionFailureMonitor` — Safety guardrails (`trading/safety/guardrails.py`)
 
 Endpoints: `/health` (10 models, 11 strategies, infrastructure status), `/run-now` (manual trigger), `/positions`, `/history`, `/weights`, `/dashboard`.
 
-Database: PostgreSQL on port **5432**, database **`tft_trading`** (tables: `paper_trades`, `paper_daily_snapshots`, `paper_strategy_signals`).
+Database: PostgreSQL on port **5432**, database **`tft_trading`** (tables: `paper_trades`, `paper_daily_snapshots`, `paper_strategy_signals`, `paper_risk_reports`).
 
 ### Core Flow (Original TFT Pipeline)
 1. **Data ingestion** — Polygon.io OHLCV, Reddit sentiment, fundamentals → database
