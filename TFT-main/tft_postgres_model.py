@@ -15,8 +15,8 @@ Enhanced TFT implementation using PostgreSQL as data source
 
 
 import torch
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
+import lightning.pytorch as pl
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_forecasting import TemporalFusionTransformer, TimeSeriesDataSet, GroupNormalizer, EncoderNormalizer
 import numpy as np
 import pandas as pd
@@ -438,7 +438,7 @@ class TFTPostgresModel:
         )
         
         # Save model and training dataset
-        self.save_model("models/tft_postgres_model.pth")
+        self.save_model("models/tft_model.pth")
         
         # Return training metrics
         training_metrics = {
@@ -630,28 +630,23 @@ class TFTPostgresModel:
         return metrics
     
     def save_model(self, filepath: str):
-        """Save trained model and configuration"""
+        """Save trained model and configuration.
+
+        Saves a checkpoint dict with keys: config, model_state_dict,
+        training_dataset — matching the format expected by
+        EnhancedTFTModel.load_model() and TFTStocksAdapter.
+        """
         if self.model is None:
             raise ValueError("No model to save. Train a model first.")
-        
-        # Create models directory if it doesn't exist
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        
-        # Save model checkpoint
-        checkpoint_path = filepath.replace('.pth', '.ckpt')
-        trainer = pl.Trainer()
-        trainer.save_checkpoint(checkpoint_path, self.model)
-        
-        # Save additional information
-        model_info = {
+
+        os.makedirs(os.path.dirname(filepath) or '.', exist_ok=True)
+
+        checkpoint = {
             'config': self.config,
-            'db_config': self.db_config,
-            'training_dataset_params': self.training_dataset.get_parameters() if self.training_dataset else None
+            'model_state_dict': self.model.state_dict(),
+            'training_dataset': self.training_dataset,
         }
-        
-        with open(filepath.replace('.pth', '_info.pkl'), 'wb') as f:
-            pickle.dump(model_info, f)
-        
+        torch.save(checkpoint, filepath)
         logger.info(f"Model saved to {filepath}")
     
     def load_model(self, filepath: str):

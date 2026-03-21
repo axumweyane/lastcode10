@@ -130,7 +130,12 @@ class TFTStocksAdapter(BaseTFTModel):
         logger.info("TFT-Stocks uses existing save mechanism in tft_model.py")
 
     def load(self, path: str = None) -> bool:
-        """Load the existing trained TFT stock model."""
+        """Load the existing trained TFT stock model.
+
+        Supports two checkpoint formats:
+        - Legacy (EnhancedTFTModel): config with loss_type, uses create_model()
+        - Postgres (TFTPostgresModel): config with target_type, uses from_dataset()
+        """
         load_path = path or self._model_path
 
         if not Path(load_path).exists():
@@ -138,9 +143,46 @@ class TFTStocksAdapter(BaseTFTModel):
             return False
 
         try:
-            from tft_model import EnhancedTFTModel
-            self._model = EnhancedTFTModel()
-            self._model.load_model(load_path)
+            checkpoint = torch.load(load_path, map_location="cpu", weights_only=False)
+
+            config = checkpoint.get("config", {})
+            state_dict = checkpoint.get("model_state_dict")
+            training_dataset = checkpoint.get("training_dataset")
+
+            if state_dict is None or training_dataset is None:
+                raise ValueError("checkpoint missing model_state_dict or training_dataset")
+
+            if "loss_type" in config:
+                # Legacy format — use EnhancedTFTModel
+                from tft_model import EnhancedTFTModel
+                self._model = EnhancedTFTModel()
+                self._model.config = config
+                self._model.training_dataset = training_dataset
+                self._model.model = self._model.create_model(training_dataset)
+                self._model.model.load_state_dict(state_dict)
+            else:
+                # Postgres format — reconstruct TFT directly
+                from pytorch_forecasting import TemporalFusionTransformer
+                from pytorch_forecasting.metrics import QuantileLoss
+                quantiles = config.get("quantiles", [0.1, 0.5, 0.9])
+                tft = TemporalFusionTransformer.from_dataset(
+                    training_dataset,
+                    learning_rate=config.get("learning_rate", 0.001),
+                    hidden_size=config.get("hidden_size", 64),
+                    attention_head_size=config.get("attention_head_size", 4),
+                    dropout=config.get("dropout", 0.2),
+                    hidden_continuous_size=config.get("hidden_continuous_size", 32),
+                    lstm_layers=config.get("lstm_layers", 2),
+                    loss=QuantileLoss(quantiles=quantiles),
+                    output_size=len(quantiles),
+                    reduce_on_plateau_patience=4,
+                    optimizer="adamw",
+                )
+                tft.load_state_dict(state_dict)
+                self._model = tft
+                self._config = config
+                self._training_dataset = training_dataset
+
             self._is_loaded = True
             self._trained_at = datetime.fromtimestamp(Path(load_path).stat().st_mtime)
             logger.info("TFT-Stocks model loaded from %s", load_path)

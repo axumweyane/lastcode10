@@ -1,32 +1,37 @@
-# TFT Stock Prediction System
+# APEX — Multi-Strategy Algorithmic Trading Platform
 
-A comprehensive Temporal Fusion Transformer (TFT) implementation for stock market prediction and portfolio construction.
+A production-grade trading platform built around the Temporal Fusion Transformer (TFT), with a 10-model ensemble spanning equities, FX, and options. The system combines 6 independent alpha strategies through a Bayesian regime-adaptive ensemble combiner, with paper trading execution via Alpaca and real-time signal distribution via Redis pub/sub.
 
 ## Features
 
-### 🚀 Core Capabilities
-- **Advanced TFT Model**: Temporal Fusion Transformer with attention mechanisms
+### Core Capabilities
+- **10-Model Ensemble**: TFT stocks/forex/volatility + Kronos foundation model + Deep Surrogates + TDGF PDE solver
+- **6 Alpha Strategies**: Cross-sectional momentum, pairs trading, FX carry+trend, Kronos forecasting, neural surrogate pricing, American option mispricing
+- **Bayesian Ensemble**: Regime-adaptive signal combination (60% Sharpe-based + 40% regime-based weights)
+- **Paper Trading**: Automated daily pipeline with Alpaca execution, PostgreSQL logging, Discord reports
 - **Multi-horizon Forecasting**: Predict 1-30 days ahead with uncertainty quantification
-- **Portfolio Construction**: Automated long/short portfolio generation with risk management
-- **Real-time API**: FastAPI-based prediction service with async processing
-- **Automated Pipeline**: Scheduled training, data updates, and prediction generation
+- **Portfolio Construction**: Risk-constrained long/short portfolio with position limits, sector caps, target volatility
+- **Real-time Signals**: Redis pub/sub for dashboard consumers + Kafka event bus for microservices
+- **Live Dashboard**: HTML dashboard at port 8010 with per-strategy signal panels and tail risk gauge
 
-### 📊 Data Processing
+### Data Processing
 - **Technical Indicators**: RSI, MACD, Bollinger Bands, Volume ratios
 - **Temporal Features**: Cyclical encoding, market structure indicators
 - **Sentiment Integration**: Ready for news/social media sentiment feeds
 - **Multi-source Data**: Polygon.io, fundamental data, economic indicators
 
-### 🧠 Model Architecture
-- **Quantile Forecasting**: Probabilistic predictions with confidence intervals
-- **Variable Selection**: Automated feature importance and selection
+### Model Architecture
+- **TFT Core**: PyTorch Forecasting with quantile loss, attention, multi-horizon output
+- **Kronos Foundation Model**: Pre-trained K-line transformer (HuggingFace `NeoQuasar/Kronos-base`)
+- **Deep Surrogates**: Neural option pricing with Heston parameter calibration and tail risk index
+- **TDGF PDE Solver**: Time Deep Gradient Flow for American option pricing
 - **Hyperparameter Optimization**: Optuna-based automated tuning
 - **GPU Acceleration**: Mixed-precision training support
 
-### 💼 Trading Features
-- **Signal Generation**: Quintile ranking, threshold-based, top/bottom strategies
-- **Risk Management**: Position sizing, sector limits, turnover constraints
-- **Performance Tracking**: Comprehensive logging and reporting
+### Trading Features
+- **Signal Generation**: Cross-sectional z-scoring, direction assignment post-normalization
+- **Risk Management**: Position sizing, sector limits, turnover constraints, tail risk alerts
+- **Performance Tracking**: Rolling Sharpe (21d/63d), per-strategy diagnostics
 - **Backtesting Ready**: Historical signal generation and validation
 
 ## Quick Start
@@ -99,7 +104,7 @@ python train.py \
     --generate-predictions
 ```
 
-#### 2. Generate Predictions
+#### 3. Generate Predictions
 
 ```bash
 # Generate predictions with trained model
@@ -111,21 +116,21 @@ python predict.py \
     --output-format both
 ```
 
-#### 3. Run PostgreSQL API Server
+#### 4. Run PostgreSQL API Server
 
 ```bash
 # Start prediction API server with PostgreSQL backend
 python -m uvicorn api_postgres:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-#### 4. Legacy API Server
+#### 5. Legacy API Server
 
 ```bash
 # Start prediction API server (file-based)
 python -m uvicorn api:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-#### 4. Automated Scheduling
+#### 6. Automated Scheduling
 
 ```bash
 # Run automated system
@@ -135,33 +140,151 @@ python scheduler.py --mode scheduler
 python scheduler.py --mode manual --task training
 ```
 
+#### 7. Paper Trader (Multi-Strategy Ensemble)
+
+```bash
+# Start the paper trading service
+cd paper-trader
+python -m uvicorn main:app --host 0.0.0.0 --port 8010 --reload
+
+# Dashboard: http://localhost:8010/dashboard
+# Health:    http://localhost:8010/health
+# Manual trigger: POST http://localhost:8010/run-now
+```
+
+## Multi-Strategy Ensemble Architecture
+
+### Model Layer
+
+10 models managed by `ModelManager` (`models/manager.py`) with graceful fallback — missing models return empty predictions:
+
+| Model | File | Asset Class | Source |
+|-------|------|-------------|--------|
+| TFT Stocks | `models/stocks_adapter.py` | Equities | Trained locally |
+| TFT Forex | `models/forex_model.py` | FX | Trained locally |
+| TFT Volatility | `models/volatility_model.py` | Volatility | Trained locally |
+| Kronos (#12) | `models/kronos_model.py` | Stocks + FX | HuggingFace `NeoQuasar/Kronos-base` |
+| Deep Surrogates (#13) | `models/deep_surrogate_model.py` | Options/Vol | `/opt/deep_surrogate` repo |
+| TDGF (#14) | `models/tdgf_model.py` | Options | `/opt/tdgf` repo |
+
+### Strategy Layer
+
+Each strategy extends `BaseStrategy` (`strategies/base.py`) and produces `StrategyOutput` containing `List[AlphaScore]`:
+
+| Strategy | File | Alpha Source |
+|----------|------|-------------|
+| Cross-Sectional Momentum | `strategies/momentum/cross_sectional.py` | Factor-based momentum signals |
+| Pairs Trading (StatArb) | `strategies/statarb/pairs.py` | Cointegration mean-reversion |
+| FX Carry + Trend | `strategies/fx/carry_trend.py` | Interest rate carry + trend following |
+| Kronos Forecasting | `strategies/kronos/strategy.py` | Foundation model price forecasts |
+| Deep Surrogates | `strategies/deep_surrogates/strategy.py` | Tail risk + IV surface anomalies |
+| TDGF American Options | `strategies/tdgf/strategy.py` | Option mispricing (model vs market) |
+
+### Ensemble Pipeline
+
+```
+Data Fetch (yfinance) → Regime Detection (4-state) → All Strategies → Bayesian Combiner → Portfolio Optimizer → Alpaca Execution
+                                                                            ↓
+                                                                    Redis Pub/Sub (optional)
+                                                                    PostgreSQL Logging
+                                                                    Discord Reports
+```
+
+1. **Regime Detection**: Classifies market into 4 states (calm/volatile x trending/choppy)
+2. **Signal Generation**: Each enabled strategy produces z-scored alpha scores with confidence
+3. **Bayesian Combination**: 60% Sharpe-based weights + 40% regime-based weights, clamped and renormalized
+4. **Portfolio Optimization**: Position limits, leverage constraints, target volatility
+5. **Execution**: Alpaca paper trading with PostgreSQL trade logging
+
+### Paper Trader
+
+FastAPI service on port 8010 (`paper-trader/main.py`):
+
+| Endpoint | Description |
+|----------|-------------|
+| `/health` | Model status, Redis stats, regime, ensemble weights |
+| `/run-now` | Manual pipeline trigger |
+| `/positions` | Current portfolio positions |
+| `/history` | Trade history |
+| `/weights` | Current ensemble weights |
+| `/dashboard` | HTML dashboard with per-strategy panels |
+
+Database: PostgreSQL port **5432**, database **`tft_trading`** (tables: `paper_trades`, `paper_daily_snapshots`, `paper_strategy_signals`).
+
+### Redis Signal Channels
+
+Optional fire-and-forget pub/sub layer (`strategies/signals/publisher.py`):
+
+| Channel | Content |
+|---------|---------|
+| `apex:signals:stock` | Equity ensemble signals |
+| `apex:signals:forex` | FX pair signals |
+| `apex:signals:options` | Options/volatility signals |
+| `apex:signals:risk` | Composite tail risk index |
+
+### Strategy Activation
+
+All strategies disabled by default. Enable via `.env`:
+```bash
+STRATEGY_MOMENTUM_ENABLED=true
+STRATEGY_STATARB_ENABLED=true
+STRATEGY_FX_ENABLED=true
+STRATEGY_KRONOS_ENABLED=true
+STRATEGY_DEEP_SURROGATES_ENABLED=true
+STRATEGY_TDGF_ENABLED=true
+```
+
+New model repos must be cloned to `/opt/` (see `scripts/setup_kronos.sh`, `scripts/setup_deep_surrogate.sh`, `scripts/setup_tdgf.sh`). If repos are missing, strategies gracefully return empty signals and the ensemble skips them.
+
 ## Project Structure
 
 ```
 TFT/
-├── postgres_data_loader.py    # PostgreSQL data connector
-├── postgres_data_pipeline.py  # PostgreSQL data processing pipeline
-├── tft_postgres_model.py      # TFT model with PostgreSQL integration
-├── api_postgres.py            # FastAPI service with PostgreSQL backend
-├── train_postgres.py          # PostgreSQL-based training script
-├── postgres_schema.py         # Database schema and setup
-├── data_preprocessing.py      # Legacy data preprocessing pipeline
-├── tft_model.py               # Legacy TFT model implementation
-├── stock_ranking.py           # Signal generation and portfolio construction
-├── data_pipeline.py           # Legacy data collection and management
-├── api.py                     # Legacy FastAPI prediction service
-├── scheduler.py               # Automated training and prediction
-├── train.py                   # Legacy training script
-├── predict.py                 # Prediction script
-├── enhanced_data_pipeline.py  # Advanced data collection with APIs
-├── config_manager.py          # Configuration management
-├── requirements.txt           # Python dependencies
-├── .env                       # Environment configuration
-├── data/                      # Data storage
-├── models/                    # Trained models
-├── predictions/               # Generated predictions
-├── logs/                      # System logs
-└── reports/                   # Performance reports
+├── models/                        # Model layer
+│   ├── base.py                    # BaseTFTModel ABC, ModelPrediction
+│   ├── manager.py                 # ModelManager — unified loader
+│   ├── stocks_adapter.py          # TFT stocks model
+│   ├── forex_model.py             # TFT forex model
+│   ├── volatility_model.py        # TFT volatility model
+│   ├── kronos_model.py            # Kronos foundation model
+│   ├── deep_surrogate_model.py    # Deep Surrogates + Heston calibration
+│   └── tdgf_model.py              # TDGF PDE solver
+├── strategies/                    # Strategy layer
+│   ├── base.py                    # BaseStrategy ABC, AlphaScore, StrategyOutput
+│   ├── config.py                  # All strategy configs (env-loaded)
+│   ├── momentum/                  # Cross-sectional momentum
+│   ├── statarb/                   # Pairs trading
+│   ├── fx/                        # FX carry + trend
+│   ├── kronos/                    # Kronos strategy wrapper
+│   ├── deep_surrogates/           # Deep Surrogates strategy wrapper
+│   ├── tdgf/                      # TDGF strategy wrapper
+│   ├── ensemble/                  # Bayesian combiner + portfolio optimizer
+│   │   ├── combiner.py            # EnsembleCombiner, TFTAdapter
+│   │   └── portfolio_optimizer.py # Risk-constrained optimization
+│   ├── regime/                    # Market regime detection
+│   ├── risk/                      # Portfolio risk management
+│   └── signals/                   # Redis pub/sub publisher
+├── paper-trader/                  # Execution service
+│   └── main.py                    # FastAPI app, daily pipeline, dashboard
+├── scripts/                       # Setup scripts for external models
+├── postgres_data_loader.py        # PostgreSQL data connector
+├── postgres_data_pipeline.py      # PostgreSQL data processing
+├── tft_postgres_model.py          # TFT + PostgreSQL integration
+├── api_postgres.py                # FastAPI with PostgreSQL backend
+├── train_postgres.py              # PostgreSQL training script
+├── postgres_schema.py             # Database schema
+├── data_preprocessing.py          # Legacy preprocessing
+├── tft_model.py                   # Legacy TFT model
+├── stock_ranking.py               # Signal generation + portfolio construction
+├── data_pipeline.py               # Legacy data collection
+├── api.py                         # Legacy FastAPI service
+├── scheduler.py                   # Automated scheduling
+├── train.py                       # Legacy training
+├── predict.py                     # Prediction script
+├── config_manager.py              # Configuration management
+├── requirements.txt               # Dependencies
+├── .env.template                  # Full env config template
+└── .env.example                   # Minimal env config
 ```
 
 ## Configuration
@@ -723,13 +846,13 @@ This software is for educational and research purposes only. It should not be us
 ---
 
 **Key Features Summary:**
-- ✅ Advanced TFT implementation with attention mechanisms
-- ✅ Multi-horizon probabilistic forecasting
-- ✅ Automated portfolio construction with risk management
-- ✅ Real-time API with async processing
-- ✅ Comprehensive data pipeline with technical indicators
-- ✅ Automated scheduling and monitoring
-- ✅ GPU acceleration and mixed-precision training
-- ✅ Hyperparameter optimization
-- ✅ Production-ready deployment tools
-- ✅ **Polygon.io API integration with GitHub Copilot optimization**
+- 10-model ensemble spanning equities, FX, and options
+- 6 independent alpha strategies with Bayesian regime-adaptive combination
+- Kronos foundation model, Deep Surrogates neural pricing, TDGF PDE solver
+- Tail risk monitoring with composite index and per-symbol alerts
+- Heston model calibration with multi-start optimization and Feller condition validation
+- Automated paper trading with Alpaca execution and PostgreSQL logging
+- Real-time signal distribution via Redis pub/sub
+- Live HTML dashboard with per-strategy panels and tail risk gauge
+- Graceful degradation — missing models/strategies silently skipped
+- Polygon.io API integration for market data

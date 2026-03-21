@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-APEX is a multi-strategy algorithmic trading platform built around the Temporal Fusion Transformer (TFT). The main codebase lives in `TFT-main/`. It supports two data backends (legacy SQLite and recommended PostgreSQL), a multi-model ensemble system with **10 models** across 4 asset classes, **11 ensemble strategies**, a production paper-trading execution service with circuit breaker, audit trail, and **5 automated safety guardrails**, and a microservices deployment layer with Kafka-based event streaming. ~145 Python files, 114 tests across 12 test modules.
+APEX is a multi-strategy algorithmic trading platform built around the Temporal Fusion Transformer (TFT). The main codebase lives in `TFT-main/`. It supports two data backends (legacy SQLite and recommended PostgreSQL), a multi-model ensemble system with **10 models** across 4 asset classes, **11 ensemble strategies**, a production paper-trading execution service with circuit breaker and audit trail, and a microservices deployment layer with Kafka-based event streaming.
 
 ## Build & Run Commands
 
@@ -162,7 +162,6 @@ STRATEGY_MOMENTUM_ENABLED=true
 STRATEGY_STATARB_ENABLED=true
 STRATEGY_MEAN_REVERSION_ENABLED=true
 STRATEGY_SECTOR_ROTATION_ENABLED=true
-STRATEGY_FX_ENABLED=true               # FX Carry + Trend
 STRATEGY_FX_MOMENTUM_ENABLED=true
 STRATEGY_FX_VOL_BREAKOUT_ENABLED=true
 STRATEGY_KRONOS_ENABLED=true
@@ -170,25 +169,6 @@ STRATEGY_DEEP_SURROGATES_ENABLED=true
 STRATEGY_TDGF_ENABLED=true
 STRATEGY_VOL_ARB_ENABLED=true
 ```
-
-### Safety Guardrails (`trading/safety/guardrails.py`)
-
-Five automated pre-trade safety checks wired into the paper-trader pipeline (added 2026-03-21 after March 10 incident analysis):
-
-| # | Guardrail | Class | Env Var | Default | Pipeline Location |
-|---|-----------|-------|---------|---------|-------------------|
-| 1 | Signal Variance | `SignalVarianceGuard` | `GUARDRAIL_SIGNAL_MIN_STD` | 0.01 | After ensemble combine, before optimization |
-| 2 | Leverage Gate | `LeverageGate` | `GUARDRAIL_MAX_LEVERAGE` | 1.5 | After optimization, before order batch |
-| 3 | Calibration Health | `CalibrationHealthCheck` | `GUARDRAIL_CALIBRATION_TOLERANCE` | 1e-6 | At startup + before daily run |
-| 4 | Model Promotion | `ModelPromotionGate` | `GUARDRAIL_MIN_PROMOTION_SHARPE` | 0.5 | Before model goes live |
-| 5 | Execution Failure | `ExecutionFailureMonitor` | `GUARDRAIL_MAX_EXEC_FAILURE_RATE` / `GUARDRAIL_EXEC_WINDOW_SECONDS` | 0.25 / 3600 | Per-order during execution loop |
-
-**Behavior on failure:**
-- Signal Variance: halts pipeline entirely, sends Discord critical alert
-- Leverage Gate: skips order batch, continues to snapshot/reporting
-- Calibration Health: logs error, skips calibration (does not halt)
-- Model Promotion: rejects model, logs warning
-- Execution Failure: pauses remaining orders in batch, sends Discord alert
 
 ### Paper Trader (`paper-trader/main.py`)
 
@@ -200,16 +180,13 @@ FastAPI service on port 8010. Production-grade daily pipeline with full infrastr
 4. Build and run all enabled strategies (up to 11: momentum, pairs, mean reversion, sector rotation, FX carry/momentum/vol breakout, kronos, deep surrogates, TDGF, vol arb)
 5. Portfolio risk assessment via `PortfolioRiskManager`
 6. Combine via Bayesian ensemble
-7. **GUARDRAIL: Signal variance check** — halt if scores collapse
-8. Optimize portfolio with risk constraints
-9. **GUARDRAIL: Leverage gate** — skip orders if leverage > limit
-10. **GUARDRAIL: Execution failure monitor** — pause if failure rate spikes
-11. Execute trades via production `AlpacaBroker` (from `trading/broker/alpaca.py`)
-12. Audit trail logging via `AuditLogger` (from `trading/persistence/audit.py`)
-13. Log trades, snapshots, and signals to PostgreSQL (connection pooled)
-14. Publish signals to Redis (optional, fire-and-forget)
-15. Send reports via `NotificationManager` (Discord + Email, from `trading/notifications/alerts.py`)
-16. Serve live dashboard at `/dashboard` with panels for all 11 strategies
+7. Optimize portfolio with risk constraints
+8. Execute trades via production `AlpacaBroker` (from `trading/broker/alpaca.py`)
+9. Audit trail logging via `AuditLogger` (from `trading/persistence/audit.py`)
+10. Log trades, snapshots, and signals to PostgreSQL (connection pooled)
+11. Publish signals to Redis (optional, fire-and-forget)
+12. Send reports via `NotificationManager` (Discord + Email, from `trading/notifications/alerts.py`)
+13. Serve live dashboard at `/dashboard` with panels for all 11 strategies
 
 **Production infrastructure wired in:**
 - `AlpacaBroker` (283 lines) replaces the simplified PaperBroker
@@ -218,7 +195,6 @@ FastAPI service on port 8010. Production-grade daily pipeline with full infrastr
 - `NotificationManager` (202 lines) — Discord + Email alert system
 - `PortfolioRiskManager` (479 lines) — VaR, correlation alerts, kill switches
 - `ThreadedConnectionPool` — PostgreSQL connection pooling (2-10 connections)
-- `SignalVarianceGuard` / `LeverageGate` / `ExecutionFailureMonitor` — Safety guardrails (`trading/safety/guardrails.py`)
 
 Endpoints: `/health` (10 models, 11 strategies, infrastructure status), `/run-now` (manual trigger), `/positions`, `/history`, `/weights`, `/dashboard`.
 
@@ -271,34 +247,9 @@ Infrastructure: TimescaleDB (PostgreSQL 15), Redis, Kafka, Prometheus, Grafana, 
 ### Data Directories
 `data/` (raw data + SQLite), `models/` (trained `.pth` files + preprocessors), `predictions/`, `logs/`, `reports/`, `output/`
 
-## Known Bugs (audited 2026-03-21)
-
-### Still broken
-- **CF-5**: CVaR-95 never computed — `strategies/risk/portfolio_risk.py:184-226` only has VaR, no tail expectation
-- **CF-6**: `circuit_breaker.start()` never called in paper-trader startup (`paper-trader/main.py:883-893`); PostgreSQL fallback fails if `audit_logger` is None
-- **CF-7**: All 4 Kafka consumers use default `auto.commit=True` — offsets committed before processing completes
-- **CF-9**: No shutdown timeout — `scheduler.shutdown()` can hang indefinitely (`paper-trader/main.py:922-925`)
-- **HI-1**: `PortfolioRiskManager` is instantiated fresh each run with no data — dead code path
-- **HI-4**: Bear regime `exposure_scalar` scales ALL signals including shorts (`strategies/ensemble/portfolio_optimizer.py:134-136`) — should only scale longs
-
-### Partially fixed
-- **CF-3**: Sharpe uses `sqrt(252)` everywhere — correct for daily data but no frequency guard exists
-- **CF-8**: Alpaca `_api_call()` has 15s timeout, but `ClientSession()` has no default timeout
-- **HI-5**: Paper trader scheduler uses `timezone="US/Eastern"` (fixed), but `model_trainer.py:237-239` hardcodes raw hours
-- **HI-8**: Redis AOF enabled in docker-compose, app-level ping exists, but no Docker healthcheck directive
-
-### Fixed
-- **CF-10**: Duplicate docker-compose service definitions removed
-
-### Not found in codebase
-- CF-1/CF-2/CF-4 (walk-forward system does not exist)
-- HI-3 (Platt calibration does not exist)
-- Bug-A (limits.yaml does not exist)
-- Bug-B (lean_alpha/signal_engine modules do not exist)
-
 ## Notes
 
-- The `docker-compose.yml` had duplicate service definitions for `tft-predictor`, `trading-engine`, and `orchestrator` — these were removed (fix confirmed in commit 1853e3c).
+- The `docker-compose.yml` has duplicate service definitions for `tft-predictor`, `trading-engine`, and `orchestrator` — the second definitions use simplified env vars. This needs cleanup.
 - The docker-compose references `tft_network` as an external network — create it with `docker network create tft_network` before running.
 - PostgreSQL env vars differ between `.env.template` (`DB_HOST`, `DB_PORT`, etc.) and `train_postgres.py` (`POSTGRES_HOST`, `POSTGRES_PORT`, etc.). Check which convention the target module expects. The paper trader uses `DB_HOST`/`DB_PORT` convention.
 - The `tft_postgres_model.py` contains an `AdvancedOptionsModel` class with Black-Scholes pricing that is separate from the TFT model itself.

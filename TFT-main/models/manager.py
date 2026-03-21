@@ -1,18 +1,26 @@
 """
-Model Manager — loads all 3 TFT models and provides unified predictions.
+Model Manager — loads all TFT and external models and provides unified predictions.
 
 Key design: graceful fallback. If a model isn't trained yet, strategies
 receive empty predictions and use their non-TFT signals instead.
 This means you can deploy the system immediately and add models
 incrementally as they're trained.
 
-Model registry:
-  - tft_stocks:     models/tft_model.pth        (existing)
-  - tft_forex:      models/tft_forex.pth         (new)
-  - tft_volatility: models/tft_volatility.pth    (new)
+Model registry (10 models):
+  - tft_stocks:       models/tft_model.pth        (existing)
+  - tft_forex:        models/tft_forex.pth         (existing)
+  - tft_volatility:   models/tft_volatility.pth    (existing)
+  - kronos:           pre-trained (HuggingFace)    (Strategy #12)
+  - deep_surrogates:  pre-trained (repo)           (Strategy #13)
+  - tdgf:             models/tdgf_model.pth        (Strategy #14)
+  - sentiment:        pre-trained (FinBERT)         (Model #7)
+  - mean_reversion:   statistical estimation        (Model #8)
+  - macro_regime:     rule-based                    (Model #9)
+  - microstructure:   statistical                   (Model #10)
 """
 
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -24,13 +32,29 @@ from models.base import BaseTFTModel, ModelInfo, ModelPrediction
 from models.stocks_adapter import TFTStocksAdapter
 from models.forex_model import TFTForexModel
 from models.volatility_model import TFTVolatilityModel
+from models.kronos_model import KronosModel
+from models.deep_surrogate_model import DeepSurrogateModel
+from models.tdgf_model import TDGFModel
+from models.sentiment_model import SentimentModel
+from models.mean_reversion_model import MeanReversionModel
+from models.macro_model import MacroRegimeModel
+from models.microstructure_model import MicrostructureModel
 
 logger = logging.getLogger(__name__)
 
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 DEFAULT_PATHS = {
-    "tft_stocks": "models/tft_model.pth",
-    "tft_forex": "models/tft_forex.pth",
-    "tft_volatility": "models/tft_volatility.pth",
+    "tft_stocks": os.path.join(_BASE_DIR, "models", "tft_model.pth"),
+    "tft_forex": os.path.join(_BASE_DIR, "models", "tft_forex.pth"),
+    "tft_volatility": os.path.join(_BASE_DIR, "models", "tft_volatility.pth"),
+    "kronos": "",  # pre-trained, loaded from HuggingFace
+    "deep_surrogates": "",  # pre-trained, loaded from repo
+    "tdgf": os.path.join(_BASE_DIR, "models", "tdgf_model.pth"),
+    "sentiment": "",  # pre-trained (FinBERT / VADER)
+    "mean_reversion": "",  # statistical, no weights
+    "macro_regime": "",  # rule-based, no weights
+    "microstructure": "",  # statistical, no weights
 }
 
 
@@ -66,6 +90,13 @@ class ModelManager:
             "tft_stocks": TFTStocksAdapter(paths.get("tft_stocks", DEFAULT_PATHS["tft_stocks"])),
             "tft_forex": TFTForexModel(),
             "tft_volatility": TFTVolatilityModel(),
+            "kronos": KronosModel(),
+            "deep_surrogates": DeepSurrogateModel(),
+            "tdgf": TDGFModel(),
+            "sentiment": SentimentModel(),
+            "mean_reversion": MeanReversionModel(),
+            "macro_regime": MacroRegimeModel(),
+            "microstructure": MicrostructureModel(),
         }
         self._paths = paths
 
@@ -116,10 +147,39 @@ class ModelManager:
         """Get vol forecasts. Empty list if model not loaded."""
         return self._models["tft_volatility"].predict(data)
 
+    def predict_kronos(self, data: pd.DataFrame) -> List[ModelPrediction]:
+        """Get Kronos forecasts (stocks + forex). Empty list if not loaded."""
+        return self._models["kronos"].predict(data)
+
+    def predict_deep_surrogates(self, data: pd.DataFrame) -> List[ModelPrediction]:
+        """Get DeepSurrogate options/risk signals. Empty list if not loaded."""
+        return self._models["deep_surrogates"].predict(data)
+
+    def predict_tdgf(self, data: pd.DataFrame) -> List[ModelPrediction]:
+        """Get TDGF American option prices. Empty list if not loaded/trained."""
+        return self._models["tdgf"].predict(data)
+
+    def predict_sentiment(self, data: pd.DataFrame) -> List[ModelPrediction]:
+        """Get sentiment scores. Empty list if not loaded."""
+        return self._models["sentiment"].predict(data)
+
+    def predict_mean_reversion(self, data: pd.DataFrame) -> List[ModelPrediction]:
+        """Get mean reversion signals. Empty list if not loaded."""
+        return self._models["mean_reversion"].predict(data)
+
+    def predict_macro(self, data: pd.DataFrame) -> List[ModelPrediction]:
+        """Get macro regime predictions. Empty list if not loaded."""
+        return self._models["macro_regime"].predict(data)
+
+    def predict_microstructure(self, data: pd.DataFrame) -> List[ModelPrediction]:
+        """Get microstructure signals. Empty list if not loaded."""
+        return self._models["microstructure"].predict(data)
+
     def predict_all(
         self,
         stock_data: Optional[pd.DataFrame] = None,
         fx_data: Optional[pd.DataFrame] = None,
+        options_data: Optional[pd.DataFrame] = None,
     ) -> Dict[str, List[ModelPrediction]]:
         """Get predictions from all available models."""
         results = {}
@@ -127,9 +187,15 @@ class ModelManager:
         if stock_data is not None:
             results["stocks"] = self.predict_stocks(stock_data)
             results["volatility"] = self.predict_volatility(stock_data)
+            results["kronos_stocks"] = self.predict_kronos(stock_data)
 
         if fx_data is not None:
             results["forex"] = self.predict_forex(fx_data)
+            results["kronos_forex"] = self.predict_kronos(fx_data)
+
+        if options_data is not None:
+            results["deep_surrogates"] = self.predict_deep_surrogates(options_data)
+            results["tdgf"] = self.predict_tdgf(options_data)
 
         total = sum(len(v) for v in results.values())
         logger.info("ModelManager predictions: %d total (%s)",

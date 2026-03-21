@@ -233,6 +233,130 @@ class RegimeConfig:
 
 
 # ---------------------------------------------------------------------------
+# Mean Reversion (OU-based)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class MeanReversionConfig:
+    enabled: bool = False
+
+    hurst_threshold: float = 0.45          # only trade when Hurst < this
+    min_half_life: int = 2                 # reject too-fast reversion
+    max_half_life: int = 30                # reject too-slow reversion
+    entry_zscore: float = 1.5              # enter when |deviation_z| > this
+    exit_zscore: float = 0.5               # exit when |deviation_z| < this
+    max_positions_per_side: int = 8
+
+    # Risk
+    strategy_max_drawdown: float = 0.20
+    strategy_kill_sharpe: float = -1.0
+
+    @classmethod
+    def from_env(cls) -> "MeanReversionConfig":
+        return cls(
+            enabled=_env_bool("STRATEGY_MEAN_REVERSION_ENABLED", False),
+            hurst_threshold=_env_float("STRATEGY_MR_HURST_THRESH", 0.45),
+            min_half_life=_env_int("STRATEGY_MR_MIN_HL", 2),
+            max_half_life=_env_int("STRATEGY_MR_MAX_HL", 30),
+            entry_zscore=_env_float("STRATEGY_MR_ENTRY_Z", 1.5),
+            exit_zscore=_env_float("STRATEGY_MR_EXIT_Z", 0.5),
+            max_positions_per_side=_env_int("STRATEGY_MR_MAX_POS", 8),
+            strategy_max_drawdown=_env_float("STRATEGY_MR_MAX_DD", 0.20),
+            strategy_kill_sharpe=_env_float("STRATEGY_MR_KILL_SHARPE", -1.0),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Sector Rotation (macro regime driven)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class SectorRotationConfig:
+    enabled: bool = False
+
+    min_tilt_threshold: float = 0.1        # ignore sector tilts below this
+    max_positions_per_side: int = 8
+    rebalance_interval_days: int = 21      # re-evaluate monthly
+
+    # Risk
+    strategy_max_drawdown: float = 0.20
+    strategy_kill_sharpe: float = -1.0
+
+    @classmethod
+    def from_env(cls) -> "SectorRotationConfig":
+        return cls(
+            enabled=_env_bool("STRATEGY_SECTOR_ROTATION_ENABLED", False),
+            min_tilt_threshold=_env_float("STRATEGY_SR_MIN_TILT", 0.1),
+            max_positions_per_side=_env_int("STRATEGY_SR_MAX_POS", 8),
+            rebalance_interval_days=_env_int("STRATEGY_SR_REBAL_DAYS", 21),
+            strategy_max_drawdown=_env_float("STRATEGY_SR_MAX_DD", 0.20),
+            strategy_kill_sharpe=_env_float("STRATEGY_SR_KILL_SHARPE", -1.0),
+        )
+
+
+# ---------------------------------------------------------------------------
+# FX Momentum (time-series momentum on currency pairs)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class FXMomentumConfig:
+    enabled: bool = False
+
+    min_lookback_days: int = 63            # need at least 3 months of data
+    signal_threshold: float = 0.5          # minimum z-score to generate signal
+    max_pairs_long: int = 3
+    max_pairs_short: int = 3
+
+    # Risk
+    strategy_max_drawdown: float = 0.20
+    strategy_kill_sharpe: float = -1.0
+
+    @classmethod
+    def from_env(cls) -> "FXMomentumConfig":
+        return cls(
+            enabled=_env_bool("STRATEGY_FX_MOMENTUM_ENABLED", False),
+            min_lookback_days=_env_int("STRATEGY_FXM_MIN_LOOKBACK", 63),
+            signal_threshold=_env_float("STRATEGY_FXM_SIGNAL_THRESH", 0.5),
+            max_pairs_long=_env_int("STRATEGY_FXM_MAX_LONG", 3),
+            max_pairs_short=_env_int("STRATEGY_FXM_MAX_SHORT", 3),
+            strategy_max_drawdown=_env_float("STRATEGY_FXM_MAX_DD", 0.20),
+            strategy_kill_sharpe=_env_float("STRATEGY_FXM_KILL_SHARPE", -1.0),
+        )
+
+
+# ---------------------------------------------------------------------------
+# FX Volatility Breakout (Bollinger squeeze to expansion)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class FXVolBreakoutConfig:
+    enabled: bool = False
+
+    bb_window: int = 20                    # Bollinger Band window
+    lookback_days: int = 126               # need 6 months for bandwidth history
+    squeeze_lookback: int = 126            # lookback for bandwidth percentile
+    squeeze_percentile: float = 0.10       # squeeze = bandwidth in bottom 10%
+    momentum_window: int = 10              # momentum during squeeze for direction
+
+    # Risk
+    strategy_max_drawdown: float = 0.20
+    strategy_kill_sharpe: float = -1.0
+
+    @classmethod
+    def from_env(cls) -> "FXVolBreakoutConfig":
+        return cls(
+            enabled=_env_bool("STRATEGY_FX_VOL_BREAKOUT_ENABLED", False),
+            bb_window=_env_int("STRATEGY_FXVB_BB_WINDOW", 20),
+            lookback_days=_env_int("STRATEGY_FXVB_LOOKBACK", 126),
+            squeeze_lookback=_env_int("STRATEGY_FXVB_SQUEEZE_LOOKBACK", 126),
+            squeeze_percentile=_env_float("STRATEGY_FXVB_SQUEEZE_PCT", 0.10),
+            momentum_window=_env_int("STRATEGY_FXVB_MOM_WINDOW", 10),
+            strategy_max_drawdown=_env_float("STRATEGY_FXVB_MAX_DD", 0.20),
+            strategy_kill_sharpe=_env_float("STRATEGY_FXVB_KILL_SHARPE", -1.0),
+        )
+
+
+# ---------------------------------------------------------------------------
 # FX Carry + Trend (placeholder for Phase 2)
 # ---------------------------------------------------------------------------
 
@@ -264,6 +388,119 @@ class FXConfig:
 
 
 # ---------------------------------------------------------------------------
+# Kronos — Pre-trained Foundation Model (Strategy #12)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class KronosConfig:
+    enabled: bool = False
+    model_name: str = "NeoQuasar/Kronos-base"  # mini, small, or base
+    tokenizer_name: str = "NeoQuasar/Kronos-Tokenizer-base"
+    repo_path: str = "/opt/kronos"
+    max_context: int = 512
+    num_samples: int = 100
+    prediction_length: int = 5
+    initial_weight: float = 0.10
+
+    # Risk
+    strategy_max_drawdown: float = 0.20
+    strategy_kill_sharpe: float = -1.0
+
+    @classmethod
+    def from_env(cls) -> "KronosConfig":
+        return cls(
+            enabled=_env_bool("STRATEGY_KRONOS_ENABLED", False),
+            model_name=_env_str("KRONOS_MODEL_NAME", "NeoQuasar/Kronos-base"),
+            tokenizer_name=_env_str(
+                "KRONOS_TOKENIZER_NAME", "NeoQuasar/Kronos-Tokenizer-base"
+            ),
+            repo_path=_env_str("KRONOS_REPO_PATH", "/opt/kronos"),
+            max_context=_env_int("KRONOS_MAX_CONTEXT", 512),
+            num_samples=_env_int("KRONOS_NUM_SAMPLES", 100),
+            prediction_length=_env_int("KRONOS_PREDICTION_LENGTH", 5),
+            initial_weight=_env_float("STRATEGY_KRONOS_INITIAL_WEIGHT", 0.10),
+            strategy_max_drawdown=_env_float("STRATEGY_KRONOS_MAX_DD", 0.20),
+            strategy_kill_sharpe=_env_float("STRATEGY_KRONOS_KILL_SHARPE", -1.0),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Deep Surrogates — Neural Option Pricing (Strategy #13)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class DeepSurrogateConfig:
+    enabled: bool = False
+    repo_path: str = "/opt/deep_surrogate"
+    model_type: str = "heston"  # "heston" or "bdjm"
+    initial_weight: float = 0.10
+
+    # Tail risk monitoring
+    tail_risk_enabled: bool = True
+    tail_risk_alert_threshold: float = 0.7
+
+    # Risk
+    strategy_max_drawdown: float = 0.20
+    strategy_kill_sharpe: float = -1.0
+
+    @classmethod
+    def from_env(cls) -> "DeepSurrogateConfig":
+        return cls(
+            enabled=_env_bool("STRATEGY_DEEP_SURROGATES_ENABLED", False),
+            repo_path=_env_str("DEEP_SURROGATE_REPO_PATH", "/opt/deep_surrogate"),
+            model_type=_env_str("DEEP_SURROGATE_MODEL_TYPE", "heston"),
+            initial_weight=_env_float(
+                "STRATEGY_DEEP_SURROGATES_INITIAL_WEIGHT", 0.10
+            ),
+            tail_risk_enabled=_env_bool("DEEP_SURROGATE_TAIL_RISK_ENABLED", True),
+            tail_risk_alert_threshold=_env_float(
+                "DEEP_SURROGATE_TAIL_RISK_ALERT", 0.7
+            ),
+            strategy_max_drawdown=_env_float(
+                "STRATEGY_DEEP_SURROGATES_MAX_DD", 0.20
+            ),
+            strategy_kill_sharpe=_env_float(
+                "STRATEGY_DEEP_SURROGATES_KILL_SHARPE", -1.0
+            ),
+        )
+
+
+# ---------------------------------------------------------------------------
+# TDGF — American Options Pricing (Strategy #14)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class TDGFConfig:
+    enabled: bool = False
+    repo_path: str = "/opt/tdgf"
+    pde_model: str = "heston"  # "black_scholes", "heston", "lifted_heston"
+    hidden_layers: int = 3
+    hidden_units: int = 50
+    learning_rate: float = 0.001
+    max_epochs: int = 5000
+    initial_weight: float = 0.10
+
+    # Risk
+    strategy_max_drawdown: float = 0.20
+    strategy_kill_sharpe: float = -1.0
+
+    @classmethod
+    def from_env(cls) -> "TDGFConfig":
+        return cls(
+            enabled=_env_bool("STRATEGY_TDGF_ENABLED", False),
+            repo_path=_env_str("TDGF_REPO_PATH", "/opt/tdgf"),
+            pde_model=_env_str("TDGF_PDE_MODEL", "heston"),
+            hidden_layers=_env_int("TDGF_HIDDEN_LAYERS", 3),
+            hidden_units=_env_int("TDGF_HIDDEN_UNITS", 50),
+            learning_rate=_env_float("TDGF_LEARNING_RATE", 0.001),
+            max_epochs=_env_int("TDGF_MAX_EPOCHS", 5000),
+            initial_weight=_env_float("STRATEGY_TDGF_INITIAL_WEIGHT", 0.10),
+            strategy_max_drawdown=_env_float("STRATEGY_TDGF_MAX_DD", 0.20),
+            strategy_kill_sharpe=_env_float("STRATEGY_TDGF_KILL_SHARPE", -1.0),
+        )
+
+
+# ---------------------------------------------------------------------------
 # Master config loader
 # ---------------------------------------------------------------------------
 
@@ -275,6 +512,13 @@ class StrategyMasterConfig:
     ensemble: EnsembleConfig = field(default_factory=EnsembleConfig)
     regime: RegimeConfig = field(default_factory=RegimeConfig)
     fx: FXConfig = field(default_factory=FXConfig)
+    kronos: KronosConfig = field(default_factory=KronosConfig)
+    deep_surrogates: DeepSurrogateConfig = field(default_factory=DeepSurrogateConfig)
+    tdgf: TDGFConfig = field(default_factory=TDGFConfig)
+    mean_reversion: MeanReversionConfig = field(default_factory=MeanReversionConfig)
+    sector_rotation: SectorRotationConfig = field(default_factory=SectorRotationConfig)
+    fx_momentum: FXMomentumConfig = field(default_factory=FXMomentumConfig)
+    fx_vol_breakout: FXVolBreakoutConfig = field(default_factory=FXVolBreakoutConfig)
 
     @classmethod
     def from_env(cls) -> "StrategyMasterConfig":
@@ -284,6 +528,13 @@ class StrategyMasterConfig:
             ensemble=EnsembleConfig.from_env(),
             regime=RegimeConfig.from_env(),
             fx=FXConfig.from_env(),
+            kronos=KronosConfig.from_env(),
+            deep_surrogates=DeepSurrogateConfig.from_env(),
+            tdgf=TDGFConfig.from_env(),
+            mean_reversion=MeanReversionConfig.from_env(),
+            sector_rotation=SectorRotationConfig.from_env(),
+            fx_momentum=FXMomentumConfig.from_env(),
+            fx_vol_breakout=FXVolBreakoutConfig.from_env(),
         )
         enabled = []
         if cfg.momentum.enabled:
@@ -296,6 +547,20 @@ class StrategyMasterConfig:
             enabled.append("regime")
         if cfg.fx.enabled:
             enabled.append("fx")
+        if cfg.kronos.enabled:
+            enabled.append("kronos")
+        if cfg.deep_surrogates.enabled:
+            enabled.append("deep_surrogates")
+        if cfg.tdgf.enabled:
+            enabled.append("tdgf")
+        if cfg.mean_reversion.enabled:
+            enabled.append("mean_reversion")
+        if cfg.sector_rotation.enabled:
+            enabled.append("sector_rotation")
+        if cfg.fx_momentum.enabled:
+            enabled.append("fx_momentum")
+        if cfg.fx_vol_breakout.enabled:
+            enabled.append("fx_vol_breakout")
 
         if enabled:
             logger.info("Enabled strategies: %s", ", ".join(enabled))

@@ -76,21 +76,21 @@ class PostgresDataPipeline:
                     logger.info("Added fundamental data")
                 else:
                     logger.warning("No fundamental data available")
-                    # Add placeholder columns
-                    df['market_cap'] = np.nan
-                    df['pe_ratio'] = np.nan
-                    df['eps'] = np.nan
-                    df['dividend_yield'] = np.nan
+                    # Add placeholder columns with zeros (NaN breaks TimeSeriesDataSet)
+                    df['market_cap'] = 0.0
+                    df['pe_ratio'] = 0.0
+                    df['eps'] = 0.0
+                    df['dividend_yield'] = 0.0
                     df['sector'] = 'Unknown'
                     df['industry'] = 'Unknown'
                     df['exchange'] = 'Unknown'
             except Exception as e:
                 logger.warning(f"Failed to load fundamentals: {e}")
-                # Add placeholder columns
-                df['market_cap'] = np.nan
-                df['pe_ratio'] = np.nan
-                df['eps'] = np.nan  
-                df['dividend_yield'] = np.nan
+                # Add placeholder columns with zeros (NaN breaks TimeSeriesDataSet)
+                df['market_cap'] = 0.0
+                df['pe_ratio'] = 0.0
+                df['eps'] = 0.0
+                df['dividend_yield'] = 0.0
                 df['sector'] = 'Unknown'
                 df['industry'] = 'Unknown'
                 df['exchange'] = 'Unknown'
@@ -307,7 +307,14 @@ class PostgresDataPipeline:
             if col not in ['target'] and df[col].isna().any():
                 median_value = df[col].median()
                 df[col] = df[col].fillna(median_value)
-        
+
+        # Drop rows where target is NaN or infinite (e.g. last N rows from forward returns)
+        before = len(df)
+        df = df.dropna(subset=['target'])
+        dropped = before - len(df)
+        if dropped > 0:
+            logger.info(f"Dropped {dropped} rows with NaN/inf target values")
+
         return df
     
     def _filter_sufficient_data(self, df: pd.DataFrame, min_observations: int = 100) -> pd.DataFrame:

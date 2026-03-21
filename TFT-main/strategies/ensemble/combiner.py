@@ -341,14 +341,32 @@ class EnsembleCombiner:
         weights = regime_state.strategy_weights
 
         # Map strategy names to regime weight keys
+        # Regime weight arrays are 4-dimensional: [momentum, mean_reversion, pairs, tft]
         key_map = {
+            # Stocks
             "cross_sectional_momentum": "momentum",
             "momentum": "momentum",
             "pairs_trading": "pairs",
             "pairs": "pairs",
+            "mean_reversion": "mean_reversion",
+            "sector_rotation": "momentum",  # macro-driven, correlates with trend
+
+            # Forex
+            "fx_carry_trend": "tft",  # value-like strategy
+            "fx_momentum": "momentum",  # trend-following
+            "fx_vol_breakout": "pairs",  # event-driven, market-neutral-like
+
+            # Options
+            "deep_surrogates": "pairs",  # market-neutral
+            "tdgf": "pairs",  # options pricing, market-neutral
+            "vol_arb": "pairs",  # market-neutral
+
+            # Cross-asset
+            "kronos": "tft",  # forecasting model, weight like TFT
+
+            # Adapters
             "tft": "tft",
             "tft_adapter": "tft",
-            "mean_reversion": "mean_reversion",
         }
 
         regime_key = key_map.get(strategy_name, None)

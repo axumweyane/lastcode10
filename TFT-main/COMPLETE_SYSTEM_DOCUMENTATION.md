@@ -1,454 +1,341 @@
-# 🚀 INSTITUTIONAL TFT TRADING SYSTEM - COMPLETE DOCUMENTATION
-*Advanced AI-Powered Stock Prediction and Trading Platform*
+# APEX Trading System — Complete Documentation
+
+*Multi-Strategy Algorithmic Trading Platform*
+*Last Updated: 2026-03-21 | Version 2.1.0*
 
 ---
 
-## 📋 EXECUTIVE SUMMARY
+## System Overview
 
-### **System Overview**
-The Institutional TFT (Temporal Fusion Transformer) Trading System is a comprehensive, production-ready platform that combines cutting-edge machine learning with real-time sentiment analysis and automated trading execution. Built for institutional-grade performance, it processes 500+ stocks simultaneously with sub-50ms prediction latency and 99.9% uptime during market hours.
+APEX is a production-grade multi-strategy algorithmic trading platform built around the Temporal Fusion Transformer (TFT). It combines **10 AI/statistical models** across 4 asset classes through **11 trading strategies**, fused via a Bayesian ensemble with regime-adaptive weighting, protected by **5 automated safety guardrails**, and executed through a paper-trading service connected to Alpaca.
 
-### **Core Value Proposition**
-- **Predictive Accuracy**: <2.5% MAPE validation error using advanced TFT models
-- **Trading Performance**: Sharpe ratio >1.8 with risk-managed portfolio construction
-- **System Reliability**: 99.9% uptime with fault-tolerant architecture
-- **Scalability**: Processes 50k+ market events per second in real-time
-- **Institutional Features**: Tax optimization, regulatory compliance, explainable AI
+### Key Metrics
 
----
-
-## 🏗️ SYSTEM ARCHITECTURE
-
-### **High-Level Architecture Diagram**
-```mermaid
-graph TD
-    A[Market Data APIs] --> B[Data Ingestion Layer]
-    C[Reddit/Social APIs] --> B
-    D[Economic Calendar] --> B
-    
-    B --> E[Data Processing Engine]
-    E --> F[Feature Engineering]
-    F --> G[TFT Model Training]
-    F --> H[Real-time Prediction Engine]
-    
-    I[Sentiment Analysis] --> J[Momentum Detection]
-    J --> K[Signal Generation]
-    H --> K
-    
-    K --> L[Portfolio Optimization]
-    L --> M[Risk Management]
-    M --> N[Trade Execution]
-    
-    N --> O[Performance Monitoring]
-    O --> P[Compliance Reporting]
-    
-    Q[(PostgreSQL)] --> R[Data Lake]
-    S[Redis Cache] --> T[Real-time Data]
-    U[MLflow Registry] --> V[Model Artifacts]
-```
-
-### **Technology Stack**
-| **Layer** | **Technology** | **Purpose** |
-|-----------|----------------|-------------|
-| **Data Storage** | PostgreSQL + TimescaleDB | Time-series market data, predictions, trades |
-| **Machine Learning** | PyTorch, TensorFlow | TFT model training and inference |
-| **Real-time Processing** | Apache Kafka, Redis | Streaming data and caching |
-| **API Integration** | Polygon.io, Alpaca, Reddit API | Market data and trade execution |
-| **Orchestration** | Kubernetes, Docker | Container orchestration and scaling |
-| **Monitoring** | Prometheus, Grafana, AlertManager | System observability and alerting |
-| **CI/CD** | GitHub Actions, Helm | Automated deployment and testing |
+| Metric | Value |
+|--------|-------|
+| Python files | ~145 |
+| Models | 10 (6 deep learning, 4 statistical/rule-based) |
+| Strategies | 11 (stocks, FX, options) |
+| Safety guardrails | 5 (pre-trade checks) |
+| Tests | 114 across 12 test modules |
+| Asset classes | Stocks, Forex, Options/Volatility, Cross-Asset |
 
 ---
 
-## 💾 DATABASE SCHEMA
+## Three Independent Layers
 
-### **Core Tables Structure**
-```sql
--- Market Data Storage
-CREATE TABLE stocks_minute_candlesticks_example (
-    id SERIAL PRIMARY KEY,
-    ticker VARCHAR(10) NOT NULL,
-    window_start TIMESTAMP WITH TIME ZONE NOT NULL,
-    open DECIMAL(10,4) NOT NULL,
-    high DECIMAL(10,4) NOT NULL,
-    low DECIMAL(10,4) NOT NULL,
-    close DECIMAL(10,4) NOT NULL,
-    volume BIGINT NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW()
-);
+### 1. Core TFT Pipeline
 
--- Sentiment Data
-CREATE TABLE reddit_comments (
-    comment_id VARCHAR(255) PRIMARY KEY,
-    ticker VARCHAR(10),
-    sentiment_score DECIMAL(5,3),
-    timestamp TIMESTAMP WITH TIME ZONE,
-    upvotes INTEGER,
-    content_length INTEGER
-);
+Train TFT models, generate predictions, rank stocks, construct portfolios. Two backends: legacy SQLite and PostgreSQL.
 
-CREATE TABLE reddit_sentiment_aggregated (
-    id SERIAL PRIMARY KEY,
-    ticker VARCHAR(10),
-    time_window TIMESTAMP WITH TIME ZONE,
-    bullish_count INTEGER,
-    bearish_count INTEGER,
-    neutral_count INTEGER,
-    total_comments INTEGER,
-    avg_sentiment DECIMAL(5,3)
-);
+| Layer | Legacy | PostgreSQL |
+|-------|--------|------------|
+| Data loading | `data_pipeline.py` | `postgres_data_loader.py` |
+| Preprocessing | `data_preprocessing.py` | `postgres_data_pipeline.py` |
+| Model | `tft_model.py` | `tft_postgres_model.py` |
+| Training | `train.py` | `train_postgres.py` |
+| API | `api.py` (port 8000) | `api_postgres.py` (port 8000) |
 
--- Model Predictions
-CREATE TABLE tft_predictions (
-    id SERIAL PRIMARY KEY,
-    ticker VARCHAR(10) NOT NULL,
-    prediction_time TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    current_price DECIMAL(10,4),
-    predicted_return DECIMAL(8,5),
-    confidence_score DECIMAL(5,3),
-    model_version VARCHAR(50),
-    features_hash VARCHAR(64)
-);
+### 2. Multi-Strategy Ensemble
 
--- Trading Records
-CREATE TABLE trade_executions (
-    id SERIAL PRIMARY KEY,
-    ticker VARCHAR(10) NOT NULL,
-    action VARCHAR(10) NOT NULL, -- BUY, SELL, HOLD
-    quantity INTEGER NOT NULL,
-    price DECIMAL(10,4) NOT NULL,
-    timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    order_id VARCHAR(255),
-    strategy_version VARCHAR(50),
-    pnl DECIMAL(12,4)
-);
+11 strategies producing alpha signals, combined via Bayesian weighting, optimized into a risk-constrained portfolio, executed daily via the paper trader.
+
+### 3. Microservices Layer
+
+5 FastAPI services coordinated via Kafka for distributed deployment (Docker/K8s).
+
+---
+
+## Model Layer (10 Models)
+
+All models extend `BaseTFTModel` (ABC in `models/base.py`) and return `List[ModelPrediction]`. `ModelManager` (`models/manager.py`) loads all models with graceful fallback — missing models return empty predictions.
+
+| # | Model | Class | File | Asset Class | Type |
+|---|-------|-------|------|-------------|------|
+| 1 | TFT Stocks | `TFTStocksAdapter` | `stocks_adapter.py` | stocks | Deep learning |
+| 2 | TFT Forex | `TFTForexModel` | `forex_model.py` | forex | Deep learning |
+| 3 | TFT Volatility | `TFTVolatilityModel` | `volatility_model.py` | volatility | Deep learning |
+| 4 | Kronos | `KronosModel` | `kronos_model.py` | stocks+forex | Pre-trained (HuggingFace) |
+| 5 | Deep Surrogates | `DeepSurrogateModel` | `deep_surrogate_model.py` | options/vol | Pre-trained |
+| 6 | TDGF | `TDGFModel` | `tdgf_model.py` | options | Light training |
+| 7 | Sentiment | `SentimentModel` | `sentiment_model.py` | cross-asset | Pre-trained (FinBERT/VADER) |
+| 8 | Mean Reversion | `MeanReversionModel` | `mean_reversion_model.py` | stocks | Statistical |
+| 9 | Macro Regime | `MacroRegimeModel` | `macro_model.py` | cross-asset | Rule-based |
+| 10 | Microstructure | `MicrostructureModel` | `microstructure_model.py` | stocks | Statistical |
+
+### Model Details (Models 7-10)
+
+**Sentiment Model (#7)** — Tries FinBERT (`ProsusAI/finbert`) first, falls back to VADER. Accepts DataFrame with `symbol` and `text` columns. Returns: sentiment_score, sentiment_momentum, sentiment_dispersion, article_count.
+
+**Mean Reversion Model (#8)** — Computes Hurst exponent via R/S analysis and fits Ornstein-Uhlenbeck parameters (mu, theta, sigma) via OLS on log prices. Returns: hurst_exponent, half_life, deviation_zscore, mr_probability.
+
+**Macro Regime Model (#9)** — Fetches yield curve data (^TNX, ^FVX, ^IRX, UUP) via yfinance. Classifies into 5 regimes: steepening_rising, steepening_falling, flattening_rising, inverted, neutral. Maps to sector tilts via `REGIME_SECTOR_TILTS` dict covering 40+ symbols.
+
+**Microstructure Model (#10)** — Daily-frequency analysis: relative_volume, VWAP deviation, Close Location Value (CLV), buying_pressure, volume_trend, Accumulation/Distribution line. Composite signal = weighted combination.
+
+### Deep Surrogates Tail Risk System
+
+`DeepSurrogateModel` includes a Heston parameter calibration system with multi-start optimization and Feller condition validation. The tail risk index is broadcast via Redis pub/sub channel `apex:signals:risk` and displayed on the paper trader dashboard.
+
+---
+
+## Strategy Layer (11 Strategies)
+
+All strategies extend `BaseStrategy` (ABC in `strategies/base.py`) and produce `StrategyOutput` containing `List[AlphaScore]` — z-scored per-symbol alpha signals.
+
+| # | Strategy | File | Asset Class | Model Dependency |
+|---|----------|------|-------------|------------------|
+| 1 | Cross-Sectional Momentum | `momentum/cross_sectional.py` | stocks | None |
+| 2 | Pairs Trading (StatArb) | `statarb/pairs.py` | stocks | None |
+| 3 | Mean Reversion | `stocks/mean_reversion.py` | stocks | MeanReversionModel, MicrostructureModel |
+| 4 | Sector Rotation | `stocks/sector_rotation.py` | stocks | MacroRegimeModel |
+| 5 | FX Carry + Trend | `fx/carry_trend.py` | forex | None |
+| 6 | FX Momentum | `fx/momentum.py` | forex | None |
+| 7 | FX Volatility Breakout | `fx/vol_breakout.py` | forex | TFT Volatility |
+| 8 | Deep Surrogates | `deep_surrogates/strategy.py` | options/vol | DeepSurrogateModel |
+| 9 | TDGF American Options | `tdgf/strategy.py` | options | TDGFModel |
+| 10 | Vol Surface Arbitrage | `options/strategies/vol_arb.py` | options | None |
+| 11 | Kronos Forecasting | `kronos/strategy.py` | stocks+forex | KronosModel |
+
+### Strategy Activation
+
+All strategies disabled by default. Enable via `.env`:
+
+```bash
+STRATEGY_MOMENTUM_ENABLED=true
+STRATEGY_STATARB_ENABLED=true
+STRATEGY_MEAN_REVERSION_ENABLED=true
+STRATEGY_SECTOR_ROTATION_ENABLED=true
+STRATEGY_FX_ENABLED=true                # FX Carry + Trend
+STRATEGY_FX_MOMENTUM_ENABLED=true
+STRATEGY_FX_VOL_BREAKOUT_ENABLED=true
+STRATEGY_KRONOS_ENABLED=false            # needs /opt/kronos
+STRATEGY_DEEP_SURROGATES_ENABLED=false   # needs /opt/deep_surrogate
+STRATEGY_TDGF_ENABLED=false              # needs /opt/tdgf
+STRATEGY_VOL_ARB_ENABLED=false
 ```
 
 ---
 
-## 🤖 MACHINE LEARNING COMPONENTS
+## Ensemble System
 
-### **1. Temporal Fusion Transformer (TFT) Model**
+### Bayesian Combiner (`strategies/ensemble/combiner.py`)
+
+Three weighting methods: **equal**, **sharpe**, **bayesian** (default).
+
+**Regime blending formula:**
+```
+final_weight = 0.6 x performance_weight + 0.4 x regime_weight
+```
+
+Weights clamped to [0.05, 0.40] and renormalized.
+
+### Regime Detection (`strategies/regime/detector.py`)
+
+4-state market classifier:
+
+|  | Trending | Choppy |
+|--|----------|--------|
+| **Calm** (VIX < 20) | Favor momentum | Favor mean-reversion |
+| **Volatile** (VIX > 20) | Reduce exposure | Maximum caution |
+
+### Portfolio Optimization (`strategies/ensemble/portfolio_optimizer.py`)
+
+Score -> raw weights -> inverse-vol adjustment -> regime scaling -> hard constraints (position caps, leverage caps, min position) -> VaR99 check.
+
+---
+
+## Safety Guardrails (`trading/safety/guardrails.py`)
+
+Five automated pre-trade safety checks added 2026-03-21 to prevent repeat of March 10 incident:
+
+| # | Guardrail | Class | Env Var | Default | Failure Action |
+|---|-----------|-------|---------|---------|----------------|
+| 1 | Signal Variance | `SignalVarianceGuard` | `GUARDRAIL_SIGNAL_MIN_STD` | 0.01 | Halt pipeline, Discord critical alert |
+| 2 | Leverage Gate | `LeverageGate` | `GUARDRAIL_MAX_LEVERAGE` | 1.5 | Skip order batch |
+| 3 | Calibration Health | `CalibrationHealthCheck` | `GUARDRAIL_CALIBRATION_TOLERANCE` | 1e-6 | Log error, skip calibration |
+| 4 | Model Promotion | `ModelPromotionGate` | `GUARDRAIL_MIN_PROMOTION_SHARPE` | 0.5 | Reject model |
+| 5 | Execution Failure | `ExecutionFailureMonitor` | `GUARDRAIL_MAX_EXEC_FAILURE_RATE` | 0.25 | Pause orders, Discord alert |
+
+### Calibration Health Check
+
+Verifies Platt scalers and isotonic calibrators are actually fitted (not identity parameters). Checks:
+- `check_platt(a, b)` — Detects unfitted (None params) and identity (A=-1, B=0) states
+- `check_generic(calibrator)` — sklearn-style fitted check via `classes_`, `calibrators_`, etc.
+
+Runs at startup on all loaded models and can be called before each daily run.
+
+---
+
+## Paper Trader Service
+
+`paper-trader/main.py` — FastAPI service on port 8010.
+
+### Daily Pipeline (16 steps)
+
+1. Fetch OHLCV via yfinance (stocks + SPY + FX pairs, 300 days)
+2. Circuit breaker pre-check (Redis-backed)
+3. Detect market regime
+4. Build and run all enabled strategies (up to 11)
+5. Portfolio risk assessment
+6. Combine via Bayesian ensemble
+7. **GUARDRAIL: Signal variance check**
+8. Publish signals to Redis
+9. Optimize portfolio with risk constraints
+10. **GUARDRAIL: Leverage gate**
+11. **GUARDRAIL: Execution failure monitor** (per-order)
+12. Execute trades via Alpaca
+13. Audit trail logging
+14. Log to PostgreSQL
+15. Send Discord/Email reports
+16. Serve live dashboard
+
+### API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | System status: models, strategies, infrastructure |
+| POST | `/run-now` | Manually trigger daily pipeline |
+| GET | `/positions` | Current portfolio positions |
+| GET | `/history` | Last 30 pipeline run records |
+| GET | `/weights` | Current strategy weight distribution |
+| GET | `/dashboard` | Live HTML dashboard |
+
+### Production Infrastructure
+
+| Component | Class | File | Lines |
+|-----------|-------|------|-------|
+| Broker | `AlpacaBroker` | `trading/broker/alpaca.py` | 282 |
+| Circuit Breaker | `CircuitBreaker` | `trading/risk/circuit_breaker.py` | 404 |
+| Audit Logger | `AuditLogger` | `trading/persistence/audit.py` | 276 |
+| Notifications | `NotificationManager` | `trading/notifications/alerts.py` | 201 |
+| Risk Manager | `PortfolioRiskManager` | `strategies/risk/portfolio_risk.py` | 478 |
+| Safety Guardrails | 5 classes | `trading/safety/guardrails.py` | 315 |
+| Position Sizing | `PositionSizerFactory` | `trading/risk/position_sizing.py` | — |
+
+---
+
+## Microservices Layer
+
+Five FastAPI services coordinated via Kafka topics and Redis caching:
+
+| Service | Port | Role |
+|---------|------|------|
+| `data-ingestion` | 8001 | Polygon.io + Reddit data -> Kafka |
+| `sentiment-engine` | 8002 | NLP sentiment scoring (FinBERT/VADER) |
+| `tft-predictor` | 8003 | GPU inference, MLflow model versioning |
+| `trading-engine` | 8004 | Alpaca paper/live order execution |
+| `orchestrator` | 8005 | Saga-pattern workflow coordination |
+
+Infrastructure: TimescaleDB (PostgreSQL 15), Redis, Kafka, Prometheus, Grafana, MLflow. See `docker-compose.yml`.
+
+---
+
+## TFT Model Configuration
+
 ```python
-# Model Architecture Specifications
-TFT_CONFIG = {
-    "input_size": 64,           # Number of input features
-    "hidden_size": 256,         # Hidden layer dimensions
-    "num_attention_heads": 8,   # Multi-head attention
-    "num_encoder_layers": 6,    # Encoder depth
-    "num_decoder_layers": 6,    # Decoder depth
-    "dropout": 0.1,            # Regularization
-    "horizon": 5,              # Prediction horizon (minutes)
-    "context_length": 60       # Historical context (minutes)
-}
-```
-
-**Key Features:**
-- Multi-horizon forecasting (1-5 minutes ahead)
-- Attention mechanisms for feature importance
-- Static and dynamic covariate handling
-- Quantile prediction with uncertainty estimates
-
-### **2. Sentiment Analysis Engine**
-```python
-# Sentiment Classification Rules
-SENTIMENT_THRESHOLDS = {
-    "bullish": 0.3,    # sentiment_score > 0.3
-    "bearish": -0.3,   # sentiment_score < -0.3
-    "neutral": "between -0.3 and 0.3"
-}
-
-# Performance Targets
-SENTIMENT_PERFORMANCE = {
-    "processing_latency": "<100ms per 1000 comments",
-    "accuracy": ">85% classification accuracy",
-    "throughput": "10k+ comments per second"
-}
-```
-
-### **3. Portfolio Optimization**
-**Black-Litterman Framework:**
-- Market equilibrium returns as baseline
-- Sentiment confidence as view certainty
-- Risk parity adjustments for volatility
-- Transaction cost minimization
-
-**Risk Controls:**
-- Maximum position size: 5% per stock
-- Maximum sector exposure: 25% per sector
-- Portfolio beta limits: 0.8-1.2 range
-- VaR calculation at 95% confidence
-
----
-
-## 📊 DATA PIPELINE ARCHITECTURE
-
-### **Real-time Data Flow**
-```mermaid
-graph LR
-    A[Polygon WebSocket] -->|Market Data| B[Kafka Topic: market_data]
-    C[Reddit API] -->|Comments| D[Kafka Topic: social_data]
-    
-    B --> E[Data Processor]
-    D --> F[Sentiment Processor]
-    
-    E --> G[Feature Engineering]
-    F --> G
-    
-    G --> H[TFT Model Inference]
-    H --> I[PostgreSQL Storage]
-    
-    I --> J[Signal Generator]
-    J --> K[Portfolio Optimizer]
-    K --> L[Trade Executor]
-```
-
-### **Batch Processing Workflow**
-1. **Data Ingestion**: Multi-threaded collectors with rate limiting
-2. **Data Validation**: Schema validation and anomaly detection
-3. **Feature Engineering**: Technical indicators and sentiment aggregation
-4. **Model Training**: Daily incremental and weekly full retraining
-5. **Backtesting**: Performance validation on historical data
-6. **Model Deployment**: A/B testing and gradual rollout
-
----
-
-## ⚡ PERFORMANCE SPECIFICATIONS
-
-### **System Performance Metrics**
-| **Component** | **Metric** | **Target** | **SLA** |
-|---------------|------------|------------|---------|
-| **Data Ingestion** | Throughput | 50k msg/sec | 99.9% |
-| **Sentiment Analysis** | P99 Latency | <100ms | 99.5% |
-| **TFT Prediction** | Inference Time | <50ms | 99.0% |
-| **Portfolio Optimization** | Calculation Time | <200ms | 99.0% |
-| **Trade Execution** | Order Latency | <50ms | 99.9% |
-| **Database Queries** | P95 Response | <10ms | 99.5% |
-| **System Uptime** | Availability | 99.9% | Market Hours |
-
-### **Trading Performance Targets**
-- **Sharpe Ratio**: >1.8 annual target
-- **Maximum Drawdown**: <15% historical
-- **Win Rate**: >55% of profitable trades
-- **Alpha Generation**: >5% excess return vs benchmark
-- **Risk-Adjusted Returns**: >2.0 Sortino ratio
-
----
-
-## 🛠️ DEPLOYMENT ARCHITECTURE
-
-### **Kubernetes Production Setup**
-```yaml
-# Production Deployment Specifications
-infrastructure:
-  cluster: AWS EKS Multi-AZ
-  nodes:
-    - type: "c5.2xlarge"    # General compute
-      count: 3-10           # Auto-scaling
-    - type: "g4dn.xlarge"   # GPU training
-      count: 1-3            # On-demand scaling
-  
-services:
-  data_ingestion:
-    replicas: 2-10
-    resources:
-      cpu: "1-2 cores"
-      memory: "4-8GB"
-  
-  tft_training:
-    replicas: 1
-    resources:
-      gpu: "1x T4"
-      cpu: "4 cores"
-      memory: "16GB"
-  
-  prediction_api:
-    replicas: 3-15
-    resources:
-      cpu: "2-4 cores"
-      memory: "8-16GB"
-```
-
-### **Infrastructure Components**
-- **Database**: RDS PostgreSQL with read replicas
-- **Message Queue**: Amazon MSK (Managed Kafka)
-- **Cache**: ElastiCache Redis cluster
-- **Storage**: S3 for model artifacts and logs
-- **Monitoring**: CloudWatch + Prometheus stack
-- **Security**: IAM roles, VPC, encryption at rest/transit
-
----
-
-## 🔧 COPILOT PROMPT SYSTEM
-
-### **Institutional-Grade Code Generation**
-The system includes 20+ production-ready Copilot prompts for rapid development:
-
-#### **Core Trading Components**
-1. **`execute_live_trades()`** - Alpaca integration with risk controls
-2. **`calculate_exact_sentiment_percentages()`** - Vectorized sentiment analysis
-3. **`create_multi_ticker_signals()`** - Portfolio signal generation
-4. **`implement_portfolio_optimization()`** - Black-Litterman optimizer
-5. **`build_options_pricing_engine()`** - Black-Scholes with Greeks
-
-#### **System Architecture Components**
-6. **`create_master_pipeline_orchestrator()`** - Fault-tolerant coordinator
-7. **`implement_dynamic_config_system()`** - Hot-reload configuration
-8. **`build_ml_ops_training_system()`** - Automated model lifecycle
-9. **`build_system_anomaly_detector()`** - Real-time monitoring
-10. **`create_kubernetes_deployment()`** - Production deployment
-
-#### **Advanced Features**
-11. **`implement_dark_pool_analytics()`** - Institutional flow detection
-12. **`create_tax_optimized_rebalancer()`** - Tax-efficient trading
-13. **`build_earnings_impact_predictor()`** - Earnings-aware predictions
-14. **`implement_stress_testing_framework()`** - Risk scenario analysis
-15. **`generate_innovation_roadmap()`** - Future enhancement planning
-
-### **Prompt Usage Example**
-```python
-# Simply copy any prompt and press TAB in VS Code
-def calculate_exact_sentiment_percentages():
-    """
-    FILE: sentiment_analyzer.py
-    CONTEXT: After reddit_comments data loading
-    TASK: Calculate precise bullish/bearish/neutral percentages
-    INPUT: reddit_comments DataFrame with sentiment_score column
-    OUTPUT: Add columns bullish_pct, bearish_pct, neutral_pct
-    RULES:
-        - bullish: sentiment_score > 0.3 (positive sentiment)
-        - bearish: sentiment_score < -0.3 (negative sentiment)  
-        - neutral: between -0.3 and 0.3 (mixed/unclear)
-    """
-    # Copilot generates 50+ lines of production code automatically
+# Actual defaults from config_manager.py
+max_encoder_length: 30      # ~6 weeks lookback
+max_prediction_length: 5    # 5-day forecast
+batch_size: 64
+learning_rate: 0.001
+hidden_size: 64
+attention_head_size: 4
+dropout: 0.2
+hidden_continuous_size: 32
+lstm_layers: 2
+quantiles: [0.1, 0.5, 0.9]
+max_epochs: 50
+early_stopping_patience: 10
+target_type: "returns"
+prediction_horizon: 5
+validation_split: 0.15
 ```
 
 ---
 
-## 📈 CURRENT SYSTEM STATUS
+## Redis Signal Channels
 
-### **Operational Capabilities**
-✅ **Universal Training Pipeline**: Bash-based system processing multiple stocks  
-✅ **PostgreSQL Integration**: Production database with 7+ core tables  
-✅ **Exact Percentage Predictions**: NVDA (+0.01%, 95% confidence), TSLA (+0.02%, 77.8%)  
-✅ **Multi-Stock Support**: Tested on NVDA, TSLA, AAPL, MSFT successfully  
-✅ **Reddit Sentiment Data**: Available for integration with trading signals  
-✅ **Authentication Resolution**: Bash/sudo approach solving Python connectivity issues  
-
-### **Recent Performance Results**
-| **Stock** | **Records Processed** | **Prediction** | **Confidence** | **Current Price** |
-|-----------|----------------------|----------------|----------------|-------------------|
-| **NVDA** | 18,688 | +0.01% | 95.0% | $176.08 |
-| **TSLA** | 18,554 | +0.02% | 77.8% | $320.63 |
-| **AAPL** | 14,822 | 0.00% | 56.4% | $211.29 |
-| **MSFT** | 10,417 | +0.01% | 47.5% | $513.75 |
+| Channel | Content |
+|---------|---------|
+| `apex:signals:stock` | Equity ensemble signals |
+| `apex:signals:forex` | FX pair signals |
+| `apex:signals:options` | Options/volatility signals |
+| `apex:signals:risk` | Composite tail risk index |
 
 ---
 
-## 🎯 12-WEEK IMPLEMENTATION ROADMAP
+## Database
 
-### **Phase 1: Foundation (Weeks 1-2)**
-- [ ] Complete system architecture documentation
-- [ ] Data pipeline specifications
-- [ ] Kubernetes deployment guide
-- [ ] Performance benchmarking framework
+### Paper Trader (PostgreSQL)
 
-### **Phase 2: Core Implementation (Weeks 3-6)**
-- [ ] Real-time sentiment momentum engine
-- [ ] Multi-ticker signal generation system
-- [ ] Portfolio optimization with Black-Litterman
-- [ ] System anomaly detection and monitoring
+Database `tft_trading` (default), tables:
+- `paper_trades` — Individual trade records
+- `paper_daily_snapshots` — End-of-day portfolio state
+- `paper_strategy_signals` — Per-strategy signal records
 
-### **Phase 3: Advanced Features (Weeks 7-10)**
-- [ ] Options pricing engine with Greeks
-- [ ] Dark pool analytics and flow detection
-- [ ] Tax-optimized rebalancing system
-- [ ] Earnings impact prediction model
+### Core Pipeline (PostgreSQL)
 
-### **Phase 4: Production Deployment (Weeks 11-12)**
-- [ ] Full Kubernetes production deployment
-- [ ] Comprehensive monitoring and observability
-- [ ] Performance validation and stress testing
-- [ ] Innovation roadmap and future enhancements
+Database `stock_trading_analysis` (default via `.env.template`), tables:
+- `ohlcv` — Daily OHLCV (VIEW aggregating intraday bars)
+- `fundamentals`, `sentiment`, `earnings`, `symbols`
+- `economic_indicators`, `vix_data`
+
+**Note:** Paper trader defaults to `tft_trading` while core pipeline defaults to `stock_trading_analysis`. Set `DB_NAME` in `.env` to unify.
 
 ---
 
-## 💼 REGULATORY & COMPLIANCE
+## Testing
 
-### **Risk Management Framework**
-- **Position Limits**: Maximum 5% per stock, 25% per sector
-- **Stop-Loss Controls**: Automatic 2% stop-loss, 4% take-profit
-- **Market Conditions**: Skip trading when VIX >35 or low liquidity
-- **Tax Optimization**: Wash sale avoidance, long-term gains priority
-- **Audit Trail**: Complete transaction logging in PostgreSQL
+114 tests across 12 test modules:
 
-### **Compliance Features**
-- **Trade Reporting**: IRS Form 8949 export capability
-- **Risk Metrics**: VaR, maximum drawdown, correlation limits
-- **Model Explainability**: Feature importance and decision rationale
-- **Performance Attribution**: Security selection vs market timing analysis
-- **Regulatory Notifications**: Slack/email alerts for significant events
+| Category | Files | Tests |
+|----------|-------|-------|
+| Model tests | 4 (sentiment, mean_reversion, macro, microstructure) | 38 |
+| Strategy tests | 5 (mean_reversion, sector_rotation, fx_momentum, fx_vol_breakout, vol_arb) | 35 |
+| Integration | 2 (full_pipeline, circuit_breaker) | 9 |
+| Safety guardrails | 1 (test_guardrails.py) | 33 |
+
+Run: `pytest tests/ -v`
 
 ---
 
-## 🚀 INNOVATION HIGHLIGHTS
+## Environment Variables Summary
 
-### **Competitive Advantages**
-1. **Hybrid Intelligence**: Combines technical analysis, fundamental data, and social sentiment
-2. **Real-time Adaptation**: Dynamic model retraining based on performance drift
-3. **Institutional Scalability**: Handles 500+ stocks with sub-50ms latency
-4. **Risk-Aware Optimization**: Advanced portfolio construction with multiple constraints
-5. **Explainable AI**: Trade rationale and feature importance for each decision
-
-### **Future Enhancements (2025 Roadmap)**
-- **Multi-Modal Learning**: Text, image, and numerical data fusion
-- **Quantum Optimization**: Advanced portfolio construction algorithms
-- **Alternative Data**: Satellite imagery, patent filings, hiring trends
-- **Reinforcement Learning**: Adaptive position sizing and strategy optimization
-- **Graph Neural Networks**: Sector relationship modeling
-
----
-
-## 📞 SYSTEM ACCESS & SUPPORT
-
-### **Quick Start Guide**
-1. **Clone Repository**: `git clone [repository-url]`
-2. **Setup Database**: Run PostgreSQL setup scripts
-3. **Install Dependencies**: `pip install -r requirements.txt`
-4. **Configure APIs**: Set environment variables for Polygon/Alpaca
-5. **Run Training**: `./universal_trainer.sh [TICKER]`
-6. **Monitor Results**: Query `tft_predictions` table for outputs
-
-### **Key Files Structure**
-```
-TFT/
-├── advanced_copilot_prompts.py     # 20+ production prompts
-├── master_copilot_prompts.py       # System architecture prompts
-├── COPILOT_QUICK_START.md         # Implementation guide
-├── universal_trainer.sh           # Multi-stock training pipeline
-├── simple_nvda_trainer.py         # Python training (deprecated)
-└── COMPLETE_SYSTEM_DOCUMENTATION.md  # This document
+### API Keys
+```bash
+POLYGON_API_KEY=            # Market data
+ALPACA_API_KEY=             # Trading
+ALPACA_SECRET_KEY=          # Trading
 ```
 
-### **Success Metrics Dashboard**
-Monitor these KPIs for system health:
-- **Prediction Accuracy**: <2.5% MAPE target
-- **System Uptime**: 99.9% during market hours
-- **Trading Performance**: Sharpe ratio >1.8
-- **Processing Latency**: <50ms per prediction
-- **Data Quality**: >95% successful data ingestion
+### Database
+```bash
+DB_HOST=localhost           # Paper trader convention
+DB_PORT=5432
+DB_NAME=tft_trading
+POSTGRES_HOST=localhost     # train_postgres.py convention
+POSTGRES_DB=stock_trading_analysis
+```
+
+### Safety Guardrails
+```bash
+GUARDRAIL_SIGNAL_MIN_STD=0.01
+GUARDRAIL_MAX_LEVERAGE=1.5
+GUARDRAIL_CALIBRATION_TOLERANCE=1e-6
+GUARDRAIL_MIN_PROMOTION_SHARPE=0.5
+GUARDRAIL_MAX_EXEC_FAILURE_RATE=0.25
+GUARDRAIL_EXEC_WINDOW_SECONDS=3600
+```
+
+### Notifications
+```bash
+DISCORD_WEBHOOK_URL=
+EMAIL_USER=
+EMAIL_PASSWORD=
+EMAIL_TO=
+```
 
 ---
 
-## 🏆 CONCLUSION
-
-The Institutional TFT Trading System represents a complete transformation from individual trading to institutional-grade platform capabilities. With proven exact percentage predictions, multi-stock processing, and a comprehensive Copilot prompt system for rapid development, the foundation is set for scaling to professional quantitative trading operations.
-
-**Current Status**: ✅ **Production Ready**  
-**Next Steps**: Implement advanced features using the provided Copilot prompts  
-**Timeline**: 12 weeks to full institutional deployment  
-**Expected ROI**: >20% improvement in risk-adjusted returns  
-
----
-
-*Document Version: 1.0 | Last Updated: August 5, 2025 | Classification: Internal Use*
+*Document Version: 2.1.0 | Classification: Internal Use*
