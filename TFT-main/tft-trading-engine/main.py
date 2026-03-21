@@ -36,9 +36,9 @@ logger = logging.getLogger(__name__)
 # Configuration
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://tft_user:tft_password@localhost:5432/tft_trading")
-ALPACA_API_KEY = os.getenv("ALPACA_API_KEY", "your_alpaca_key")
-ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY", "your_alpaca_secret")
+DATABASE_URL = os.environ["DATABASE_URL"]
+ALPACA_API_KEY = os.environ["ALPACA_API_KEY"]
+ALPACA_SECRET_KEY = os.environ["ALPACA_SECRET_KEY"]
 ALPACA_BASE_URL = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
 
 # Risk Parameters

@@ -1,8 +1,8 @@
 # APEX Architecture Documentation
 
-**Version**: 2.1.0
+**Version**: 3.0.0
 **Last Updated**: 2026-03-21
-**Total Python Files**: ~145
+**Total Python Files**: ~179
 **Asset Classes**: Stocks, Forex, Options/Volatility, Cross-Asset
 
 ---
@@ -202,11 +202,22 @@ TFT-main/
 │   ├── trading-engine/main.py      #   Port 8004 — Alpaca execution
 │   └── orchestrator/main.py        #   Port 8005 — Saga workflows
 │
-├── tests/                          # 114 tests across 12 files
+├── services/                       # Shared infrastructure
+│   └── common/
+│       └── dlq.py                  #   DeadLetterQueue (PostgreSQL, exp backoff)
+│
+├── utils/
+│   └── env_validator.py            #   Startup environment validation
+│
+├── tests/                          # 635 tests across 30 files
 │   ├── models/                     #   4 model test files (38 tests)
 │   ├── strategies/                 #   5 strategy test files (35 tests)
 │   ├── integration/                #   2 integration test files (9 tests)
-│   └── test_guardrails.py          #   33 tests (all 5 guardrails)
+│   ├── test_guardrails.py          #   33 tests (all 5 guardrails)
+│   ├── test_production_hardening.py #  38 tests (Kafka, TimescaleDB, schema registry)
+│   ├── test_security_hardening.py  #   22 tests (paths, passwords, secrets, env validator)
+│   ├── test_dlq.py                 #   39 tests (DLQ persistence, backoff, retry, integration)
+│   └── ... (13 more test files)    #   walk-forward, risk, CI, signals, etc.
 │
 ├── options/                        # Options infrastructure
 │   ├── infrastructure/             #   chain.py, greeks.py, pricing.py,
@@ -920,6 +931,37 @@ GUARDRAIL_EXEC_WINDOW_SECONDS=3600     # 1-hour rolling window
 
 Kafka is used by the microservices layer only. The paper trader operates independently via direct API calls.
 
+### Kafka Broker Configuration
+
+KRaft mode (no Zookeeper), Confluent CP 7.6.0:
+
+| Setting | Value | Env Var |
+|---------|-------|---------|
+| Log retention (hours) | 168 (7 days) | `KAFKA_LOG_RETENTION_HOURS` |
+| Log retention (bytes) | 5,368,709,120 (5 GB) | `KAFKA_LOG_RETENTION_BYTES` |
+| Log segment size | 1,073,741,824 (1 GB) | `KAFKA_LOG_SEGMENT_BYTES` |
+
+### Dead Letter Queue (`services/common/dlq.py`)
+
+All 4 Kafka consumers persist failed messages to a PostgreSQL `dead_letter_queue` table for retry.
+
+**Status Lifecycle:** `PENDING` -> `RETRYING` -> `RESOLVED` | `EXHAUSTED`
+
+**Exponential Backoff:**
+- Base delay: 1s, multiplier: 2x, max delay: 60s, jitter: 0-25%
+- Max retries: 5 (configurable per instance)
+- Background retry worker polls every 30s (daemon thread)
+- Uses `FOR UPDATE SKIP LOCKED` for concurrent safety
+
+**Integration:** `sentiment-engine`, `trading-engine`, `tft-predictor`, `orchestrator` each instantiate their own `DeadLetterQueue` with a service-specific `source_service` tag.
+
+### Schema Registry (`microservices/schema_registry.py`)
+
+Confluent Schema Registry client with thread-safe singleton connection cache:
+- `get_schema_registry_client()` — returns cached instance, creates on first call
+- Exponential backoff retry on connection failure (max 3 retries, base 1s)
+- `reset_client()` for testing
+
 ---
 
 ## 16. Microservices Layer
@@ -940,11 +982,13 @@ Five FastAPI services coordinated via Kafka and Redis. Deployed via `docker-comp
 |---------|------|-------|
 | PostgreSQL (TimescaleDB) | 5432 | timescale/timescaledb:latest-pg15 |
 | Redis | 6379 | redis:7-alpine |
+| Kafka Broker | 9092 | confluentinc/cp-kafka:7.6.0 (KRaft) |
+| Schema Registry | 8081 | confluentinc/cp-schema-registry:7.6.0 |
 | MLflow | 5000 | ghcr.io/mlflow/mlflow |
 | Prometheus | 9090 | prom/prometheus |
 | Grafana | 3000 | grafana/grafana |
 | Kafka UI | 8080 | provectuslabs/kafka-ui |
-| Redis Commander | 8081 | rediscommander/redis-commander |
+| Redis Commander | 8082 | rediscommander/redis-commander |
 
 **Note:** Requires external network `tft_network` (`docker network create tft_network`).
 
@@ -985,7 +1029,7 @@ POSTGRES_HOST=localhost
 POSTGRES_PORT=15432
 POSTGRES_DB=apex
 POSTGRES_USER=apex_user
-POSTGRES_PASSWORD=apex_pass
+POSTGRES_PASSWORD=<your_secure_password>
 ```
 
 **Strategy Configs** — Each strategy has a config dataclass in `strategies/config.py` with `from_env()` classmethod. All use `_env_bool`, `_env_float`, `_env_int` helpers. `StrategyMasterConfig.from_env()` loads all sub-configs.
@@ -1146,7 +1190,7 @@ validation_split: 0.15
 
 ## 21. Testing
 
-### Test Suite: 114 tests, 12 files
+### Test Suite: 635 tests, 30 files
 
 ```
 tests/
@@ -1164,15 +1208,76 @@ tests/
 ├── integration/
 │   ├── test_full_pipeline.py         #  4 tests (all strategies through ensemble)
 │   └── test_circuit_breaker.py       #  5 tests (import/config tests)
-└── test_guardrails.py                # 33 tests (signal variance, leverage gate,
-                                      #   calibration health, model promotion, exec monitor)
+├── test_guardrails.py                # 33 tests (all 5 guardrails)
+├── test_production_hardening.py      # 38 tests (Kafka retention, TimescaleDB, schema registry)
+├── test_security_hardening.py        # 22 tests (paths, passwords, secrets, env validator)
+├── test_dlq.py                       # 39 tests (DLQ persistence, backoff, retry, integration)
+├── test_walk_forward.py              # walk-forward cross-validation
+├── test_risk_wiring.py               # risk manager integration
+├── test_bug_fixes.py                 # bug fix regression tests
+├── test_bug_fixes_final.py           # final bug fix regression tests
+├── test_ci_pipeline.py               # CI/CD pipeline tests
+├── test_bayesian_updater.py          # Bayesian ensemble updater
+├── test_sentiment_strategy.py        # sentiment strategy tests
+├── test_signal_analyst.py            # signal analysis tests
+├── test_signal_provider.py           # signal provider tests
+├── test_vwap_execution.py            # VWAP execution tests
+└── test_prometheus_metrics.py        # 69 tests (needs prometheus_client)
 ```
 
-**Run:** `pytest tests/ -v` — all 114 tests pass.
+**Run:** `pytest tests/ -v` — 566 tests pass (69 prometheus tests require `pip install prometheus_client`).
 
 ---
 
-## 22. Deployment Status
+## 22. Data Retention & TimescaleDB
+
+### Hypertables
+
+Four tables converted to TimescaleDB hypertables for time-series optimization:
+- `ohlcv_bars` (partitioned on `time`)
+- `paper_risk_reports` (partitioned on `created_at`)
+- `paper_execution_stats` (partitioned on `created_at`)
+- `paper_signal_analyses` (partitioned on `created_at`)
+
+### Retention Policies
+
+| Table | Retention | Interval |
+|-------|-----------|----------|
+| `ohlcv_bars` | 365 days | Drop chunks older than 1 year |
+| `paper_risk_reports` | 90 days | Drop chunks older than 3 months |
+| `paper_execution_stats` | 90 days | Drop chunks older than 3 months |
+| `paper_signal_analyses` | 90 days | Drop chunks older than 3 months |
+
+### Continuous Aggregates
+
+Three materialized views with automatic refresh policies:
+
+| View | Aggregation | Refresh Lag | Refresh Window |
+|------|-------------|-------------|----------------|
+| `ohlcv_15m` | 15-minute OHLCV bars | 1 hour | 2 days |
+| `ohlcv_1h` | 1-hour OHLCV bars | 2 hours | 3 days |
+| `ohlcv_1d` | Daily OHLCV bars | 1 day | 7 days |
+
+## 22b. Security Hardening
+
+### Credential Management
+- All database passwords use `os.environ['VAR']` (raises `KeyError` on missing) — no defaults
+- docker-compose uses `${VAR:?error_message}` for required credentials
+- `setup_postgres.sh` uses placeholder values only (real keys removed)
+
+### Startup Validation (`utils/env_validator.py`)
+- Required vars: `DB_PASSWORD`, `ALPACA_API_KEY`, `ALPACA_SECRET_KEY`
+- Placeholder detection: rejects `your_*`, `CHANGE_ME`, `changeme`, `xxx` patterns
+- Called in paper-trader lifespan with `strict=True` (exits on failure)
+
+### `.env` Security
+- `.env` is gitignored
+- `.env.example` contains safe placeholders only
+- No hardcoded machine paths in codebase
+
+---
+
+## 23. Deployment Status
 
 ### Current State (2026-03-21)
 
@@ -1180,7 +1285,7 @@ tests/
 
 | Service | Status | Details |
 |---------|--------|---------|
-| Paper Trader | **Running** on port 8010 | v2.0.0, last run 21:30 UTC |
+| Paper Trader | **Running** on port 8010 | v3.0.0 |
 | TimescaleDB | **Running** on port 15432 | 798K OHLCV bars, 26 tables |
 | Redis | **Running** on port 6379 | Signal publishing active |
 | APScheduler | **Active** | Daily 10:00 ET Mon-Fri |
@@ -1239,4 +1344,4 @@ tests/
 
 ---
 
-*Generated from codebase analysis on 2026-03-20. 142 Python files, 10 models, 11 strategies, 26 database tables, 13 Kafka topics, 4 Redis channels.*
+*Version 3.0.0. ~179 Python files, 10 models, 11 strategies, 635 tests, 26+ database tables, 13 Kafka topics, 4 Redis channels.*

@@ -22,8 +22,12 @@ from pydantic import BaseModel
 import mlflow
 import mlflow.pytorch
 import os
+import sys
 from contextlib import asynccontextmanager
 import psycopg2
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from services.common.dlq import DeadLetterQueue, start_retry_worker
 from sqlalchemy import create_engine
 import pickle
 from sklearn.preprocessing import StandardScaler
@@ -38,7 +42,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://tft_user:tft_password@localhost:5432/tft_trading")
+DATABASE_URL = os.environ["DATABASE_URL"]
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
 MODEL_ARTIFACT_PATH = os.getenv("MODEL_ARTIFACT_PATH", "/app/models")
 
@@ -529,6 +533,12 @@ class TFTPredictor:
     
     async def consume_market_data(self):
         """Consume market data for real-time feature updates"""
+        dlq = None
+        try:
+            dlq = DeadLetterQueue(db_url=DATABASE_URL, service_name="tft-predictor")
+        except Exception as e:
+            logger.warning("DLQ init failed: %s", e)
+
         try:
             consumer = KafkaConsumer(
                 KAFKA_TOPICS["market_data"],
@@ -548,6 +558,14 @@ class TFTPredictor:
 
                 except Exception as e:
                     logger.error(f"Error processing market data: {e}")
+                    if dlq:
+                        dlq.persist(
+                            topic=message.topic,
+                            key=message.key.decode() if message.key else None,
+                            value=data,
+                            error=str(e),
+                        )
+                    consumer.commit()
 
         except Exception as e:
             logger.error(f"Kafka consumer error: {e}")
@@ -616,6 +634,22 @@ async def lifespan(app: FastAPI):
     global tft_predictor
     tft_predictor = TFTPredictor()
     await tft_predictor.initialize()
+    # Start DLQ retry worker
+    try:
+        _dlq = DeadLetterQueue(db_url=DATABASE_URL, service_name="tft-predictor")
+
+        def _reprocess(topic, key, value):
+            import asyncio as _aio
+            loop = _aio.new_event_loop()
+            try:
+                loop.run_until_complete(tft_predictor.update_feature_cache(value))
+            finally:
+                loop.close()
+
+        start_retry_worker(_dlq, _reprocess)
+        logger.info("DLQ retry worker started for tft-predictor")
+    except Exception as e:
+        logger.warning("DLQ retry worker not started: %s", e)
     yield
     # Shutdown
     await tft_predictor.cleanup()

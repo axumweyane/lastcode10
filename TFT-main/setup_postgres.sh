@@ -72,21 +72,21 @@ if [ ! -f ".env" ]; then
 POSTGRES_HOST=localhost
 POSTGRES_DB=stock_trading_analysis
 POSTGRES_USER=trading_user
-POSTGRES_PASSWORD=trading_password
+POSTGRES_PASSWORD=CHANGE_ME_REQUIRED
 POSTGRES_PORT=5432
 POSTGRES_SCHEMA=public
 
 # Polygon.io API (for enhanced data collection)
-POLYGON_API_KEY=t9p6k7C5Wfo2fAlk7xn6CjyQtaAJPVOI
+POLYGON_API_KEY=your_polygon_api_key_here
 
 # Alpaca Trading API
-ALPACA_API_KEY=PKEFQ3SDGH2O2RH1PKD7
-ALPACA_SECRET_KEY=T5pFq7vxZoaDj5bK3yAa9kLq8Gt3JiPl2W9rBr8i
+ALPACA_API_KEY=your_alpaca_api_key_here
+ALPACA_SECRET_KEY=your_alpaca_secret_key_here
 ALPACA_BASE_URL=https://paper-api.alpaca.markets
 
 # Reddit API (sentiment analysis)
-REDDIT_CLIENT_ID=kVcqPqCT1Zf46EbQ2-77Tw
-REDDIT_CLIENT_SECRET=mH8_klCUFx9Q5mYYJUk7D0ggJB7Vdw
+REDDIT_CLIENT_ID=your_reddit_client_id_here
+REDDIT_CLIENT_SECRET=your_reddit_client_secret_here
 REDDIT_USER_AGENT=TFT_Trading_Bot_v1.0
 
 # OpenAI API (for sentiment analysis)
@@ -170,7 +170,7 @@ try:
         'host': os.getenv('POSTGRES_HOST', 'localhost'),
         'database': os.getenv('POSTGRES_DB', 'stock_trading_analysis'),
         'user': os.getenv('POSTGRES_USER', 'trading_user'),
-        'password': os.getenv('POSTGRES_PASSWORD', 'trading_password'),
+        'password': os.environ['POSTGRES_PASSWORD'],
         'port': int(os.getenv('POSTGRES_PORT', 5432))
     }
     

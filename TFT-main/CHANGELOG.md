@@ -4,6 +4,67 @@ All notable changes to the APEX Trading System are documented in this file.
 
 ---
 
+## [3.0.0] — 2026-03-21
+
+### Production Hardening Release
+
+Complete production hardening across data retention, security, and fault tolerance. All 17 audited bugs resolved.
+
+### Added — Data Retention & Schema Registry
+
+- **Kafka broker** service (KRaft mode, Confluent CP 7.6.0) with retention: 168h, 5GB max, 1GB segments
+- **Confluent Schema Registry** service with thread-safe singleton connection cache (`microservices/schema_registry.py`)
+- **TimescaleDB hypertables** for `ohlcv_bars`, `paper_risk_reports`, `paper_execution_stats`, `paper_signal_analyses`
+- **Retention policies**: 365d for OHLCV, 90d for risk/execution/signal data
+- **Continuous aggregates**: `ohlcv_15m`, `ohlcv_1h`, `ohlcv_1d` with automatic refresh
+
+### Added — Dead Letter Queue
+
+- `services/common/dlq.py` — PostgreSQL-persisted DLQ with status lifecycle (PENDING -> RETRYING -> RESOLVED/EXHAUSTED)
+- Exponential backoff: base 1s, 2x multiplier, max 5 retries, max 60s delay, 0-25% jitter
+- DLQ integrated into all 4 Kafka consumers (sentiment-engine, trading-engine, tft-predictor, orchestrator)
+- Background retry worker thread (polls every 30s, `FOR UPDATE SKIP LOCKED`)
+- `/dlq` dashboard endpoint in paper-trader
+
+### Added — Security
+
+- `utils/env_validator.py` — startup validation of required env vars with placeholder detection
+- Environment validation wired into paper-trader lifespan (`strict=True`)
+
+### Added — Tests
+
+- `tests/test_production_hardening.py` — 38 tests (Kafka retention, TimescaleDB, schema registry)
+- `tests/test_security_hardening.py` — 22 tests (paths, passwords, secrets, env validator)
+- `tests/test_dlq.py` — 39 tests (backoff, persistence, retry, status transitions, integration)
+- Total: 635 tests across 30 test files
+
+### Changed
+
+- All database password defaults removed — `os.environ[]` (raises on missing) across 18 files
+- docker-compose credentials use `${VAR:?error}` for fail-fast
+- `.env.example` rewritten with safe placeholders only
+
+### Removed
+
+- All hardcoded user home directory paths
+- All hardcoded passwords (`trading_password`, `tft_password`, `***`)
+- Real API keys from `setup_postgres.sh` (Polygon, Alpaca, Reddit)
+- Hardcoded username `kibrom` from training scripts
+
+### Fixed
+
+- **CF-8**: Alpaca `ClientSession` timeout aligned with `_api_call()` timeout
+- **HI-5**: Scheduler hours sourced from environment variables
+- **HI-8**: Docker healthcheck directives added for Redis
+
+### Security
+
+- Removed real Polygon API key from tracked shell script
+- Removed real Alpaca API key/secret from tracked shell script
+- Removed real Reddit client ID/secret from tracked shell script
+
+---
+
 ## [2.1.0] — 2026-03-21
 
 ### Added — Safety Guardrails

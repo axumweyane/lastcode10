@@ -114,7 +114,7 @@ DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = int(os.getenv("DB_PORT", "5432"))
 DB_NAME = os.getenv("DB_NAME", "tft_trading")
 DB_USER = os.getenv("DB_USER", "tft_user")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "tft_password")
+DB_PASSWORD = os.environ["DB_PASSWORD"]
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
 TRADING_SYMBOLS = os.getenv(
@@ -1321,6 +1321,10 @@ async def lifespan(app: FastAPI):
     global circuit_breaker, db_pool, broker, risk_manager, bayesian_updater, vwap_model
     global signal_analyst
 
+    # Validate required environment variables before any connections
+    from utils.env_validator import validate
+    validate(strict=True)
+
     # Database connection pool
     try:
         db_pool = psycopg2.pool.ThreadedConnectionPool(
@@ -1655,6 +1659,18 @@ async def analysis_latest():
     if analysis is None:
         return {"enabled": True, "analysis": None, "message": "No analysis yet — waiting for first pipeline run"}
     return {"enabled": True, "analysis": analysis.to_dict()}
+
+
+@app.get("/dlq")
+async def dlq_dashboard():
+    """Dead letter queue dashboard: totals by status, recent failures, retry success rate."""
+    db_url = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    try:
+        from services.common.dlq import DeadLetterQueue
+        dlq = DeadLetterQueue(db_url=db_url, service_name="paper-trader")
+        return dlq.get_all_stats()
+    except Exception as e:
+        return {"error": str(e), "by_status": {}, "recent_failures": [], "retry_success_rate_pct": 0}
 
 
 @app.get("/dashboard", response_class=HTMLResponse)

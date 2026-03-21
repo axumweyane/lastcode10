@@ -340,7 +340,7 @@ Environment variables for PostgreSQL:
 POSTGRES_HOST=localhost
 POSTGRES_DB=stock_trading_analysis  
 POSTGRES_USER=trading_user
-POSTGRES_PASSWORD=trading_password
+POSTGRES_PASSWORD=<your_secure_password>
 POSTGRES_PORT=5432
 POSTGRES_SCHEMA=public
 ```

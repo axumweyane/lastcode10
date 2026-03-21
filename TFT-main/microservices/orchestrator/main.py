@@ -16,8 +16,12 @@ from kafka import KafkaConsumer, KafkaProducer
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 import os
+import sys
 from contextlib import asynccontextmanager
 import psycopg2
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from services.common.dlq import DeadLetterQueue, start_retry_worker
 from sqlalchemy import create_engine, text
 import aiohttp
 import schedule
@@ -34,7 +38,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://tft_user:tft_password@localhost:5432/tft_trading")
+DATABASE_URL = os.environ["DATABASE_URL"]
 
 # Service URLs
 SERVICE_URLS = {
@@ -878,6 +882,12 @@ class Orchestrator:
     
     async def event_consumer(self):
         """Consume system events from Kafka"""
+        dlq = None
+        try:
+            dlq = DeadLetterQueue(db_url=DATABASE_URL, service_name="orchestrator")
+        except Exception as e:
+            logger.warning("DLQ init failed: %s", e)
+
         try:
             consumer = KafkaConsumer(
                 KAFKA_TOPICS["system_events"],
@@ -896,6 +906,14 @@ class Orchestrator:
 
                 except Exception as e:
                     logger.error(f"Error processing system event: {e}")
+                    if dlq:
+                        dlq.persist(
+                            topic=message.topic,
+                            key=message.key.decode() if message.key else None,
+                            value=event,
+                            error=str(e),
+                        )
+                    consumer.commit()
 
         except Exception as e:
             logger.error(f"Event consumer error: {e}")
@@ -1137,6 +1155,22 @@ async def lifespan(app: FastAPI):
     global orchestrator
     orchestrator = Orchestrator()
     await orchestrator.initialize()
+    # Start DLQ retry worker
+    try:
+        _dlq = DeadLetterQueue(db_url=DATABASE_URL, service_name="orchestrator")
+
+        def _reprocess(topic, key, value):
+            import asyncio as _aio
+            loop = _aio.new_event_loop()
+            try:
+                loop.run_until_complete(orchestrator.process_system_event(value))
+            finally:
+                loop.close()
+
+        start_retry_worker(_dlq, _reprocess)
+        logger.info("DLQ retry worker started for orchestrator")
+    except Exception as e:
+        logger.warning("DLQ retry worker not started: %s", e)
     yield
     # Shutdown
     await orchestrator.cleanup()

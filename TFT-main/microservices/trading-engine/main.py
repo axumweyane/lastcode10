@@ -18,8 +18,12 @@ from kafka import KafkaConsumer, KafkaProducer
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 import os
+import sys
 from contextlib import asynccontextmanager
 import psycopg2
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from services.common.dlq import DeadLetterQueue, start_retry_worker
 from sqlalchemy import create_engine, text
 import aiohttp
 import asyncio
@@ -36,9 +40,9 @@ logger = logging.getLogger(__name__)
 # Configuration
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://tft_user:tft_password@localhost:5432/tft_trading")
-ALPACA_API_KEY = os.getenv("ALPACA_API_KEY", "your_alpaca_key")
-ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY", "your_alpaca_secret")
+DATABASE_URL = os.environ["DATABASE_URL"]
+ALPACA_API_KEY = os.environ["ALPACA_API_KEY"]
+ALPACA_SECRET_KEY = os.environ["ALPACA_SECRET_KEY"]
 ALPACA_BASE_URL = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
 
 # Risk Parameters
@@ -684,6 +688,12 @@ class TradingEngine:
     
     async def consume_trading_signals(self):
         """Consume trading signals and execute trades"""
+        dlq = None
+        try:
+            dlq = DeadLetterQueue(db_url=DATABASE_URL, service_name="trading-engine")
+        except Exception as e:
+            logger.warning("DLQ init failed: %s", e)
+
         try:
             consumer = KafkaConsumer(
                 KAFKA_TOPICS["trading_signals"],
@@ -702,6 +712,14 @@ class TradingEngine:
 
                 except Exception as e:
                     logger.error(f"Error processing trading signal: {e}")
+                    if dlq:
+                        dlq.persist(
+                            topic=message.topic,
+                            key=message.key.decode() if message.key else None,
+                            value=signal,
+                            error=str(e),
+                        )
+                    consumer.commit()
 
         except Exception as e:
             logger.error(f"Trading signal consumer error: {e}")
@@ -811,6 +829,22 @@ async def lifespan(app: FastAPI):
     global trading_engine
     trading_engine = TradingEngine()
     await trading_engine.initialize()
+    # Start DLQ retry worker
+    try:
+        _dlq = DeadLetterQueue(db_url=DATABASE_URL, service_name="trading-engine")
+
+        def _reprocess(topic, key, value):
+            import asyncio as _aio
+            loop = _aio.new_event_loop()
+            try:
+                loop.run_until_complete(trading_engine.process_trading_signal(value))
+            finally:
+                loop.close()
+
+        start_retry_worker(_dlq, _reprocess)
+        logger.info("DLQ retry worker started for trading-engine")
+    except Exception as e:
+        logger.warning("DLQ retry worker not started: %s", e)
     yield
     # Shutdown
     await trading_engine.cleanup()

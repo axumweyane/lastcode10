@@ -1,7 +1,7 @@
 # APEX Trading System — Complete Documentation
 
 *Multi-Strategy Algorithmic Trading Platform*
-*Last Updated: 2026-03-21 | Version 2.1.0*
+*Last Updated: 2026-03-21 | Version 3.0.0*
 
 ---
 
@@ -13,12 +13,15 @@ APEX is a production-grade multi-strategy algorithmic trading platform built aro
 
 | Metric | Value |
 |--------|-------|
-| Python files | ~145 |
+| Python files | ~179 |
 | Models | 10 (6 deep learning, 4 statistical/rule-based) |
 | Strategies | 11 (stocks, FX, options) |
 | Safety guardrails | 5 (pre-trade checks) |
-| Tests | 114 across 12 test modules |
+| Tests | 635 across 30 test modules |
 | Asset classes | Stocks, Forex, Options/Volatility, Cross-Asset |
+| Data retention | TimescaleDB hypertables + continuous aggregates |
+| Message recovery | Dead Letter Queue with exponential backoff |
+| Security | Env-only credentials, startup validation, no hardcoded secrets |
 
 ---
 
@@ -171,7 +174,7 @@ Runs at startup on all loaded models and can be called before each daily run.
 
 `paper-trader/main.py` — FastAPI service on port 8010.
 
-### Daily Pipeline (16 steps)
+### Daily Pipeline (18 steps)
 
 1. Fetch OHLCV via yfinance (stocks + SPY + FX pairs, 300 days)
 2. Circuit breaker pre-check (Redis-backed)
@@ -200,6 +203,7 @@ Runs at startup on all loaded models and can be called before each daily run.
 | GET | `/history` | Last 30 pipeline run records |
 | GET | `/weights` | Current strategy weight distribution |
 | GET | `/dashboard` | Live HTML dashboard |
+| GET | `/dlq` | Dead letter queue statistics |
 
 ### Production Infrastructure
 
@@ -227,7 +231,7 @@ Five FastAPI services coordinated via Kafka topics and Redis caching:
 | `trading-engine` | 8004 | Alpaca paper/live order execution |
 | `orchestrator` | 8005 | Saga-pattern workflow coordination |
 
-Infrastructure: TimescaleDB (PostgreSQL 15), Redis, Kafka, Prometheus, Grafana, MLflow. See `docker-compose.yml`.
+Infrastructure: TimescaleDB (PostgreSQL 15), Redis, Kafka (KRaft mode with retention policies), Schema Registry (Confluent), Prometheus, Grafana, MLflow. All 4 Kafka consumers have DLQ integration with exponential backoff retry. See `docker-compose.yml`.
 
 ---
 
@@ -287,7 +291,7 @@ Database `stock_trading_analysis` (default via `.env.template`), tables:
 
 ## Testing
 
-114 tests across 12 test modules:
+635 tests across 30 test modules:
 
 | Category | Files | Tests |
 |----------|-------|-------|
@@ -295,8 +299,37 @@ Database `stock_trading_analysis` (default via `.env.template`), tables:
 | Strategy tests | 5 (mean_reversion, sector_rotation, fx_momentum, fx_vol_breakout, vol_arb) | 35 |
 | Integration | 2 (full_pipeline, circuit_breaker) | 9 |
 | Safety guardrails | 1 (test_guardrails.py) | 33 |
+| Production hardening | 1 (Kafka, TimescaleDB, schema registry) | 38 |
+| Security hardening | 1 (paths, passwords, secrets, env validator) | 22 |
+| Dead Letter Queue | 1 (backoff, persistence, retry, integration) | 39 |
+| Prometheus metrics | 1 (needs `prometheus_client`) | 69 |
+| Other | 14 (walk-forward, risk, CI, signals, etc.) | 352 |
 
 Run: `pytest tests/ -v`
+
+---
+
+## Production Hardening (v3.0.0)
+
+### Data Retention
+- **Kafka**: KRaft broker with 168h log retention, 5GB max per topic, 1GB segments
+- **TimescaleDB**: Hypertables with retention policies (365d OHLCV, 90d risk/execution)
+- **Continuous Aggregates**: 15m, 1h, 1d OHLCV rollup views with automatic refresh
+
+### Dead Letter Queue
+- PostgreSQL-persisted failed message recovery (`services/common/dlq.py`)
+- Exponential backoff: base 1s, 2x multiplier, max 5 retries, 0-25% jitter
+- Integrated into all 4 Kafka consumers with background retry worker
+- `/dlq` endpoint for monitoring
+
+### Security
+- All credentials via `os.environ[]` (no defaults, raises on missing)
+- Startup validation (`utils/env_validator.py`) with placeholder detection
+- No hardcoded paths or secrets in codebase
+- `.env.example` has safe placeholders only
+
+### Testing
+635 tests across 30 files including production hardening (38), security (22), and DLQ (39) tests.
 
 ---
 
@@ -338,4 +371,4 @@ EMAIL_TO=
 
 ---
 
-*Document Version: 2.1.0 | Classification: Internal Use*
+*Document Version: 3.0.0 | Classification: Internal Use*

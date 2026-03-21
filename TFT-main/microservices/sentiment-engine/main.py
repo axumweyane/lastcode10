@@ -19,9 +19,13 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import pandas as pd
 import os
+import sys
 from contextlib import asynccontextmanager
 from collections import defaultdict, deque
 import re
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from services.common.dlq import DeadLetterQueue, start_retry_worker
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -30,6 +34,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 MODEL_NAME = os.getenv("SENTIMENT_MODEL", "cardiffnlp/twitter-roberta-base-sentiment-latest")
 
 # Kafka Topics
@@ -449,18 +454,54 @@ async def get_ticker_momentum(ticker: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# Dead letter queue
+_dlq: Optional[DeadLetterQueue] = None
+
+
+def _get_dlq() -> Optional[DeadLetterQueue]:
+    global _dlq
+    if _dlq is None and DATABASE_URL:
+        try:
+            _dlq = DeadLetterQueue(db_url=DATABASE_URL, service_name="sentiment-engine")
+        except Exception as e:
+            logger.warning("DLQ init failed: %s", e)
+    return _dlq
+
+
+def _dlq_reprocess(topic: str, key: Optional[str], value) -> None:
+    """Re-process a DLQ message (called by retry worker)."""
+    import asyncio as _aio
+    loop = _aio.new_event_loop()
+    try:
+        loop.run_until_complete(service.process_comment(value))
+    finally:
+        loop.close()
+
+
 # Background Kafka consumer
 async def kafka_consumer_task():
     """Background task to consume messages from Kafka"""
     logger.info("Starting Kafka consumer task")
+    dlq = _get_dlq()
 
     while True:
         try:
             for message in service.kafka_consumer:
-                comment_data = message.value
-                await service.process_comment(comment_data)
-                service.kafka_producer.flush()
-                service.kafka_consumer.commit()
+                try:
+                    comment_data = message.value
+                    await service.process_comment(comment_data)
+                    service.kafka_producer.flush()
+                    service.kafka_consumer.commit()
+                except Exception as msg_err:
+                    logger.error("Failed to process message: %s", msg_err)
+                    if dlq:
+                        dlq.persist(
+                            topic=message.topic,
+                            key=message.key.decode() if message.key else None,
+                            value=comment_data if 'comment_data' in dir() else {},
+                            error=str(msg_err),
+                        )
+                    service.kafka_consumer.commit()
 
         except Exception as e:
             logger.error(f"Error in Kafka consumer: {e}")
@@ -470,6 +511,10 @@ async def kafka_consumer_task():
 async def start_background_tasks():
     """Start background tasks"""
     asyncio.create_task(kafka_consumer_task())
+    dlq = _get_dlq()
+    if dlq:
+        start_retry_worker(dlq, _dlq_reprocess)
+        logger.info("DLQ retry worker started for sentiment-engine")
 
 if __name__ == "__main__":
     import uvicorn

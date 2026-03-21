@@ -5,6 +5,7 @@ TFT Trading System Dashboard - Visual Summary
 Creates a comprehensive visual summary of the trading system workflow
 """
 
+import os
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -227,7 +228,8 @@ def create_system_dashboard():
     ax_arrow.add_patch(arrow3)
     
     plt.tight_layout()
-    plt.savefig('/home/kironix/TFT/tft_system_dashboard.png', dpi=300, bbox_inches='tight')
+    output_dir = os.path.dirname(os.path.abspath(__file__))
+    plt.savefig(os.path.join(output_dir, 'tft_system_dashboard.png'), dpi=300, bbox_inches='tight')
     print("📊 Dashboard saved as 'tft_system_dashboard.png'")
     plt.show()
 

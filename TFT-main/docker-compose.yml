@@ -18,14 +18,56 @@ services:
   postgres:
     image: timescale/timescaledb:latest-pg15
     environment:
-      POSTGRES_DB: tft_trading
-      POSTGRES_USER: tft_user
-      POSTGRES_PASSWORD: tft_password
+      POSTGRES_DB: ${POSTGRES_DB:-tft_trading}
+      POSTGRES_USER: ${POSTGRES_USER:-tft_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+
+  # Kafka Broker
+  kafka-broker:
+    image: confluentinc/cp-kafka:7.6.0
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-broker:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-broker:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_RETENTION_BYTES: 5368709120
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Schema Registry
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.6.0
+    ports:
+      - "8085:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka-broker:9092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    depends_on:
+      kafka-broker:
+        condition: service_healthy
 
   # Microservices
   data-ingestion:
@@ -37,13 +79,14 @@ services:
       - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID}
       - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET}
       - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:9092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
       - REDIS_URL=redis://redis:6379
     depends_on:
       redis:
         condition: service_healthy
+      kafka-broker:
+        condition: service_healthy
     restart: unless-stopped
-    extra_hosts:
-      - "kafka:127.0.0.1"
 
   sentiment-engine:
     build:
@@ -52,13 +95,16 @@ services:
     ports:
       - "8002:8002"
     environment:
-      - DATABASE_URL=postgresql://tft_user:tft_password@postgres:5432/tft_trading
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-tft_user}:${POSTGRES_PASSWORD:?required}@postgres:5432/${POSTGRES_DB:-tft_trading}
       - REDIS_URL=redis://redis:6379
       - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:9092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
     depends_on:
       postgres:
         condition: service_started
       redis:
+        condition: service_healthy
+      kafka-broker:
         condition: service_healthy
     volumes:
       - ./data/models:/app/models
@@ -71,15 +117,18 @@ services:
     ports:
       - "8003:8003"
     environment:
-      - DATABASE_URL=postgresql://tft_user:tft_password@postgres:5432/tft_trading
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-tft_user}:${POSTGRES_PASSWORD:?required}@postgres:5432/${POSTGRES_DB:-tft_trading}
       - REDIS_URL=redis://redis:6379
       - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:9092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - MODEL_ARTIFACT_PATH=/app/models
     depends_on:
       postgres:
         condition: service_started
       redis:
+        condition: service_healthy
+      kafka-broker:
         condition: service_healthy
     volumes:
       - ./data/models:/app/models
@@ -100,9 +149,10 @@ services:
     ports:
       - "8004:8004"
     environment:
-      - DATABASE_URL=postgresql://tft_user:tft_password@postgres:5432/tft_trading
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-tft_user}:${POSTGRES_PASSWORD:?required}@postgres:5432/${POSTGRES_DB:-tft_trading}
       - REDIS_URL=redis://redis:6379
       - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:9092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
       - ALPACA_API_KEY=${ALPACA_API_KEY}
       - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
       - ALPACA_BASE_URL=https://paper-api.alpaca.markets
@@ -110,6 +160,8 @@ services:
       postgres:
         condition: service_started
       redis:
+        condition: service_healthy
+      kafka-broker:
         condition: service_healthy
     restart: unless-stopped
 
@@ -120,9 +172,10 @@ services:
     ports:
       - "8005:8005"
     environment:
-      - DATABASE_URL=postgresql://tft_user:tft_password@postgres:5432/tft_trading
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-tft_user}:${POSTGRES_PASSWORD:?required}@postgres:5432/${POSTGRES_DB:-tft_trading}
       - REDIS_URL=redis://redis:6379
       - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:9092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
       - DATA_INGESTION_URL=http://data-ingestion:8001
       - SENTIMENT_ENGINE_URL=http://sentiment-engine:8002
       - TFT_PREDICTOR_URL=http://tft-predictor:8003
@@ -131,6 +184,8 @@ services:
       postgres:
         condition: service_started
       redis:
+        condition: service_healthy
+      kafka-broker:
         condition: service_healthy
       data-ingestion:
         condition: service_started
@@ -147,7 +202,7 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - MLFLOW_BACKEND_STORE_URI=postgresql://tft_user:tft_password@postgres:5432/mlflow
+      - MLFLOW_BACKEND_STORE_URI=postgresql://${POSTGRES_USER:-tft_user}:${POSTGRES_PASSWORD:?required}@postgres:5432/mlflow
     depends_on:
       - postgres
     volumes:
@@ -155,7 +210,7 @@ services:
     command: >
       bash -c "
         pip install mlflow psycopg2-binary &&
-        mlflow server --backend-store-uri postgresql://tft_user:tft_password@postgres:5432/mlflow --default-artifact-root /mlflow --host 0.0.0.0 --port 5000
+        mlflow server --backend-store-uri postgresql://${POSTGRES_USER:-tft_user}:${POSTGRES_PASSWORD:?required}@postgres:5432/mlflow --default-artifact-root /mlflow --host 0.0.0.0 --port 5000
       "
     restart: unless-stopped
     # For GPU support (uncomment if you have NVIDIA GPU)
@@ -184,8 +239,8 @@ services:
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=tft_trading
-      - DB_USER=tft_user
-      - DB_PASSWORD=tft_password
+      - DB_USER=${POSTGRES_USER:-tft_user}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:?required}
       - REDIS_URL=redis://redis:6379
       - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
       - PAPER_TRADING_SYMBOLS=${PAPER_TRADING_SYMBOLS:-AAPL,MSFT,GOOGL,AMZN,NVDA,META,TSLA,JPM,BAC,XOM}
@@ -221,21 +276,23 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD env var is required}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana:/etc/grafana/provisioning
 
-  # Optional: Kafka UI for debugging (using external Kafka)
+  # Optional: Kafka UI for debugging
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     ports:
       - "8080:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: local
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: localhost:29092
-    extra_hosts:
-      - "localhost:host-gateway"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka-broker:9092
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
+    depends_on:
+      kafka-broker:
+        condition: service_healthy
 
   # Optional: Redis Commander for debugging
   redis-commander:
@@ -251,6 +308,7 @@ services:
 volumes:
   redis_data:
   postgres_data:
+  kafka_data:
   grafana_data:
 
 networks:

@@ -1,14 +1,15 @@
 import asyncio
+import os
 import asyncpg
 import pandas as pd
 
 async def test_data_loading():
     conn = await asyncpg.connect(
-        host='localhost',
-        port=5432,
-        user='kibrom',
-        password='beriha@123KB!',
-        database='stock_trading_analysis'
+        host=os.getenv('POSTGRES_HOST', 'localhost'),
+        port=int(os.getenv('POSTGRES_PORT', 5432)),
+        user=os.getenv('POSTGRES_USER', 'trading_user'),
+        password=os.environ['POSTGRES_PASSWORD'],
+        database=os.getenv('POSTGRES_DB', 'stock_trading_analysis'),
     )
     
     query = """

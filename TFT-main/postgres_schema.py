@@ -223,6 +223,166 @@ CREATE TABLE IF NOT EXISTS paper_signal_analyses (
 
 CREATE INDEX IF NOT EXISTS idx_signal_analyses_time ON paper_signal_analyses(analysis_time);
 
+-- Dead letter queue (failed Kafka message persistence + retry)
+CREATE TABLE IF NOT EXISTS dead_letter_queue (
+    id              SERIAL PRIMARY KEY,
+    service_name    VARCHAR(128) NOT NULL,
+    topic           VARCHAR(256) NOT NULL,
+    message_key     TEXT,
+    message_value   JSONB NOT NULL DEFAULT '{}',
+    error           TEXT NOT NULL DEFAULT '',
+    retry_count     INTEGER NOT NULL DEFAULT 0,
+    max_retries     INTEGER NOT NULL DEFAULT 5,
+    next_retry_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    status          VARCHAR(16) NOT NULL DEFAULT 'PENDING'
+);
+
+CREATE INDEX IF NOT EXISTS idx_dlq_status_next_retry
+    ON dead_letter_queue(status, next_retry_at);
+CREATE INDEX IF NOT EXISTS idx_dlq_service
+    ON dead_letter_queue(service_name);
+CREATE INDEX IF NOT EXISTS idx_dlq_created
+    ON dead_letter_queue(created_at);
+
+-- =============================================
+-- TimescaleDB: Hypertable conversions
+-- =============================================
+
+-- Enable TimescaleDB extension
+CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
+
+-- Convert OHLCV to hypertable (partitioned by date)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM timescaledb_information.hypertables
+        WHERE hypertable_name = 'ohlcv'
+    ) THEN
+        PERFORM create_hypertable('ohlcv', 'date', migrate_data => true);
+    END IF;
+END $$;
+
+-- Convert paper_risk_reports to hypertable (partitioned by report_time)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM timescaledb_information.hypertables
+        WHERE hypertable_name = 'paper_risk_reports'
+    ) THEN
+        PERFORM create_hypertable('paper_risk_reports', 'report_time', migrate_data => true);
+    END IF;
+END $$;
+
+-- Convert paper_execution_stats to hypertable (partitioned by execution_time)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM timescaledb_information.hypertables
+        WHERE hypertable_name = 'paper_execution_stats'
+    ) THEN
+        PERFORM create_hypertable('paper_execution_stats', 'execution_time', migrate_data => true);
+    END IF;
+END $$;
+
+-- Convert paper_signal_analyses to hypertable (partitioned by analysis_time)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM timescaledb_information.hypertables
+        WHERE hypertable_name = 'paper_signal_analyses'
+    ) THEN
+        PERFORM create_hypertable('paper_signal_analyses', 'analysis_time', migrate_data => true);
+    END IF;
+END $$;
+
+-- =============================================
+-- TimescaleDB: Retention policies
+-- =============================================
+
+-- OHLCV: retain 365 days
+SELECT add_retention_policy('ohlcv', INTERVAL '365 days', if_not_exists => true);
+
+-- Paper risk reports: retain 90 days
+SELECT add_retention_policy('paper_risk_reports', INTERVAL '90 days', if_not_exists => true);
+
+-- Paper execution stats: retain 90 days
+SELECT add_retention_policy('paper_execution_stats', INTERVAL '90 days', if_not_exists => true);
+
+-- Paper signal analyses: retain 90 days
+SELECT add_retention_policy('paper_signal_analyses', INTERVAL '90 days', if_not_exists => true);
+
+-- =============================================
+-- TimescaleDB: Continuous aggregates
+-- =============================================
+
+-- 15-minute OHLCV aggregate
+CREATE MATERIALIZED VIEW IF NOT EXISTS ohlcv_15m
+WITH (timescaledb.continuous) AS
+SELECT
+    symbol,
+    time_bucket('15 minutes', date) AS bucket,
+    first(open, date)  AS open,
+    max(high)           AS high,
+    min(low)            AS low,
+    last(close, date)  AS close,
+    sum(volume)         AS volume
+FROM ohlcv
+GROUP BY symbol, bucket
+WITH NO DATA;
+
+SELECT add_continuous_aggregate_policy('ohlcv_15m',
+    start_offset  => INTERVAL '3 days',
+    end_offset    => INTERVAL '15 minutes',
+    schedule_interval => INTERVAL '15 minutes',
+    if_not_exists => true
+);
+
+-- 1-hour OHLCV aggregate
+CREATE MATERIALIZED VIEW IF NOT EXISTS ohlcv_1h
+WITH (timescaledb.continuous) AS
+SELECT
+    symbol,
+    time_bucket('1 hour', date) AS bucket,
+    first(open, date)  AS open,
+    max(high)           AS high,
+    min(low)            AS low,
+    last(close, date)  AS close,
+    sum(volume)         AS volume
+FROM ohlcv
+GROUP BY symbol, bucket
+WITH NO DATA;
+
+SELECT add_continuous_aggregate_policy('ohlcv_1h',
+    start_offset  => INTERVAL '7 days',
+    end_offset    => INTERVAL '1 hour',
+    schedule_interval => INTERVAL '1 hour',
+    if_not_exists => true
+);
+
+-- 1-day OHLCV aggregate
+CREATE MATERIALIZED VIEW IF NOT EXISTS ohlcv_1d
+WITH (timescaledb.continuous) AS
+SELECT
+    symbol,
+    time_bucket('1 day', date) AS bucket,
+    first(open, date)  AS open,
+    max(high)           AS high,
+    min(low)            AS low,
+    last(close, date)  AS close,
+    sum(volume)         AS volume
+FROM ohlcv
+GROUP BY symbol, bucket
+WITH NO DATA;
+
+SELECT add_continuous_aggregate_policy('ohlcv_1d',
+    start_offset  => INTERVAL '30 days',
+    end_offset    => INTERVAL '1 day',
+    schedule_interval => INTERVAL '1 day',
+    if_not_exists => true
+);
+
 -- Create indexes for performance optimization
 
 -- OHLCV indexes
@@ -487,7 +647,7 @@ if __name__ == "__main__":
         'host': os.getenv('POSTGRES_HOST', 'localhost'),
         'database': os.getenv('POSTGRES_DB', 'stock_trading_analysis'),
         'user': os.getenv('POSTGRES_USER', 'trading_user'),
-        'password': os.getenv('POSTGRES_PASSWORD', 'trading_password'),
+        'password': os.environ['POSTGRES_PASSWORD'],
         'port': int(os.getenv('POSTGRES_PORT', 5432))
     }
     

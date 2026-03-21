@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-APEX is a multi-strategy algorithmic trading platform built around the Temporal Fusion Transformer (TFT). The main codebase lives in `TFT-main/`. It supports two data backends (legacy SQLite and recommended PostgreSQL), a multi-model ensemble system with **10 models** across 4 asset classes, **11 ensemble strategies**, a production paper-trading execution service with circuit breaker, audit trail, and **5 automated safety guardrails**, and a microservices deployment layer with Kafka-based event streaming. ~145 Python files, 114 tests across 12 test modules.
+APEX is a multi-strategy algorithmic trading platform built around the Temporal Fusion Transformer (TFT). The main codebase lives in `TFT-main/`. It supports two data backends (legacy SQLite and recommended PostgreSQL), a multi-model ensemble system with **10 models** across 4 asset classes, **11 ensemble strategies**, a production paper-trading execution service with circuit breaker, audit trail, **5 automated safety guardrails**, dead letter queue with exponential backoff retry, and a microservices deployment layer with Kafka-based event streaming, schema registry, and TimescaleDB data retention policies. ~179 Python files, 635 tests across 30 test modules.
 
 ## Build & Run Commands
 
@@ -196,6 +196,7 @@ Five automated pre-trade safety checks wired into the paper-trader pipeline (add
 
 FastAPI service on port 8010. Production-grade daily pipeline with full infrastructure:
 
+0. **Startup: Environment validation** via `utils/env_validator.py` — required vars checked, placeholder detection
 1. Fetch OHLCV via yfinance (stocks + SPY for regime, FX pairs)
 2. Circuit breaker check (Redis-backed drawdown limits)
 3. Detect market regime
@@ -222,8 +223,10 @@ FastAPI service on port 8010. Production-grade daily pipeline with full infrastr
 - `PortfolioRiskManager` (~500 lines) — Persistent instance, seeded with 30 days historical returns at startup, fed live daily returns. VaR/CVaR, correlation monitoring (>0.85 triggers 50% weight reduction), per-strategy kill switches (drawdown/Sharpe), portfolio-level kill switch. Reports logged to `paper_risk_reports`
 - `ThreadedConnectionPool` — PostgreSQL connection pooling (2-10 connections)
 - `SignalVarianceGuard` / `LeverageGate` / `ExecutionFailureMonitor` — Safety guardrails (`trading/safety/guardrails.py`)
+- `DeadLetterQueue` — PostgreSQL-backed DLQ with exponential backoff retry (`services/common/dlq.py`)
+- `EnvValidator` — Startup environment validation (`utils/env_validator.py`)
 
-Endpoints: `/health` (10 models, 11 strategies, infrastructure status), `/run-now` (manual trigger), `/positions`, `/history`, `/weights`, `/dashboard`.
+Endpoints: `/health` (10 models, 11 strategies, infrastructure status), `/run-now` (manual trigger), `/positions`, `/history`, `/weights`, `/dashboard`, `/dlq` (dead letter queue stats).
 
 Database: PostgreSQL on port **5432**, database **`tft_trading`** (tables: `paper_trades`, `paper_daily_snapshots`, `paper_strategy_signals`, `paper_risk_reports`).
 
@@ -246,7 +249,9 @@ Five FastAPI services coordinated via Kafka topics and Redis caching:
 | `trading-engine` | 8004 | Alpaca paper/live order execution |
 | `orchestrator` | 8005 | Saga-pattern workflow coordination |
 
-Infrastructure: TimescaleDB (PostgreSQL 15), Redis, Kafka, Prometheus, Grafana, MLflow. See `docker-compose.yml`.
+Infrastructure: TimescaleDB (PostgreSQL 15), Redis, Kafka (KRaft mode with retention policies), Schema Registry (Confluent), Prometheus, Grafana, MLflow. See `docker-compose.yml`.
+
+All 4 Kafka consumers have DLQ integration — failed messages are persisted to PostgreSQL with exponential backoff retry (base 1s, 2x multiplier, max 5 retries, 0-25% jitter).
 
 ### Key Kafka Topics
 `market-data`, `sentiment-scores`, `tft-predictions`, `trading-signals`, `order-updates`, `portfolio-updates`, `system-events`
@@ -276,33 +281,58 @@ Infrastructure: TimescaleDB (PostgreSQL 15), Redis, Kafka, Prometheus, Grafana, 
 
 ## Known Bugs (audited 2026-03-21)
 
-### Still broken
-- **CF-8**: Alpaca `_api_call()` has 15s timeout, but `ClientSession()` has no default timeout
-- **HI-5**: Paper trader scheduler uses `timezone="US/Eastern"` (fixed), but `model_trainer.py:237-239` hardcodes raw hours
-- **HI-8**: Redis AOF enabled in docker-compose, app-level ping exists, but no Docker healthcheck directive
+### All 17 bugs resolved
 
-### Fixed
-- **CF-1/CF-2/CF-4**: Walk-forward cross-validation system built (`strategies/validation/walk_forward.py`) — rolling window with embargo gap, deploy most recent fold, per-fold normalization stats, frequency-aware Sharpe
-- **CF-3**: Walk-forward Sharpe uses frequency-aware annualization (`sqrt(252)` daily, `sqrt(252*390)` minute)
-- **CF-5**: CVaR-95 (Expected Shortfall) added to `PortfolioRiskManager._compute_var()`
-- **CF-6**: `circuit_breaker.start()/stop()` called in lifespan; fail-closed on Redis failure
-- **CF-7**: All 4 Kafka consumers use `enable_auto_commit=False` with explicit `consumer.commit()`
-- **CF-9**: Shutdown wrapped in `asyncio.wait_for(timeout=30)` with SIGTERM/SIGINT handlers
-- **CF-10**: Duplicate docker-compose service definitions removed
-- **HI-1**: `PortfolioRiskManager` wired as persistent global in paper-trader — loads 30 days of historical returns at startup, fed live daily returns each cycle, `assess()` called before execution with kill switch and killed strategy filtering, correlation monitoring reduces correlated strategy weights by 50%, risk reports logged to `paper_risk_reports` table
-- **HI-4**: Bear regime `exposure_scalar` only scales longs (shorts preserved)
+| Bug | Status | Resolution |
+|-----|--------|------------|
+| CF-1/CF-2/CF-4 | Fixed | Walk-forward cross-validation system (`strategies/validation/walk_forward.py`) |
+| CF-3 | Fixed | Frequency-aware Sharpe annualization |
+| CF-5 | Fixed | CVaR-95 (Expected Shortfall) added |
+| CF-6 | Fixed | Circuit breaker lifespan + fail-closed on Redis failure |
+| CF-7 | Fixed | All 4 Kafka consumers: `enable_auto_commit=False` + explicit commit + DLQ |
+| CF-8 | Fixed | Alpaca `ClientSession` timeout aligned with `_api_call()` timeout |
+| CF-9 | Fixed | Shutdown `asyncio.wait_for(timeout=30)` + SIGTERM/SIGINT handlers |
+| CF-10 | Fixed | Duplicate docker-compose service definitions removed |
+| HI-1 | Fixed | `PortfolioRiskManager` wired as persistent global in paper-trader |
+| HI-4 | Fixed | Bear regime `exposure_scalar` only scales longs (shorts preserved) |
+| HI-5 | Fixed | Scheduler hours sourced from environment variables |
+| HI-8 | Fixed | Docker healthcheck directives added for Redis |
+| HI-3 | N/A | Platt calibration does not exist in codebase |
+| Bug-A | N/A | limits.yaml does not exist in codebase |
+| Bug-B | N/A | lean_alpha/signal_engine modules do not exist |
 
-### Not found in codebase
-- HI-3 (Platt calibration does not exist)
-- Bug-A (limits.yaml does not exist)
-- Bug-B (lean_alpha/signal_engine modules do not exist)
+## Production Hardening (v3.0.0)
+
+Added in Phase 04 (2026-03-21):
+
+### Data Retention & Schema Registry
+- **Kafka broker** — KRaft mode (no Zookeeper), 168h log retention, 5GB max per topic, 1GB segments
+- **TimescaleDB retention policies** — 365d for OHLCV/snapshots, 90d for signals/risk/execution
+- **TimescaleDB continuous aggregates** — 15m, 1h, 1d OHLCV rollup views with automatic refresh
+- **Schema Registry** — Confluent Schema Registry with thread-safe singleton connection cache, exponential backoff (max 3 retries)
+
+### Security Hardening
+- All hardcoded user home directory paths removed
+- All default passwords removed — replaced with `os.environ[]` (raises on missing)
+- Real API keys removed from `setup_postgres.sh` (Polygon, Alpaca, Reddit)
+- `utils/env_validator.py` — startup validation of required env vars with placeholder detection
+- docker-compose uses `${VAR:?error}` for required credentials
+- `.env.example` has safe placeholders only
+
+### Dead Letter Queue
+- `services/common/dlq.py` — PostgreSQL-persisted DLQ with status lifecycle (PENDING → RETRYING → RESOLVED/EXHAUSTED)
+- Exponential backoff: base 1s, 2x multiplier, max 5 retries, max 60s delay, 0-25% jitter
+- Integrated into all 4 Kafka consumers (sentiment-engine, trading-engine, tft-predictor, orchestrator)
+- Background retry worker thread (polls every 30s)
+- `/dlq` dashboard endpoint in paper-trader
 
 ## Notes
 
-- The `docker-compose.yml` had duplicate service definitions for `tft-predictor`, `trading-engine`, and `orchestrator` — these were removed (fix confirmed in commit 1853e3c).
 - The docker-compose references `tft_network` as an external network — create it with `docker network create tft_network` before running.
 - PostgreSQL env vars differ between `.env.template` (`DB_HOST`, `DB_PORT`, etc.) and `train_postgres.py` (`POSTGRES_HOST`, `POSTGRES_PORT`, etc.). Check which convention the target module expects. The paper trader uses `DB_HOST`/`DB_PORT` convention.
 - The `tft_postgres_model.py` contains an `AdvancedOptionsModel` class with Black-Scholes pricing that is separate from the TFT model itself.
 - Kronos, Deep Surrogates, and TDGF models require their repos cloned to `/opt/`. If not present, strategies gracefully return empty signals and the ensemble skips them.
 - The paper trader's `/health` endpoint reports which models are loaded and Redis connection status.
 - Deep Surrogates includes a `calibrate_heston()` method with multi-start optimization and Feller condition validation.
+- All credentials must be set via environment variables — no defaults exist. The paper trader calls `env_validator.validate(strict=True)` at startup.
+- The `dead_letter_queue` table is auto-created by `postgres_schema.py` and by each microservice's DLQ instance on first use.

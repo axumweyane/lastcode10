@@ -3,6 +3,7 @@ Simple TFT Training Test - Bypassing Lightning compatibility issues
 """
 
 import asyncio
+import os
 import asyncpg
 import pandas as pd
 import numpy as np
@@ -20,11 +21,11 @@ logger = logging.getLogger(__name__)
 async def load_simple_data():
     """Load minimal data for testing"""
     conn = await asyncpg.connect(
-        host='localhost',
-        port=5432,
-        user='kibrom',
-        password='beriha@123KB!',
-        database='stock_trading_analysis'
+        host=os.getenv('POSTGRES_HOST', 'localhost'),
+        port=int(os.getenv('POSTGRES_PORT', 5432)),
+        user=os.getenv('POSTGRES_USER', 'trading_user'),
+        password=os.environ['POSTGRES_PASSWORD'],
+        database=os.getenv('POSTGRES_DB', 'stock_trading_analysis'),
     )
     
     query = """
