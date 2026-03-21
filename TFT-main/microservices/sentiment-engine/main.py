@@ -80,7 +80,8 @@ class SentimentEngine:
                 value_deserializer=lambda m: json.loads(m.decode('utf-8')),
                 key_deserializer=lambda k: k.decode('utf-8') if k else None,
                 group_id="sentiment-engine",
-                auto_offset_reset="latest"
+                auto_offset_reset="latest",
+                enable_auto_commit=False,
             )
             
             self.kafka_producer = KafkaProducer(
@@ -452,13 +453,15 @@ async def get_ticker_momentum(ticker: str):
 async def kafka_consumer_task():
     """Background task to consume messages from Kafka"""
     logger.info("Starting Kafka consumer task")
-    
+
     while True:
         try:
             for message in service.kafka_consumer:
                 comment_data = message.value
                 await service.process_comment(comment_data)
-                
+                service.kafka_producer.flush()
+                service.kafka_consumer.commit()
+
         except Exception as e:
             logger.error(f"Error in Kafka consumer: {e}")
             await asyncio.sleep(5)

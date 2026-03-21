@@ -534,18 +534,21 @@ class TFTPredictor:
                 KAFKA_TOPICS["market_data"],
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-                group_id="tft-predictor-group"
+                group_id="tft-predictor-group",
+                enable_auto_commit=False,
             )
-            
+
             for message in consumer:
                 try:
                     data = message.value
                     # Update feature cache for real-time predictions
                     await self.update_feature_cache(data)
-                    
+                    self.kafka_producer.flush()
+                    consumer.commit()
+
                 except Exception as e:
                     logger.error(f"Error processing market data: {e}")
-                    
+
         except Exception as e:
             logger.error(f"Kafka consumer error: {e}")
     

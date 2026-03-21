@@ -883,17 +883,20 @@ class Orchestrator:
                 KAFKA_TOPICS["system_events"],
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-                group_id="orchestrator-events-group"
+                group_id="orchestrator-events-group",
+                enable_auto_commit=False,
             )
-            
+
             for message in consumer:
                 try:
                     event = message.value
                     await self.process_system_event(event)
-                    
+                    self.kafka_producer.flush()
+                    consumer.commit()
+
                 except Exception as e:
                     logger.error(f"Error processing system event: {e}")
-                    
+
         except Exception as e:
             logger.error(f"Event consumer error: {e}")
     

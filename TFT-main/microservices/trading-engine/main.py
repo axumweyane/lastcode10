@@ -689,17 +689,20 @@ class TradingEngine:
                 KAFKA_TOPICS["trading_signals"],
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-                group_id="trading-engine-group"
+                group_id="trading-engine-group",
+                enable_auto_commit=False,
             )
-            
+
             for message in consumer:
                 try:
                     signal = message.value
                     await self.process_trading_signal(signal)
-                    
+                    self.kafka_producer.flush()
+                    consumer.commit()
+
                 except Exception as e:
                     logger.error(f"Error processing trading signal: {e}")
-                    
+
         except Exception as e:
             logger.error(f"Trading signal consumer error: {e}")
     

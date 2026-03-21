@@ -31,6 +31,7 @@ class VaRResult:
     """Value at Risk calculation result."""
     parametric_var: float      # from normal distribution assumption
     historical_var: float      # from actual return distribution
+    cvar_95: float             # Conditional VaR (Expected Shortfall) at 95%
     confidence: float          # e.g. 0.99
     horizon_days: int          # e.g. 1
     portfolio_vol: float       # annualized
@@ -169,9 +170,9 @@ class PortfolioRiskManager:
 
         # Log summary
         logger.info(
-            "Risk report: DD=%.1f%%, VaR99=%.2f%%, Sharpe21=%.2f, "
+            "Risk report: DD=%.1f%%, VaR99=%.2f%%, CVaR95=%.2f%%, Sharpe21=%.2f, "
             "%d active / %d killed, %d correlation alerts",
-            dd * 100, var.parametric_var * 100, sharpe_21,
+            dd * 100, var.parametric_var * 100, var.cvar_95 * 100, sharpe_21,
             active, len(self._killed_strategies), len(corr_alerts),
         )
 
@@ -194,7 +195,7 @@ class PortfolioRiskManager:
 
         if len(returns) < 5:
             return VaRResult(
-                parametric_var=0.0, historical_var=0.0,
+                parametric_var=0.0, historical_var=0.0, cvar_95=0.0,
                 confidence=self.var_confidence, horizon_days=1,
                 portfolio_vol=0.0, worst_case_daily=0.0,
                 method_used="insufficient_data",
@@ -211,6 +212,12 @@ class PortfolioRiskManager:
         percentile = (1 - self.var_confidence) * 100
         historical_var = float(-np.percentile(returns, percentile))
 
+        # CVaR-95 (Expected Shortfall): mean of the worst 5% of returns
+        sorted_returns = np.sort(returns)
+        cutoff_index = max(1, int(np.ceil(len(sorted_returns) * 0.05)))
+        tail_returns = sorted_returns[:cutoff_index]
+        cvar_95 = float(-np.mean(tail_returns))
+
         worst = float(-np.min(returns)) if len(returns) > 0 else 0.0
         binding = max(parametric_var, historical_var)
         method = "historical" if historical_var >= parametric_var else "parametric"
@@ -218,6 +225,7 @@ class PortfolioRiskManager:
         return VaRResult(
             parametric_var=parametric_var,
             historical_var=historical_var,
+            cvar_95=cvar_95,
             confidence=self.var_confidence,
             horizon_days=1,
             portfolio_vol=ann_vol,

@@ -127,13 +127,20 @@ class PortfolioOptimizer:
         else:
             vol_weights = raw_weights.copy()
 
-        # 3. Regime exposure scaling
+        # 3. Regime exposure scaling (direction-aware)
         exposure_scalar = 1.0
         if regime_state is not None:
             exposure_scalar = regime_state.exposure_scalar
-            vol_weights = {
-                sym: w * exposure_scalar for sym, w in vol_weights.items()
-            }
+            if exposure_scalar < 1.0:
+                # Bear/volatile regime: only scale down longs, preserve shorts
+                vol_weights = {
+                    sym: w * exposure_scalar if w > 0 else w
+                    for sym, w in vol_weights.items()
+                }
+            else:
+                vol_weights = {
+                    sym: w * exposure_scalar for sym, w in vol_weights.items()
+                }
 
         # 4. Apply constraints
         constrained = self._apply_constraints(vol_weights)
