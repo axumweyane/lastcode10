@@ -63,15 +63,22 @@ jobs:
           pip install -r requirements.txt
           pip install pytest
 
-      - name: Run tests
-        run: pytest tests/ -v --tb=short -x --junitxml=test-results.xml
+      - name: Run tests with coverage
+        run: |
+          pip install pytest-cov
+          pytest tests/ -v --tb=short -x --junitxml=test-results.xml \
+            --cov=models --cov=strategies --cov=trading --cov=services \
+            --cov-report=term-missing --cov-report=xml:coverage.xml \
+            --cov-fail-under=40
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: test-results.xml
+          path: |
+            test-results.xml
+            coverage.xml
           retention-days: 30
 
   security:

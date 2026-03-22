@@ -1,0 +1,1440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>APEX Trading System — Animated Journey</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --cyan:#00e5ff;--lime:#76ff03;--magenta:#e040fb;--gold:#ffd740;
+  --bg:#0a0e1a;--card:#111827;--card2:#1a2236;--text:#e0e6f0;
+  --border:#1e293b;--glow-cyan:0 0 20px rgba(0,229,255,.4);
+  --glow-lime:0 0 20px rgba(118,255,3,.4);
+  --glow-magenta:0 0 20px rgba(224,64,251,.4);
+  --glow-gold:0 0 20px rgba(255,215,64,.4);
+  --red:#ff5252;--glow-red:0 0 20px rgba(255,82,82,.4);
+  --speed:1;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-apple-system,sans-serif;overflow-x:hidden;line-height:1.5}
+canvas#bg-canvas{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:.35}
+
+/* Controls */
+#controls{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(10,14,26,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;padding:8px 20px;flex-wrap:wrap}
+#controls .logo{font-size:1.1rem;font-weight:700;background:linear-gradient(135deg,var(--cyan),var(--magenta));-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px;white-space:nowrap}
+#controls button{background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 14px;cursor:pointer;font-size:.82rem;transition:.2s}
+#controls button:hover{border-color:var(--cyan);box-shadow:var(--glow-cyan)}
+#controls button.active{background:var(--cyan);color:#000;border-color:var(--cyan)}
+#controls select{background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:.82rem;cursor:pointer}
+#controls label{font-size:.78rem;color:#8892a8}
+#progress-bar{position:fixed;top:49px;left:0;height:3px;background:linear-gradient(90deg,var(--cyan),var(--magenta),var(--gold));z-index:101;transition:width .4s ease;width:0}
+
+/* Search */
+.search-box{display:flex;align-items:center;gap:6px;margin-left:auto}
+.search-box input{background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:.82rem;width:160px;transition:border-color .3s}
+.search-box input:focus{outline:none;border-color:var(--cyan);box-shadow:var(--glow-cyan)}
+.search-box .search-count{font-size:.7rem;color:#8892a8;min-width:40px}
+.search-box button{padding:5px 8px;font-size:.75rem}
+mark.search-highlight{background:rgba(255,215,64,.35);color:var(--gold);border-radius:2px;padding:0 1px;outline:2px solid rgba(255,215,64,.4);scroll-margin-top:80px}
+mark.search-highlight.current{background:rgba(255,215,64,.7);color:#000;outline-color:var(--gold)}
+
+/* Scenes */
+.scene{min-height:100vh;position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px 40px;opacity:0;transform:translateY(40px);transition:opacity .8s ease,transform .8s ease}
+.scene.visible{opacity:1;transform:translateY(0)}
+.scene-number{font-size:.7rem;text-transform:uppercase;letter-spacing:3px;color:var(--magenta);margin-bottom:4px}
+.scene-title{font-size:clamp(1.5rem,4vw,2.4rem);font-weight:700;margin-bottom:8px;text-align:center}
+.scene-subtitle{font-size:.95rem;color:#8892a8;margin-bottom:30px;text-align:center;max-width:600px}
+.glow-cyan{color:var(--cyan);text-shadow:var(--glow-cyan)}
+.glow-lime{color:var(--lime);text-shadow:var(--glow-lime)}
+.glow-magenta{color:var(--magenta);text-shadow:var(--glow-magenta)}
+.glow-gold{color:var(--gold);text-shadow:var(--glow-gold)}
+.glow-red{color:var(--red);text-shadow:var(--glow-red)}
+
+/* Shared card/box styles */
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--cyan),transparent);opacity:0;transition:opacity .6s}
+.card.active::before{opacity:1}
+
+/* Animated flow arrows */
+@keyframes flowDown{0%{transform:translateY(-20px);opacity:0}50%{opacity:1}100%{transform:translateY(20px);opacity:0}}
+@keyframes pulse{0%,100%{opacity:.6}50%{opacity:1}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fillBar{from{width:0}to{width:var(--fill)}}
+@keyframes fadeInUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes checkPop{0%{transform:scale(0) rotate(-45deg)}60%{transform:scale(1.3) rotate(0)}100%{transform:scale(1) rotate(0)}}
+@keyframes confettiFall{0%{transform:translateY(-10px) rotate(0);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}
+@keyframes slideIn{from{opacity:0;transform:translateX(-30px)}to{opacity:1;transform:translateX(0)}}
+@keyframes tickUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes glowPulse{0%,100%{box-shadow:0 0 5px var(--c)}50%{box-shadow:0 0 25px var(--c),0 0 50px var(--c)}}
+@keyframes shakeX{0%,100%{transform:translateX(0)}10%,30%,50%,70%,90%{transform:translateX(-4px)}20%,40%,60%,80%{transform:translateX(4px)}}
+@keyframes warningPulse{0%,100%{opacity:.7}50%{opacity:1}}
+@keyframes expandIn{from{opacity:0;max-height:0}to{opacity:1;max-height:400px}}
+
+/* SCENE 1: Data Flow */
+.data-sources{display:flex;gap:20px;flex-wrap:wrap;justify-content:center;margin-bottom:24px}
+.data-source{width:140px;text-align:center}
+.data-source .icon{width:60px;height:60px;border-radius:50%;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;border:2px solid var(--lime);background:rgba(118,255,3,.08);opacity:0;transform:scale(.5);transition:all .6s ease}
+.data-source.active .icon{opacity:1;transform:scale(1);animation:glowPulse 2s infinite;--c:rgba(118,255,3,.3)}
+.data-source .label{font-size:.8rem;font-weight:600;opacity:0;transition:opacity .4s .3s}
+.data-source.active .label{opacity:1}
+.flow-arrows{display:flex;justify-content:center;gap:60px;margin:10px 0 20px;height:50px}
+.flow-arrow{width:3px;background:linear-gradient(to bottom,var(--lime),transparent);position:relative;opacity:0;transition:opacity .4s}
+.flow-arrow.active{opacity:1}
+.flow-arrow .dot{position:absolute;width:8px;height:8px;background:var(--lime);border-radius:50%;left:-2.5px;animation:flowDown 1.2s infinite;box-shadow:var(--glow-lime)}
+.data-counter{font-size:1.8rem;font-weight:700;color:var(--lime);text-shadow:var(--glow-lime);font-variant-numeric:tabular-nums}
+.data-db{margin-top:16px;padding:14px 28px;border:2px solid var(--cyan);border-radius:10px;background:rgba(0,229,255,.06);font-size:.9rem;opacity:0;transform:scale(.8);transition:all .5s}
+.data-db.active{opacity:1;transform:scale(1)}
+
+/* SCENE 2: Models — clickable expandable cards */
+.models-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;max-width:800px;width:100%}
+.model-box{padding:14px;text-align:center;border-radius:8px;border:1px solid var(--border);background:var(--card);position:relative;overflow:hidden;opacity:0;transform:translateY(20px);cursor:pointer;transition:all .5s ease}
+.model-box.active{opacity:1;transform:translateY(0)}
+.model-box:hover{border-color:var(--cyan);box-shadow:0 0 12px rgba(0,229,255,.15)}
+.model-box.expanded{border-color:var(--cyan);box-shadow:var(--glow-cyan);grid-column:span 2}
+.model-box .fill{position:absolute;bottom:0;left:0;right:0;height:0;transition:height 1s ease;z-index:0}
+.model-box.active .fill{height:100%}
+.model-box .content{position:relative;z-index:1}
+.model-box .num{font-size:.65rem;color:#5a6680;margin-bottom:2px}
+.model-box .name{font-size:.78rem;font-weight:600;margin-bottom:4px}
+.model-box .status{font-size:.65rem;color:var(--cyan);opacity:0;transition:opacity .3s .6s}
+.model-box.active .status{opacity:1}
+.model-box .spinner{display:inline-block;width:10px;height:10px;border:2px solid transparent;border-top-color:var(--cyan);border-radius:50%;animation:spin .8s linear infinite;margin-right:4px;vertical-align:middle}
+.model-box .expand-arrow{font-size:.6rem;color:#5a6680;margin-top:4px;transition:transform .3s}
+.model-box.expanded .expand-arrow{transform:rotate(180deg);color:var(--cyan)}
+.model-detail{max-height:0;overflow:hidden;transition:max-height .5s ease,opacity .4s ease,padding .4s ease;opacity:0;text-align:left;padding:0 4px;font-size:.72rem;line-height:1.6;position:relative;z-index:2}
+.model-box.expanded .model-detail{max-height:400px;opacity:1;padding:10px 8px 8px;margin-top:8px;border-top:1px solid rgba(255,255,255,.15);background:rgba(10,14,26,.88);border-radius:6px}
+.model-detail .detail-row{display:flex;gap:6px;margin-bottom:4px}
+.model-detail .detail-label{color:#8892a8;min-width:55px;flex-shrink:0;font-weight:600}
+.model-detail .detail-value{color:var(--text)}
+.model-detail .sample-output{margin-top:6px;padding:6px 8px;background:rgba(0,229,255,.05);border:1px solid rgba(0,229,255,.15);border-radius:4px;font-family:'Fira Code',monospace,monospace;font-size:.65rem;color:var(--cyan);white-space:pre;overflow-x:auto}
+.model-detail .accuracy-bar{margin-top:6px;display:flex;align-items:center;gap:8px}
+.model-detail .accuracy-track{flex:1;height:6px;background:var(--card2);border-radius:3px;overflow:hidden}
+.model-detail .accuracy-fill{height:100%;border-radius:3px;transition:width .8s ease}
+.model-detail .accuracy-pct{font-weight:700;font-size:.75rem;min-width:32px}
+
+/* SCENE 3: Ensemble */
+.ensemble-container{max-width:700px;width:100%;display:flex;flex-direction:column;align-items:center;gap:20px}
+.ensemble-inputs{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.ensemble-input{padding:6px 12px;border-radius:20px;font-size:.7rem;border:1px solid var(--border);background:var(--card);opacity:0;transform:scale(.7);transition:all .4s ease}
+.ensemble-input.active{opacity:1;transform:scale(1)}
+.ensemble-converge{height:80px;display:flex;align-items:center;justify-content:center;position:relative}
+.converge-line{position:absolute;width:2px;height:40px;background:linear-gradient(to bottom,var(--magenta),var(--gold));opacity:0;transition:opacity .3s}
+.converge-line.active{opacity:1}
+.ensemble-core{width:180px;padding:20px;text-align:center;border:2px solid var(--gold);border-radius:50%;background:rgba(255,215,64,.06);opacity:0;transform:scale(.5);transition:all .6s}
+.ensemble-core.active{opacity:1;transform:scale(1);animation:glowPulse 2s infinite;--c:rgba(255,215,64,.3)}
+.weight-bars{display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;justify-content:center}
+.weight-bar{text-align:center}
+.weight-bar .bar{width:60px;height:8px;background:var(--card2);border-radius:4px;overflow:hidden;margin:4px auto}
+.weight-bar .bar-fill{height:100%;border-radius:4px;width:0;transition:width 1.2s ease}
+.weight-bar .lbl{font-size:.65rem;color:#8892a8}
+.weight-bar .val{font-size:.75rem;font-weight:600}
+.ensemble-output{font-size:1.1rem;font-weight:700;color:var(--gold);opacity:0;transition:opacity .5s}
+.ensemble-output.active{opacity:1;text-shadow:var(--glow-gold)}
+
+/* SCENE 4: Strategies + sliders + pie chart */
+.strategies-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;max-width:900px;width:100%}
+.strategy-box{padding:12px;border-radius:8px;border:1px solid var(--border);background:var(--card);opacity:0;transform:translateX(-20px);transition:all .4s ease;display:flex;flex-direction:column;gap:6px}
+.strategy-box.active{opacity:1;transform:translateX(0)}
+.strategy-box .s-name{font-size:.78rem;font-weight:600}
+.strategy-box .s-status{font-size:.65rem;color:var(--cyan)}
+.strategy-box .signal-bar{height:6px;background:var(--card2);border-radius:3px;overflow:hidden}
+.strategy-box .signal-fill{height:100%;border-radius:3px;width:0;transition:width 1s ease}
+.combined-signal{margin-top:20px;text-align:center}
+.signal-meter{width:300px;max-width:100%;height:16px;background:var(--card2);border-radius:8px;overflow:hidden;margin:8px auto}
+.signal-meter .meter-fill{height:100%;border-radius:8px;width:0;transition:width 1.5s ease;background:linear-gradient(90deg,var(--cyan),var(--lime))}
+
+/* Strategy Weight Sliders + Pie Chart */
+.weight-editor{max-width:900px;width:100%;margin-top:30px;padding:20px;border:1px solid var(--border);border-radius:12px;background:var(--card);opacity:0;transform:translateY(20px);transition:all .6s ease}
+.weight-editor.active{opacity:1;transform:translateY(0)}
+.weight-editor-title{font-size:.9rem;font-weight:700;color:var(--gold);margin-bottom:14px;text-align:center}
+.weight-editor-body{display:grid;grid-template-columns:1fr 280px;gap:24px;align-items:start}
+.sliders-col{display:flex;flex-direction:column;gap:6px}
+.slider-row{display:flex;align-items:center;gap:10px;font-size:.72rem}
+.slider-row .sl-name{width:140px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;color:var(--text);font-weight:500}
+.slider-row input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:4px;background:var(--card2);border-radius:2px;outline:none;cursor:pointer}
+.slider-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--cyan);cursor:pointer;border:2px solid var(--bg);box-shadow:0 0 6px rgba(0,229,255,.5);transition:box-shadow .2s}
+.slider-row input[type=range]::-webkit-slider-thumb:hover{box-shadow:0 0 12px rgba(0,229,255,.8)}
+.slider-row input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--cyan);cursor:pointer;border:2px solid var(--bg)}
+.slider-row .sl-pct{width:36px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums;color:var(--cyan)}
+.pie-col{display:flex;flex-direction:column;align-items:center}
+.pie-col svg{filter:drop-shadow(0 0 12px rgba(0,229,255,.15))}
+.pie-legend{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:10px;justify-content:center}
+.pie-legend-item{display:flex;align-items:center;gap:4px;font-size:.62rem;color:#8892a8}
+.pie-legend-item .swatch{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+
+/* SCENE 5: Guardrails with toggles */
+.guardrails-pipeline{display:flex;flex-direction:column;gap:0;max-width:500px;width:100%}
+.guardrail-step{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--border);background:var(--card);opacity:0;transform:translateX(-30px);transition:all .5s ease;position:relative}
+.guardrail-step.active{opacity:1;transform:translateX(0)}
+.guardrail-step:not(:last-child)::after{content:'';position:absolute;bottom:-1px;left:30px;width:2px;height:2px;background:var(--lime);z-index:2}
+.guardrail-step .g-icon{width:36px;height:36px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;transition:all .4s}
+.guardrail-step.passed .g-icon{border-color:var(--lime);background:rgba(118,255,3,.1);animation:checkPop .5s ease}
+.guardrail-step.disabled-guard .g-icon{border-color:var(--red);background:rgba(255,82,82,.1)}
+.guardrail-step .g-info{flex:1}
+.guardrail-step .g-name{font-size:.82rem;font-weight:600}
+.guardrail-step .g-desc{font-size:.68rem;color:#8892a8}
+.connector-line{width:2px;height:16px;background:var(--lime);margin-left:30px;opacity:0;transition:opacity .3s}
+.connector-line.active{opacity:1}
+
+/* Toggle switch */
+.toggle-switch{position:relative;width:36px;height:20px;flex-shrink:0;cursor:pointer}
+.toggle-switch input{opacity:0;width:0;height:0}
+.toggle-track{position:absolute;inset:0;background:var(--lime);border-radius:10px;transition:background .3s}
+.toggle-track::after{content:'';position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;top:2px;left:18px;transition:left .3s}
+.toggle-switch input:not(:checked)+.toggle-track{background:var(--red)}
+.toggle-switch input:not(:checked)+.toggle-track::after{left:2px}
+
+/* Guardrail warning */
+.guardrail-warning{max-height:0;overflow:hidden;transition:max-height .5s ease,opacity .4s ease,margin .3s;opacity:0;margin:0 0 0 48px}
+.guardrail-warning.show{max-height:120px;opacity:1;margin:6px 0 4px 48px}
+.guardrail-warning-inner{background:rgba(255,82,82,.08);border:1px solid rgba(255,82,82,.3);border-radius:6px;padding:8px 12px;font-size:.7rem;color:var(--red);line-height:1.5;animation:warningPulse 2s infinite}
+.guardrail-warning-inner::before{content:'WARNING: ';font-weight:700}
+
+/* SCENE 6: Testing */
+.test-pyramid{max-width:550px;width:100%;display:flex;flex-direction:column;gap:10px}
+.test-row{display:flex;align-items:center;gap:12px;opacity:0;transform:translateY(15px);transition:all .4s ease}
+.test-row.active{opacity:1;transform:translateY(0)}
+.test-row .t-label{width:110px;text-align:right;font-size:.78rem;font-weight:600;flex-shrink:0}
+.test-row .t-bar{flex:1;height:22px;background:var(--card2);border-radius:4px;overflow:hidden;position:relative}
+.test-row .t-fill{height:100%;border-radius:4px;width:0;transition:width 1.2s ease}
+.test-row .t-count{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:.72rem;font-weight:600;color:#fff}
+.test-summary{margin-top:20px;text-align:center;font-size:1.3rem;font-weight:700;opacity:0;transition:opacity .5s}
+.test-summary.active{opacity:1}
+
+/* SCENE 7: Execution */
+.order-flow{max-width:700px;width:100%;display:flex;flex-direction:column;align-items:center;gap:16px}
+.order-book{display:grid;grid-template-columns:1fr 1fr;gap:2px;width:100%;max-width:500px;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.ob-side{padding:12px}
+.ob-side.bids{background:rgba(118,255,3,.04)}
+.ob-side.asks{background:rgba(224,64,251,.04)}
+.ob-header{font-size:.7rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;text-align:center}
+.ob-row{display:flex;justify-content:space-between;font-size:.75rem;padding:3px 0;opacity:0;transition:opacity .3s;font-variant-numeric:tabular-nums}
+.ob-row.active{opacity:1}
+.positions-table{width:100%;max-width:500px;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-top:10px}
+.pos-row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;padding:8px 12px;font-size:.75rem;border-bottom:1px solid var(--border);opacity:0;transition:opacity .3s}
+.pos-row.active{opacity:1}
+.pos-row.header{font-weight:700;color:#8892a8;font-size:.68rem;text-transform:uppercase;opacity:1}
+
+/* SCENE 8: Database */
+.db-container{max-width:600px;width:100%;text-align:center}
+.db-icon{width:80px;height:80px;margin:0 auto 16px;border:3px solid var(--cyan);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:2rem;position:relative}
+.db-icon.active{animation:glowPulse 1.5s infinite;--c:rgba(0,229,255,.3)}
+.db-icon .db-spinner{position:absolute;inset:-6px;border:2px solid transparent;border-top-color:var(--cyan);border-radius:14px;animation:spin 2s linear infinite}
+.db-tables{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-top:16px}
+.db-table{padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--card);text-align:left;opacity:0;transform:translateY(15px);transition:all .4s ease}
+.db-table.active{opacity:1;transform:translateY(0)}
+.db-table .tbl-name{font-size:.8rem;font-weight:600;color:var(--cyan);margin-bottom:4px}
+.db-table .tbl-count{font-size:1.1rem;font-weight:700;font-variant-numeric:tabular-nums}
+
+/* SCENE 9: Monitoring */
+.monitoring-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;max-width:700px;width:100%}
+.monitor-panel{padding:16px;border-radius:8px;border:1px solid var(--border);background:var(--card);opacity:0;transform:scale(.9);transition:all .5s ease}
+.monitor-panel.active{opacity:1;transform:scale(1)}
+.monitor-panel .m-title{font-size:.72rem;text-transform:uppercase;letter-spacing:1px;color:#8892a8;margin-bottom:8px}
+.monitor-panel .m-value{font-size:1.4rem;font-weight:700;font-variant-numeric:tabular-nums}
+.monitor-panel .m-chart{height:40px;display:flex;align-items:flex-end;gap:2px;margin-top:8px}
+.monitor-panel .m-bar{width:6px;border-radius:2px;background:var(--cyan);transition:height .3s;min-height:3px}
+.notification{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--card);margin-top:8px;opacity:0;transform:translateX(20px);transition:all .4s ease;font-size:.8rem}
+.notification.active{opacity:1;transform:translateX(0)}
+.notification .n-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+/* SCENE 10: Daily Cycle */
+.daily-cycle{max-width:600px;width:100%;display:flex;flex-direction:column;align-items:center;gap:16px}
+.clock{width:100px;height:100px;border:3px solid var(--gold);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700;color:var(--gold);position:relative}
+.clock.active{animation:glowPulse 1.5s infinite;--c:rgba(255,215,64,.3)}
+.pipeline-steps{width:100%;display:flex;flex-direction:column;gap:0}
+.p-step{display:flex;align-items:center;gap:10px;padding:8px 12px;border-left:2px solid var(--border);margin-left:20px;font-size:.78rem;opacity:0;transition:all .3s ease}
+.p-step.active{opacity:1;border-left-color:var(--lime)}
+.p-step .p-num{width:22px;height:22px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:.6rem;flex-shrink:0;transition:all .3s}
+.p-step.done .p-num{background:var(--lime);color:#000;border-color:var(--lime)}
+.p-step .p-text{flex:1}
+.pipeline-timer{font-size:1.1rem;font-weight:700;color:var(--lime);margin-top:10px;opacity:0;transition:opacity .5s}
+.pipeline-timer.active{opacity:1;text-shadow:var(--glow-lime)}
+
+/* Finale */
+.finale{padding:60px 20px;text-align:center;position:relative;z-index:1}
+.finale-text{font-size:clamp(1.2rem,3vw,1.8rem);font-weight:700;margin-bottom:8px}
+.finale-sub{color:var(--gold);font-size:1rem}
+#confetti-container{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:200;overflow:hidden}
+.confetti{position:absolute;top:-20px;width:8px;height:8px;opacity:0}
+.confetti.active{animation:confettiFall var(--dur) linear forwards}
+
+/* Live Data Panel */
+#live-panel{position:fixed;right:16px;bottom:16px;z-index:150;width:320px;background:rgba(10,14,26,.95);backdrop-filter:blur(14px);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.5);transition:transform .3s ease,opacity .3s ease}
+#live-panel.collapsed{transform:translateY(calc(100% - 40px))}
+#live-panel-header{display:flex;align-items:center;gap:8px;padding:8px 14px;cursor:pointer;border-bottom:1px solid var(--border);background:rgba(26,34,54,.6);user-select:none}
+#live-panel-header .lp-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;transition:background .3s,box-shadow .3s}
+#live-panel-header .lp-dot.online{background:var(--lime);box-shadow:0 0 8px rgba(118,255,3,.6)}
+#live-panel-header .lp-dot.offline{background:var(--red);box-shadow:0 0 8px rgba(255,82,82,.6)}
+#live-panel-header .lp-label{font-size:.78rem;font-weight:700;letter-spacing:1px;flex:1}
+#live-panel-header .lp-label.online{color:var(--lime)}
+#live-panel-header .lp-label.offline{color:var(--red)}
+.lp-refresh{background:none;border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 6px;font-size:.7rem;cursor:pointer;transition:.2s}
+.lp-refresh:hover{border-color:var(--cyan);color:var(--cyan)}
+.lp-refresh.spinning{animation:spin .6s linear}
+.lp-collapse-btn{background:none;border:none;color:#8892a8;font-size:.9rem;cursor:pointer;padding:0 4px;transition:transform .3s}
+#live-panel.collapsed .lp-collapse-btn{transform:rotate(180deg)}
+#live-panel-body{padding:12px 14px;display:flex;flex-direction:column;gap:10px;max-height:400px;overflow-y:auto}
+.lp-section{display:flex;flex-direction:column;gap:4px}
+.lp-section-title{font-size:.62rem;text-transform:uppercase;letter-spacing:1.5px;color:#5a6680;font-weight:700}
+.lp-kv{display:flex;justify-content:space-between;align-items:center;font-size:.75rem}
+.lp-kv .lp-k{color:#8892a8}
+.lp-kv .lp-v{font-weight:600;font-variant-numeric:tabular-nums;transition:color .3s}
+.lp-kv .lp-v.positive{color:var(--lime)}
+.lp-kv .lp-v.negative{color:var(--red)}
+.lp-kv .lp-v.neutral{color:var(--cyan)}
+.lp-weights-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px}
+.lp-weight-row{display:flex;justify-content:space-between;font-size:.65rem;padding:1px 0}
+.lp-weight-row .lp-wn{color:#8892a8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px}
+.lp-weight-row .lp-wv{color:var(--cyan);font-weight:600;font-variant-numeric:tabular-nums}
+.lp-bar-mini{height:3px;background:var(--card2);border-radius:2px;overflow:hidden;margin-top:2px}
+.lp-bar-mini-fill{height:100%;border-radius:2px;background:var(--cyan);transition:width .8s ease}
+.lp-model-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:3px}
+.lp-model-dot{width:100%;aspect-ratio:1;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:.5rem;font-weight:700;color:#fff;transition:all .3s}
+.lp-model-dot.loaded{background:rgba(118,255,3,.2);border:1px solid var(--lime)}
+.lp-model-dot.unloaded{background:rgba(255,82,82,.15);border:1px solid rgba(255,82,82,.4)}
+.lp-timestamp{font-size:.6rem;color:#3d4660;text-align:right;margin-top:2px}
+@keyframes lpFlash{0%{background:rgba(0,229,255,.15)}100%{background:transparent}}
+.lp-flash{animation:lpFlash .6s ease}
+
+/* Responsive */
+@media(max-width:768px){
+  .weight-editor-body{grid-template-columns:1fr}
+  .pie-col{order:-1}
+  .model-box.expanded{grid-column:span 1}
+}
+@media(max-width:600px){
+  #controls{padding:6px 10px;gap:6px}
+  #controls .logo{font-size:.9rem}
+  .search-box input{width:100px}
+  .models-grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}
+  .strategies-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+  .test-row .t-label{width:80px;font-size:.7rem}
+  .order-book{grid-template-columns:1fr}
+  .slider-row .sl-name{width:90px;font-size:.65rem}
+  #live-panel{width:280px;right:8px;bottom:8px}
+}
+</style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+
+<div id="controls">
+  <span class="logo">APEX SYSTEM</span>
+  <button id="btn-play" class="active" title="Play/Pause">&#9654; Play</button>
+  <label>Speed
+    <select id="speed-select">
+      <option value="0.5">0.5x</option>
+      <option value="1" selected>1x</option>
+      <option value="2">2x</option>
+      <option value="3">3x</option>
+    </select>
+  </label>
+  <label>Scene
+    <select id="scene-select">
+      <option value="0">1 — Data Flow</option>
+      <option value="1">2 — 10 Models</option>
+      <option value="2">3 — Ensemble</option>
+      <option value="3">4 — 12 Strategies</option>
+      <option value="4">5 — Guardrails</option>
+      <option value="5">6 — Testing</option>
+      <option value="6">7 — Execution</option>
+      <option value="7">8 — Database</option>
+      <option value="8">9 — Monitoring</option>
+      <option value="9">10 — Daily Cycle</option>
+    </select>
+  </label>
+  <button id="btn-restart" title="Restart">&#8635; Restart</button>
+  <div class="search-box">
+    <input type="text" id="search-input" placeholder="Search keywords..." autocomplete="off">
+    <span class="search-count" id="search-count"></span>
+    <button id="search-prev" title="Previous match">&#9650;</button>
+    <button id="search-next" title="Next match">&#9660;</button>
+    <button id="search-clear" title="Clear search">&#10005;</button>
+  </div>
+</div>
+<div id="progress-bar"></div>
+
+<!-- ==================== SCENE 1: DATA FLOW ==================== -->
+<div class="scene" id="scene-0">
+  <div class="scene-number">Scene 1</div>
+  <div class="scene-title"><span class="glow-lime">Data Flow</span> Animation</div>
+  <div class="scene-subtitle">Three data sources feed the APEX engine with real-time market data</div>
+  <div class="data-sources">
+    <div class="data-source" data-delay="0">
+      <div class="icon">&#128200;</div>
+      <div class="label"><span class="glow-lime">yfinance</span><br><small style="color:#8892a8">OHLCV + FX</small></div>
+    </div>
+    <div class="data-source" data-delay="300">
+      <div class="icon">&#9889;</div>
+      <div class="label"><span class="glow-lime">Polygon.io</span><br><small style="color:#8892a8">Options + News</small></div>
+    </div>
+    <div class="data-source" data-delay="600">
+      <div class="icon">&#128172;</div>
+      <div class="label"><span class="glow-lime">Reddit</span><br><small style="color:#8892a8">Sentiment</small></div>
+    </div>
+  </div>
+  <div class="flow-arrows">
+    <div class="flow-arrow" data-delay="200"><div class="dot"></div></div>
+    <div class="flow-arrow" data-delay="500"><div class="dot" style="animation-delay:.3s"></div></div>
+    <div class="flow-arrow" data-delay="800"><div class="dot" style="animation-delay:.6s"></div></div>
+  </div>
+  <div class="data-counter" id="data-counter">0</div>
+  <div style="font-size:.75rem;color:#8892a8;margin-top:2px">data points / day</div>
+  <div class="data-db" id="data-db">&#128451; PostgreSQL + TimescaleDB &nbsp;|&nbsp; 31 tables &nbsp;|&nbsp; 365-day retention</div>
+</div>
+
+<!-- ==================== SCENE 2: 10 MODELS ==================== -->
+<div class="scene" id="scene-1">
+  <div class="scene-number">Scene 2</div>
+  <div class="scene-title"><span class="glow-cyan">10 Models</span> Processing</div>
+  <div class="scene-subtitle">Data splits into 10 specialized models — click any card for details</div>
+  <div class="models-grid" id="models-grid"></div>
+</div>
+
+<!-- ==================== SCENE 3: ENSEMBLE ==================== -->
+<div class="scene" id="scene-2">
+  <div class="scene-number">Scene 3</div>
+  <div class="scene-title"><span class="glow-gold">Ensemble</span> Combination</div>
+  <div class="scene-subtitle">10 model outputs fuse via Bayesian weighting — adapting to the current market regime</div>
+  <div class="ensemble-container">
+    <div class="ensemble-inputs" id="ensemble-inputs"></div>
+    <div class="ensemble-converge" id="ens-converge"></div>
+    <div class="ensemble-core" id="ens-core">
+      <div style="font-size:.7rem;color:#8892a8">BAYESIAN</div>
+      <div style="font-size:1rem;font-weight:700;color:var(--gold)">COMBINER</div>
+    </div>
+    <div class="weight-bars" id="weight-bars"></div>
+    <div class="ensemble-output" id="ens-output">&#10003; Ensemble Score: <span class="glow-gold">0.73</span></div>
+  </div>
+</div>
+
+<!-- ==================== SCENE 4: 12 STRATEGIES ==================== -->
+<div class="scene" id="scene-3">
+  <div class="scene-number">Scene 4</div>
+  <div class="scene-title"><span class="glow-magenta">12 Strategies</span> Executing</div>
+  <div class="scene-subtitle">Each strategy generates independent alpha signals — drag sliders to adjust weights</div>
+  <div class="strategies-grid" id="strategies-grid"></div>
+  <div class="combined-signal">
+    <div style="font-size:.82rem;color:#8892a8">Combined Signal Strength</div>
+    <div class="signal-meter"><div class="meter-fill" id="combined-meter"></div></div>
+    <div style="font-size:1rem;font-weight:700;color:var(--lime)" id="signal-pct">0%</div>
+  </div>
+  <div class="weight-editor" id="weight-editor">
+    <div class="weight-editor-title">&#9881; Strategy Weight Allocation</div>
+    <div class="weight-editor-body">
+      <div class="sliders-col" id="sliders-col"></div>
+      <div class="pie-col">
+        <svg id="pie-chart" width="220" height="220" viewBox="-110 -110 220 220"></svg>
+        <div class="pie-legend" id="pie-legend"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SCENE 5: GUARDRAILS ==================== -->
+<div class="scene" id="scene-4">
+  <div class="scene-number">Scene 5</div>
+  <div class="scene-title"><span class="glow-lime">Safety Guardrails</span> Check</div>
+  <div class="scene-subtitle">5 automated pre-trade safety checks — toggle any OFF to see what could go wrong</div>
+  <div class="guardrails-pipeline" id="guardrails-pipeline"></div>
+</div>
+
+<!-- ==================== SCENE 6: TESTING ==================== -->
+<div class="scene" id="scene-5">
+  <div class="scene-number">Scene 6</div>
+  <div class="scene-title"><span class="glow-cyan">Testing</span> Pyramid</div>
+  <div class="scene-subtitle">Comprehensive test suite ensures system reliability across every layer</div>
+  <div class="test-pyramid" id="test-pyramid"></div>
+  <div class="test-summary" id="test-summary"><span class="glow-lime">970 passed</span>, <span style="color:#8892a8">0 failed</span></div>
+</div>
+
+<!-- ==================== SCENE 7: ORDER EXECUTION ==================== -->
+<div class="scene" id="scene-6">
+  <div class="scene-number">Scene 7</div>
+  <div class="scene-title"><span class="glow-magenta">Order</span> Execution</div>
+  <div class="scene-subtitle">Signals become orders — routed to Alpaca for paper or live execution</div>
+  <div class="order-flow">
+    <div style="font-size:.85rem;color:var(--magenta);font-weight:600;opacity:0" id="exec-label">&#9889; Routing to Alpaca...</div>
+    <div class="order-book" id="order-book">
+      <div class="ob-side bids">
+        <div class="ob-header glow-lime">Bids</div>
+        <div id="bids-rows"></div>
+      </div>
+      <div class="ob-side asks">
+        <div class="ob-header glow-magenta">Asks</div>
+        <div id="asks-rows"></div>
+      </div>
+    </div>
+    <div class="positions-table" id="positions-table">
+      <div class="pos-row header"><span>Symbol</span><span>Side</span><span>Qty</span><span>P&L</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SCENE 8: DATABASE ==================== -->
+<div class="scene" id="scene-7">
+  <div class="scene-number">Scene 8</div>
+  <div class="scene-title"><span class="glow-cyan">Database</span> Logging</div>
+  <div class="scene-subtitle">Every trade, signal, and snapshot is persisted to PostgreSQL for full audit trail</div>
+  <div class="db-container">
+    <div class="db-icon" id="db-icon"><div class="db-spinner"></div>&#128451;</div>
+    <div class="db-tables" id="db-tables"></div>
+  </div>
+</div>
+
+<!-- ==================== SCENE 9: MONITORING ==================== -->
+<div class="scene" id="scene-8">
+  <div class="scene-number">Scene 9</div>
+  <div class="scene-title"><span class="glow-gold">Monitoring</span> Dashboard</div>
+  <div class="scene-subtitle">Real-time observability — Prometheus metrics, Grafana dashboards, instant alerts</div>
+  <div class="monitoring-grid" id="monitoring-grid"></div>
+  <div id="notifications" style="max-width:700px;width:100%;margin-top:16px"></div>
+</div>
+
+<!-- ==================== SCENE 10: DAILY CYCLE ==================== -->
+<div class="scene" id="scene-9">
+  <div class="scene-number">Scene 10</div>
+  <div class="scene-title"><span class="glow-gold">The Daily</span> Cycle</div>
+  <div class="scene-subtitle">17 steps execute automatically every trading day at 10:00 AM ET</div>
+  <div class="daily-cycle">
+    <div class="clock" id="clock">10:00</div>
+    <div class="pipeline-steps" id="pipeline-steps"></div>
+    <div class="pipeline-timer" id="pipeline-timer">Pipeline completed in 3.2 seconds</div>
+  </div>
+</div>
+
+<!-- ==================== FINALE ==================== -->
+<div class="finale" id="finale" style="opacity:0;transition:opacity 1s">
+  <div class="finale-text">This all happens <span class="glow-gold">automatically</span> at 10:00 AM every trading day.</div>
+  <div class="finale-sub">APEX v3.0.0 — 10 models &middot; 12 strategies &middot; 5 guardrails &middot; 970 tests</div>
+</div>
+<div id="confetti-container"></div>
+
+<!-- ==================== LIVE DATA PANEL ==================== -->
+<div id="live-panel" class="collapsed">
+  <div id="live-panel-header" onclick="toggleLivePanel()">
+    <div class="lp-dot offline" id="lp-dot"></div>
+    <span class="lp-label offline" id="lp-label">OFFLINE</span>
+    <button class="lp-refresh" id="lp-refresh" onclick="event.stopPropagation();refreshLiveData()" title="Refresh now">&#8635;</button>
+    <button class="lp-collapse-btn" title="Expand/Collapse">&#9650;</button>
+  </div>
+  <div id="live-panel-body">
+    <div class="lp-section">
+      <div class="lp-section-title">Portfolio</div>
+      <div class="lp-kv"><span class="lp-k">Value</span><span class="lp-v neutral" id="lp-portfolio-val">--</span></div>
+      <div class="lp-kv"><span class="lp-k">Day P&amp;L</span><span class="lp-v" id="lp-day-pnl">--</span></div>
+      <div class="lp-kv"><span class="lp-k">Day #</span><span class="lp-v neutral" id="lp-day-count">--</span></div>
+    </div>
+    <div class="lp-section">
+      <div class="lp-section-title">Status</div>
+      <div class="lp-kv"><span class="lp-k">Regime</span><span class="lp-v neutral" id="lp-regime">--</span></div>
+      <div class="lp-kv"><span class="lp-k">Circuit Breaker</span><span class="lp-v" id="lp-cb">--</span></div>
+      <div class="lp-kv"><span class="lp-k">Pipeline</span><span class="lp-v" id="lp-pipeline">--</span></div>
+    </div>
+    <div class="lp-section">
+      <div class="lp-section-title">Models (loaded)</div>
+      <div class="lp-model-grid" id="lp-models"></div>
+    </div>
+    <div class="lp-section">
+      <div class="lp-section-title">Strategy Weights</div>
+      <div class="lp-weights-grid" id="lp-weights">
+        <div class="lp-kv"><span class="lp-k" style="color:#3d4660">No data</span></div>
+      </div>
+    </div>
+    <div class="lp-section">
+      <div class="lp-section-title">Last Pipeline Run</div>
+      <div class="lp-kv"><span class="lp-k">Date</span><span class="lp-v neutral" id="lp-last-date">--</span></div>
+      <div class="lp-kv"><span class="lp-k">Trades</span><span class="lp-v neutral" id="lp-last-trades">--</span></div>
+      <div class="lp-kv"><span class="lp-k">Return</span><span class="lp-v" id="lp-last-return">--</span></div>
+      <div class="lp-kv"><span class="lp-k">Strategies</span><span class="lp-v neutral" id="lp-last-strategies">--</span></div>
+    </div>
+    <div class="lp-timestamp" id="lp-timestamp">Last updated: never</div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// CONFIG DATA
+// ============================================================
+const MODELS = [
+  {n:'TFT Stocks',c:'var(--cyan)',
+   desc:'Temporal Fusion Transformer for equity return prediction using attention-based multi-horizon forecasting.',
+   data:'OHLCV (Open/High/Low/Close/Volume) for 500+ US equities, plus technical indicators (RSI, MACD, Bollinger Bands)',
+   sample:'{"AAPL": +2.3%, "GOOGL": -0.8%, "MSFT": +1.5%}',accuracy:78},
+  {n:'TFT Forex',c:'var(--cyan)',
+   desc:'Currency pair return forecaster optimized for G10 FX pairs with carry and momentum features.',
+   data:'FX pair OHLCV (EURUSD, GBPUSD, USDJPY, etc.), interest rate differentials, central bank calendars',
+   sample:'{"EURUSD": +0.12%, "USDJPY": -0.35%}',accuracy:72},
+  {n:'TFT Volatility',c:'var(--cyan)',
+   desc:'Realized and implied volatility forecaster for options pricing and vol surface construction.',
+   data:'Options chains, VIX term structure, historical realized vol, GARCH residuals',
+   sample:'{"SPY_IV_30d": 18.2, "RV_forecast": 16.5}',accuracy:75},
+  {n:'Kronos',c:'var(--magenta)',
+   desc:'Pre-trained K-line foundation model (NeoQuasar/Kronos-base) for multi-asset price pattern recognition.',
+   data:'Raw K-line (candlestick) sequences across stocks and FX, auto-downloaded from HuggingFace',
+   sample:'{"trend_score": 0.72, "reversal_prob": 0.15}',accuracy:70},
+  {n:'Deep Surrogates',c:'var(--magenta)',
+   desc:'Neural surrogate for fast option pricing with Heston calibration and multi-start optimization.',
+   data:'Options chains with strikes/expiries, underlying prices, risk-free rates, dividend yields',
+   sample:'{"AAPL_C150": $4.82, "delta": 0.62, "vega": 0.18}',accuracy:85},
+  {n:'TDGF',c:'var(--magenta)',
+   desc:'PDE solver for American option early exercise boundaries using time-dependent Green\'s functions.',
+   data:'American-style options with strike, expiry, underlying dynamics, early exercise premium',
+   sample:'{"exercise_boundary": $148.50, "premium": $2.15}',accuracy:80},
+  {n:'Sentiment',c:'var(--gold)',
+   desc:'FinBERT transformer + VADER fallback for financial news and social media sentiment scoring.',
+   data:'Reddit posts (r/wallstreetbets, r/stocks), Polygon.io news articles, earnings call transcripts',
+   sample:'{"AAPL": 0.72, "TSLA": -0.45, "avg": 0.31}',accuracy:68},
+  {n:'Mean Reversion',c:'var(--lime)',
+   desc:'Statistical mean reversion detector using Hurst exponent estimation and OU process parameters.',
+   data:'Price series for equity universe, half-life calculations, z-score of deviations from mean',
+   sample:'{"AAPL_zscore": -1.8, "half_life": 12d, "revert_prob": 0.74}',accuracy:74},
+  {n:'Macro Regime',c:'var(--lime)',
+   desc:'Rule-based macro regime classifier using yield curve shape, rate trends, and economic indicators.',
+   data:'Treasury yields (2Y/10Y/30Y via yfinance), Fed funds rate, PMI, unemployment claims',
+   sample:'{"regime": "expansion", "yield_curve": "normal", "rate_trend": "rising"}',accuracy:65},
+  {n:'Microstructure',c:'var(--lime)',
+   desc:'Volume profile and order flow analysis for detecting institutional activity and liquidity patterns.',
+   data:'Intraday volume profiles, VWAP, order flow imbalance, bid-ask spreads, trade-size clustering',
+   sample:'{"flow_imbalance": 0.35, "institutional_pct": 42%}',accuracy:71}
+];
+const STRATEGIES = [
+  {n:'Cross-Sectional Momentum',s:78},{n:'Pairs Trading (StatArb)',s:65},{n:'Mean Reversion',s:82},
+  {n:'Sector Rotation',s:55},{n:'FX Carry + Trend',s:70},{n:'FX Momentum',s:63},
+  {n:'FX Vol Breakout',s:48},{n:'Deep Surrogates',s:72},{n:'TDGF American Options',s:58},
+  {n:'Vol Surface Arbitrage',s:44},{n:'Kronos Forecasting',s:67},{n:'Sentiment',s:61}
+];
+const GUARDRAILS = [
+  {n:'Signal Variance Guard',d:'Halt if scores collapse (std < 0.01)',icon:'&#128200;',
+   warn:'Collapsed signals would cause the system to make random, undiversified bets \u2014 potentially concentrating all capital into a single position with no edge.'},
+  {n:'Leverage Gate',d:'Skip orders if leverage > 1.5x',icon:'&#9878;',
+   warn:'The optimizer could generate leveraged positions exceeding safe limits \u2014 amplifying losses 3-5x during market shocks or flash crashes.'},
+  {n:'Calibration Health',d:'Verify model calibration at startup',icon:'&#128295;',
+   warn:'Model probabilities drift from true likelihoods over time \u2014 leading to systematic overconfidence and position sizing that ignores actual risk.'},
+  {n:'Model Promotion Gate',d:'Reject models with Sharpe < 0.5',icon:'&#128640;',
+   warn:'An undertrained or broken model could go live \u2014 generating adversarial signals that poison the ensemble and trigger correlated wrong-way trades.'},
+  {n:'Execution Failure Monitor',d:'Pause if failure rate > 25%',icon:'&#128680;',
+   warn:'Cascading API errors would go undetected \u2014 draining capital through partial fills, stale limit orders, and orphaned positions without hedges.'}
+];
+const TESTS = [
+  {n:'Unit Tests',c:561,color:'var(--cyan)'},{n:'Database',c:81,color:'var(--lime)'},
+  {n:'API (Playwright)',c:20,color:'var(--magenta)'},{n:'Dashboard',c:10,color:'var(--gold)'},
+  {n:'Security Audit',c:17,color:'var(--cyan)'},{n:'Chaos/Resilience',c:6,color:'var(--magenta)'}
+];
+const DB_TABLES = [
+  {n:'paper_trades',c:0,target:1247},{n:'paper_daily_snapshots',c:0,target:365},
+  {n:'paper_strategy_signals',c:0,target:4380},{n:'paper_risk_reports',c:0,target:365},
+  {n:'portfolio_snapshots',c:0,target:730},{n:'circuit_breaker_events',c:0,target:12}
+];
+const PIPELINE = [
+  'Fetch OHLCV via yfinance','Circuit breaker check','Detect market regime',
+  'Run 12 strategies','Bayesian ensemble combine','Signal variance check',
+  'Risk assessment (VaR/CVaR)','Portfolio optimization','Leverage gate',
+  'Execution failure monitor','Execute via Alpaca','Audit trail logging',
+  'PostgreSQL persistence','Feed risk manager','Redis pub/sub signals',
+  'Discord + Email reports','LLM signal analysis'
+];
+const WEIGHT_LABELS = [
+  {l:'Sharpe-based',v:60,c:'var(--cyan)'},{l:'Regime-based',v:40,c:'var(--gold)'},
+  {l:'Min weight',v:5,c:'var(--magenta)'},{l:'Max weight',v:50,c:'var(--lime)'}
+];
+const MONITOR_PANELS = [
+  {t:'Signal Latency',v:'2.1ms',bars:[3,5,4,6,3,4,5,7,4,3]},
+  {t:'Pipeline Rate',v:'1/day',bars:[8,8,8,8,8,8,8,8,8,8]},
+  {t:'Error Rate',v:'0.00%',bars:[0,0,0,1,0,0,0,0,0,0]},
+  {t:'Active Models',v:'10/10',bars:[10,10,10,10,10,10,10,10,10,10]}
+];
+const NOTIFICATIONS = [
+  {text:'Pipeline completed successfully',color:'var(--lime)',time:'10:00:03 AM'},
+  {text:'3 orders executed (2 long, 1 short)',color:'var(--cyan)',time:'10:00:04 AM'},
+  {text:'Daily snapshot saved to PostgreSQL',color:'var(--gold)',time:'10:00:04 AM'},
+  {text:'Discord report sent',color:'var(--magenta)',time:'10:00:05 AM'}
+];
+const PIE_COLORS = [
+  '#00e5ff','#76ff03','#e040fb','#ffd740','#ff5252','#448aff',
+  '#69f0ae','#b388ff','#ffab40','#80d8ff','#ea80fc','#f4ff81'
+];
+
+// ============================================================
+// BUILD STATIC DOM
+// ============================================================
+(function buildDOM(){
+  // Models grid — now with expandable detail panels
+  const mg=document.getElementById('models-grid');
+  MODELS.forEach((m,i)=>{
+    const accColor = m.accuracy>=75?'var(--lime)':m.accuracy>=65?'var(--gold)':'var(--red)';
+    mg.innerHTML+=`<div class="model-box" data-idx="${i}" onclick="toggleModelDetail(${i})">
+      <div class="fill" style="background:${m.c.replace(')',',.08)')};"></div>
+      <div class="content">
+        <div class="num">#${i+1}</div>
+        <div class="name">${m.n}</div>
+        <div class="status"><span class="spinner"></span>analyzing...</div>
+        <div class="expand-arrow">&#9660; details</div>
+      </div>
+      <div class="model-detail">
+        <div class="detail-row"><div class="detail-label">Purpose</div><div class="detail-value">${m.desc}</div></div>
+        <div class="detail-row"><div class="detail-label">Data</div><div class="detail-value">${m.data}</div></div>
+        <div class="sample-output">${m.sample}</div>
+        <div class="accuracy-bar">
+          <span class="detail-label">Accuracy</span>
+          <div class="accuracy-track"><div class="accuracy-fill" style="width:0;background:${accColor}" data-acc="${m.accuracy}"></div></div>
+          <span class="accuracy-pct" style="color:${accColor}">${m.accuracy}%</span>
+        </div>
+      </div>
+    </div>`;
+  });
+  // Ensemble inputs
+  const ei=document.getElementById('ensemble-inputs');
+  MODELS.forEach((m,i)=>{ei.innerHTML+=`<div class="ensemble-input" data-idx="${i}" style="border-color:${m.c}">${m.n}</div>`;});
+  // Weight bars
+  const wb=document.getElementById('weight-bars');
+  WEIGHT_LABELS.forEach(w=>{wb.innerHTML+=`<div class="weight-bar"><div class="lbl">${w.l}</div><div class="bar"><div class="bar-fill" data-target="${w.v}" style="background:${w.c}"></div></div><div class="val">${w.v}%</div></div>`;});
+  // Strategies
+  const sg=document.getElementById('strategies-grid');
+  STRATEGIES.forEach((s,i)=>{
+    const colors=['var(--cyan)','var(--lime)','var(--magenta)','var(--gold)'];
+    const c=colors[i%4];
+    sg.innerHTML+=`<div class="strategy-box" data-idx="${i}"><div class="s-name">${s.n}</div><div class="s-status">Generating signals...</div><div class="signal-bar"><div class="signal-fill" data-target="${s.s}" style="background:${c}"></div></div></div>`;
+  });
+  // Strategy weight sliders + pie chart
+  const sc=document.getElementById('sliders-col');
+  const pl=document.getElementById('pie-legend');
+  const defaultWeights = [12,8,10,6,9,7,5,10,7,5,11,10];
+  STRATEGIES.forEach((s,i)=>{
+    sc.innerHTML+=`<div class="slider-row"><span class="sl-name" title="${s.n}">${s.n}</span><input type="range" min="0" max="100" value="${defaultWeights[i]}" data-idx="${i}" oninput="updatePieChart()"><span class="sl-pct" id="sl-pct-${i}">${defaultWeights[i]}%</span></div>`;
+    pl.innerHTML+=`<div class="pie-legend-item"><div class="swatch" style="background:${PIE_COLORS[i]}"></div><span>${s.n.length>18?s.n.slice(0,16)+'...':s.n}</span></div>`;
+  });
+  // Guardrails — with toggle switches
+  const gp=document.getElementById('guardrails-pipeline');
+  GUARDRAILS.forEach((g,i)=>{
+    gp.innerHTML+=`<div class="guardrail-step" data-idx="${i}">
+      <div class="g-icon">${g.icon}</div>
+      <div class="g-info"><div class="g-name">${g.n}</div><div class="g-desc">${g.d}</div></div>
+      <label class="toggle-switch" title="Toggle guardrail" onclick="event.stopPropagation()">
+        <input type="checkbox" checked data-guard="${i}" onchange="toggleGuardrail(${i},this.checked)">
+        <div class="toggle-track"></div>
+      </label>
+    </div>
+    <div class="guardrail-warning" id="guard-warn-${i}"><div class="guardrail-warning-inner">${g.warn}</div></div>`;
+    if(i<GUARDRAILS.length-1) gp.innerHTML+=`<div class="connector-line" data-idx="${i}"></div>`;
+  });
+  // Tests
+  const tp=document.getElementById('test-pyramid');
+  const maxC=Math.max(...TESTS.map(t=>t.c));
+  TESTS.forEach(t=>{tp.innerHTML+=`<div class="test-row"><div class="t-label">${t.n}</div><div class="t-bar"><div class="t-fill" data-target="${(t.c/maxC)*100}" style="background:${t.color}"></div><div class="t-count">${t.c}</div></div></div>`;});
+  // DB tables
+  const dt=document.getElementById('db-tables');
+  DB_TABLES.forEach((t,i)=>{dt.innerHTML+=`<div class="db-table" data-idx="${i}"><div class="tbl-name">${t.n}</div><div class="tbl-count" id="tbl-count-${i}">0</div><div style="font-size:.65rem;color:#8892a8">rows</div></div>`;});
+  // Monitoring panels
+  const mp=document.getElementById('monitoring-grid');
+  MONITOR_PANELS.forEach((p,i)=>{
+    const bars=p.bars.map(b=>`<div class="m-bar" style="height:${b*4}px"></div>`).join('');
+    mp.innerHTML+=`<div class="monitor-panel" data-idx="${i}"><div class="m-title">${p.t}</div><div class="m-value">${p.v}</div><div class="m-chart">${bars}</div></div>`;
+  });
+  // Notifications
+  const nd=document.getElementById('notifications');
+  NOTIFICATIONS.forEach((n,i)=>{nd.innerHTML+=`<div class="notification" data-idx="${i}"><div class="n-dot" style="background:${n.color}"></div><span style="color:#8892a8;font-size:.7rem">${n.time}</span> ${n.text}</div>`;});
+  // Pipeline steps
+  const ps=document.getElementById('pipeline-steps');
+  PIPELINE.forEach((s,i)=>{ps.innerHTML+=`<div class="p-step" data-idx="${i}"><div class="p-num">${i+1}</div><div class="p-text">${s}</div></div>`;});
+  // Order book
+  const bids=[{p:152.30,q:400},{p:152.25,q:650},{p:152.20,q:300},{p:152.15,q:800},{p:152.10,q:550}];
+  const asks=[{p:152.35,q:350},{p:152.40,q:500},{p:152.45,q:250},{p:152.50,q:700},{p:152.55,q:450}];
+  const br=document.getElementById('bids-rows');
+  const ar=document.getElementById('asks-rows');
+  bids.forEach(b=>{br.innerHTML+=`<div class="ob-row"><span class="glow-lime">$${b.p.toFixed(2)}</span><span>${b.q}</span></div>`;});
+  asks.forEach(a=>{ar.innerHTML+=`<div class="ob-row"><span class="glow-magenta">$${a.p.toFixed(2)}</span><span>${a.q}</span></div>`;});
+  // Positions
+  const pt=document.getElementById('positions-table');
+  [{s:'AAPL',d:'LONG',q:150,pnl:'+$342'},{s:'GOOGL',d:'LONG',q:45,pnl:'+$128'},{s:'MSFT',d:'SHORT',q:80,pnl:'-$67'}].forEach(p=>{
+    const pnlColor=p.pnl.startsWith('+')?'var(--lime)':'var(--magenta)';
+    pt.innerHTML+=`<div class="pos-row"><span>${p.s}</span><span>${p.d}</span><span>${p.q}</span><span style="color:${pnlColor}">${p.pnl}</span></div>`;
+  });
+  // Initial pie chart
+  updatePieChart();
+})();
+
+// ============================================================
+// FEATURE 1: CLICKABLE MODEL CARDS
+// ============================================================
+function toggleModelDetail(idx){
+  const box=document.querySelector(`.model-box[data-idx="${idx}"]`);
+  const wasExpanded=box.classList.contains('expanded');
+  // Collapse all others
+  document.querySelectorAll('.model-box.expanded').forEach(b=>b.classList.remove('expanded'));
+  if(!wasExpanded){
+    box.classList.add('expanded');
+    // Animate accuracy bar fill
+    const fill=box.querySelector('.accuracy-fill');
+    if(fill) setTimeout(()=>{fill.style.width=fill.dataset.acc+'%'},50);
+  }
+}
+
+// ============================================================
+// FEATURE 2: GUARDRAIL TOGGLES
+// ============================================================
+function toggleGuardrail(idx,isOn){
+  const step=document.querySelector(`.guardrail-step[data-idx="${idx}"]`);
+  const warn=document.getElementById('guard-warn-'+idx);
+  if(isOn){
+    step.classList.remove('disabled-guard');
+    step.classList.add('passed');
+    warn.classList.remove('show');
+  } else {
+    step.classList.add('disabled-guard');
+    step.classList.remove('passed');
+    warn.classList.add('show');
+    // Shake animation
+    step.style.animation='shakeX .5s ease';
+    setTimeout(()=>{step.style.animation=''},500);
+  }
+}
+
+// ============================================================
+// FEATURE 3: PIE CHART + SLIDERS
+// ============================================================
+function updatePieChart(){
+  const sliders=document.querySelectorAll('#sliders-col input[type=range]');
+  let rawValues=[];
+  sliders.forEach((s,i)=>{
+    rawValues.push(parseFloat(s.value));
+  });
+  const total=rawValues.reduce((a,b)=>a+b,0)||1;
+  // Update percentage labels
+  rawValues.forEach((v,i)=>{
+    const pct=((v/total)*100).toFixed(1);
+    const el=document.getElementById('sl-pct-'+i);
+    if(el) el.textContent=pct+'%';
+  });
+  // Draw SVG pie chart
+  const svg=document.getElementById('pie-chart');
+  svg.innerHTML='';
+  const R=95, cx=0, cy=0;
+  let startAngle=-Math.PI/2;
+  rawValues.forEach((v,i)=>{
+    if(v===0) return;
+    const sliceAngle=(v/total)*2*Math.PI;
+    const endAngle=startAngle+sliceAngle;
+    const largeArc=sliceAngle>Math.PI?1:0;
+    const x1=cx+R*Math.cos(startAngle);
+    const y1=cy+R*Math.sin(startAngle);
+    const x2=cx+R*Math.cos(endAngle);
+    const y2=cy+R*Math.sin(endAngle);
+    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d',`M${cx},${cy} L${x1},${y1} A${R},${R} 0 ${largeArc} 1 ${x2},${y2} Z`);
+    path.setAttribute('fill',PIE_COLORS[i]);
+    path.setAttribute('stroke','var(--bg)');
+    path.setAttribute('stroke-width','2');
+    path.style.opacity='0.85';
+    path.style.transition='d .3s ease';
+    // Hover effect
+    path.addEventListener('mouseenter',()=>{path.style.opacity='1';path.style.filter='brightness(1.3)'});
+    path.addEventListener('mouseleave',()=>{path.style.opacity='0.85';path.style.filter=''});
+    // Tooltip
+    const pct=((v/total)*100).toFixed(1);
+    const title=document.createElementNS('http://www.w3.org/2000/svg','title');
+    title.textContent=`${STRATEGIES[i].n}: ${pct}%`;
+    path.appendChild(title);
+    svg.appendChild(path);
+    startAngle=endAngle;
+  });
+  // Center label
+  const circle=document.createElementNS('http://www.w3.org/2000/svg','circle');
+  circle.setAttribute('cx','0');circle.setAttribute('cy','0');circle.setAttribute('r','40');
+  circle.setAttribute('fill','var(--bg)');circle.setAttribute('stroke','var(--border)');circle.setAttribute('stroke-width','1');
+  svg.appendChild(circle);
+  const text=document.createElementNS('http://www.w3.org/2000/svg','text');
+  text.setAttribute('x','0');text.setAttribute('y','0');text.setAttribute('text-anchor','middle');
+  text.setAttribute('dominant-baseline','middle');text.setAttribute('fill','var(--text)');
+  text.setAttribute('font-size','11');text.setAttribute('font-weight','700');
+  text.textContent='ALLOCATION';
+  svg.appendChild(text);
+}
+
+// ============================================================
+// FEATURE 4: SEARCH WITH HIGHLIGHTING
+// ============================================================
+const searchInput=document.getElementById('search-input');
+const searchCount=document.getElementById('search-count');
+let searchMarks=[];
+let currentMarkIdx=-1;
+
+function clearSearch(){
+  searchMarks.forEach(m=>{
+    const parent=m.parentNode;
+    parent.replaceChild(document.createTextNode(m.textContent),m);
+    parent.normalize();
+  });
+  searchMarks=[];
+  currentMarkIdx=-1;
+  searchCount.textContent='';
+}
+
+function doSearch(query){
+  clearSearch();
+  if(!query||query.length<2) return;
+  const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,{
+    acceptNode(node){
+      // Skip script, style, input, controls bar
+      const p=node.parentElement;
+      if(!p) return NodeFilter.FILTER_REJECT;
+      if(p.closest('script,style,#controls,noscript')) return NodeFilter.FILTER_REJECT;
+      if(p.tagName==='INPUT'||p.tagName==='SELECT'||p.tagName==='OPTION') return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+  const textNodes=[];
+  while(walker.nextNode()) textNodes.push(walker.currentNode);
+  const lowerQ=query.toLowerCase();
+  textNodes.forEach(node=>{
+    const text=node.textContent;
+    const lowerText=text.toLowerCase();
+    if(!lowerText.includes(lowerQ)) return;
+    const frag=document.createDocumentFragment();
+    let lastIdx=0;
+    let idx=lowerText.indexOf(lowerQ,lastIdx);
+    while(idx!==-1){
+      if(idx>lastIdx) frag.appendChild(document.createTextNode(text.slice(lastIdx,idx)));
+      const mark=document.createElement('mark');
+      mark.className='search-highlight';
+      mark.textContent=text.slice(idx,idx+query.length);
+      frag.appendChild(mark);
+      searchMarks.push(mark);
+      lastIdx=idx+query.length;
+      idx=lowerText.indexOf(lowerQ,lastIdx);
+    }
+    if(lastIdx<text.length) frag.appendChild(document.createTextNode(text.slice(lastIdx)));
+    node.parentNode.replaceChild(frag,node);
+  });
+  if(searchMarks.length>0){
+    currentMarkIdx=0;
+    searchMarks[0].classList.add('current');
+    searchMarks[0].scrollIntoView({behavior:'smooth',block:'center'});
+    searchCount.textContent=`1/${searchMarks.length}`;
+  } else {
+    searchCount.textContent='0 found';
+  }
+}
+
+function navigateSearch(dir){
+  if(searchMarks.length===0) return;
+  searchMarks[currentMarkIdx].classList.remove('current');
+  currentMarkIdx=(currentMarkIdx+dir+searchMarks.length)%searchMarks.length;
+  searchMarks[currentMarkIdx].classList.add('current');
+  searchMarks[currentMarkIdx].scrollIntoView({behavior:'smooth',block:'center'});
+  searchCount.textContent=`${currentMarkIdx+1}/${searchMarks.length}`;
+}
+
+let searchDebounce;
+searchInput.addEventListener('input',()=>{
+  clearTimeout(searchDebounce);
+  searchDebounce=setTimeout(()=>doSearch(searchInput.value.trim()),300);
+});
+document.getElementById('search-next').addEventListener('click',()=>navigateSearch(1));
+document.getElementById('search-prev').addEventListener('click',()=>navigateSearch(-1));
+document.getElementById('search-clear').addEventListener('click',()=>{
+  searchInput.value='';
+  clearSearch();
+});
+searchInput.addEventListener('keydown',(e)=>{
+  if(e.key==='Enter'){
+    e.preventDefault();
+    navigateSearch(e.shiftKey?-1:1);
+  }
+  if(e.key==='Escape'){
+    searchInput.value='';
+    clearSearch();
+    searchInput.blur();
+  }
+});
+
+// ============================================================
+// BACKGROUND CANVAS — particle field
+// ============================================================
+(function initCanvas(){
+  const c=document.getElementById('bg-canvas'),ctx=c.getContext('2d');
+  let w,h,particles=[];
+  function resize(){w=c.width=window.innerWidth;h=c.height=window.innerHeight}
+  resize();window.addEventListener('resize',resize);
+  for(let i=0;i<60;i++) particles.push({x:Math.random()*2000,y:Math.random()*5000,r:Math.random()*1.5+.5,dx:(Math.random()-.5)*.3,dy:(Math.random()-.5)*.3,a:Math.random()*.3+.1});
+  function draw(){
+    ctx.clearRect(0,0,w,h);
+    particles.forEach(p=>{
+      p.x+=p.dx;p.y+=p.dy;
+      if(p.x<0)p.x=w;if(p.x>w)p.x=0;if(p.y<0)p.y=h;if(p.y>h)p.y=0;
+      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle=`rgba(0,229,255,${p.a})`;ctx.fill();
+    });
+    for(let i=0;i<particles.length;i++){
+      for(let j=i+1;j<particles.length;j++){
+        const dx=particles[i].x-particles[j].x,dy=particles[i].y-particles[j].y,d=Math.sqrt(dx*dx+dy*dy);
+        if(d<120){ctx.beginPath();ctx.moveTo(particles[i].x,particles[i].y);ctx.lineTo(particles[j].x,particles[j].y);ctx.strokeStyle=`rgba(0,229,255,${.08*(1-d/120)})`;ctx.stroke()}
+      }
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+// ============================================================
+// ANIMATION ENGINE
+// ============================================================
+let speed=1, playing=true, currentScene=-1, sceneTimers=[];
+const scenes=document.querySelectorAll('.scene');
+const progressBar=document.getElementById('progress-bar');
+
+function delay(ms){return new Promise(r=>{const id=setTimeout(r,ms/speed);sceneTimers.push(id)})}
+function clearTimers(){sceneTimers.forEach(clearTimeout);sceneTimers=[]}
+
+function updateProgress(){
+  const pct=((currentScene+1)/scenes.length)*100;
+  progressBar.style.width=pct+'%';
+}
+
+function animateCounter(el,target,duration){
+  const start=performance.now();
+  const initial=parseInt(el.textContent.replace(/,/g,''))||0;
+  function tick(now){
+    const t=Math.min((now-start)/(duration/speed),1);
+    const ease=1-Math.pow(1-t,3);
+    const val=Math.round(initial+((target-initial)*ease));
+    el.textContent=val.toLocaleString();
+    if(t<1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+// Scene animators
+async function animateScene0(){
+  const sources=document.querySelectorAll('#scene-0 .data-source');
+  const arrows=document.querySelectorAll('#scene-0 .flow-arrow');
+  for(let i=0;i<sources.length;i++){
+    await delay(400);
+    sources[i].classList.add('active');
+    if(arrows[i]) arrows[i].classList.add('active');
+  }
+  await delay(600);
+  animateCounter(document.getElementById('data-counter'),100000,2000);
+  await delay(1000);
+  document.getElementById('data-db').classList.add('active');
+}
+
+async function animateScene1(){
+  const boxes=document.querySelectorAll('#scene-1 .model-box');
+  for(let i=0;i<boxes.length;i++){
+    await delay(250);
+    boxes[i].classList.add('active');
+  }
+}
+
+async function animateScene2(){
+  const inputs=document.querySelectorAll('#scene-2 .ensemble-input');
+  for(let i=0;i<inputs.length;i++){
+    await delay(150);
+    inputs[i].classList.add('active');
+  }
+  await delay(400);
+  document.getElementById('ens-core').classList.add('active');
+  await delay(500);
+  document.querySelectorAll('#scene-2 .bar-fill').forEach(b=>{b.style.width=b.dataset.target+'%'});
+  await delay(800);
+  document.getElementById('ens-output').classList.add('active');
+}
+
+async function animateScene3(){
+  const boxes=document.querySelectorAll('#scene-3 .strategy-box');
+  for(let i=0;i<boxes.length;i++){
+    await delay(200);
+    boxes[i].classList.add('active');
+    const fill=boxes[i].querySelector('.signal-fill');
+    setTimeout(()=>{fill.style.width=fill.dataset.target+'%'},200/speed);
+  }
+  await delay(600);
+  const meter=document.getElementById('combined-meter');
+  meter.style.width='78%';
+  const pct=document.getElementById('signal-pct');
+  pct.textContent='0%';
+  const start=performance.now();
+  function tick(now){
+    const t=Math.min((now-start)/(800/speed),1);
+    pct.textContent=Math.round(78*t)+'%';
+    if(t<1)requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+  await delay(400);
+  document.getElementById('weight-editor').classList.add('active');
+}
+
+async function animateScene4(){
+  const steps=document.querySelectorAll('#scene-4 .guardrail-step');
+  const connectors=document.querySelectorAll('#scene-4 .connector-line');
+  for(let i=0;i<steps.length;i++){
+    await delay(400);
+    steps[i].classList.add('active');
+    await delay(600);
+    // Only mark passed if toggle is ON
+    const toggle=steps[i].querySelector('input[type=checkbox]');
+    if(toggle&&toggle.checked) steps[i].classList.add('passed');
+    if(connectors[i]){await delay(200);connectors[i].classList.add('active')}
+  }
+}
+
+async function animateScene5(){
+  const rows=document.querySelectorAll('#scene-5 .test-row');
+  for(let i=0;i<rows.length;i++){
+    await delay(300);
+    rows[i].classList.add('active');
+    const fill=rows[i].querySelector('.t-fill');
+    setTimeout(()=>{fill.style.width=fill.dataset.target+'%'},100/speed);
+  }
+  await delay(600);
+  document.getElementById('test-summary').classList.add('active');
+}
+
+async function animateScene6(){
+  const el=document.getElementById('exec-label');
+  el.style.opacity='1';
+  await delay(400);
+  const bidRows=document.querySelectorAll('#bids-rows .ob-row');
+  const askRows=document.querySelectorAll('#asks-rows .ob-row');
+  for(let i=0;i<bidRows.length;i++){
+    await delay(150);
+    bidRows[i].classList.add('active');
+    if(askRows[i])askRows[i].classList.add('active');
+  }
+  await delay(400);
+  const posRows=document.querySelectorAll('#positions-table .pos-row:not(.header)');
+  for(const r of posRows){await delay(300);r.classList.add('active')}
+}
+
+async function animateScene7(){
+  document.getElementById('db-icon').classList.add('active');
+  await delay(400);
+  const tables=document.querySelectorAll('#scene-7 .db-table');
+  for(let i=0;i<tables.length;i++){
+    await delay(300);
+    tables[i].classList.add('active');
+    animateCounter(document.getElementById('tbl-count-'+i),DB_TABLES[i].target,1200);
+  }
+}
+
+async function animateScene8(){
+  const panels=document.querySelectorAll('#scene-8 .monitor-panel');
+  for(const p of panels){await delay(300);p.classList.add('active')}
+  await delay(400);
+  const notifs=document.querySelectorAll('#notifications .notification');
+  for(const n of notifs){await delay(400);n.classList.add('active')}
+}
+
+async function animateScene9(){
+  const clock=document.getElementById('clock');
+  clock.classList.add('active');
+  const times=['09:57','09:58','09:59','10:00'];
+  for(const t of times){clock.textContent=t;await delay(400)}
+  clock.textContent='10:00';
+  await delay(300);
+  const steps=document.querySelectorAll('#scene-9 .p-step');
+  for(let i=0;i<steps.length;i++){
+    await delay(200);
+    steps[i].classList.add('active');
+    await delay(100);
+    steps[i].classList.add('done');
+  }
+  await delay(400);
+  document.getElementById('pipeline-timer').classList.add('active');
+  await delay(600);
+  document.getElementById('finale').style.opacity='1';
+  await delay(300);
+  fireConfetti();
+}
+
+function fireConfetti(){
+  const container=document.getElementById('confetti-container');
+  const colors=['#00e5ff','#76ff03','#e040fb','#ffd740','#ff5252','#448aff'];
+  for(let i=0;i<80;i++){
+    const el=document.createElement('div');
+    el.className='confetti';
+    el.style.left=Math.random()*100+'%';
+    el.style.background=colors[Math.floor(Math.random()*colors.length)];
+    el.style.width=(Math.random()*6+4)+'px';
+    el.style.height=(Math.random()*6+4)+'px';
+    el.style.borderRadius=Math.random()>.5?'50%':'0';
+    el.style.setProperty('--dur',(Math.random()*2+2)+'s');
+    el.style.animationDelay=(Math.random()*1.5)+'s';
+    container.appendChild(el);
+    setTimeout(()=>el.classList.add('active'),50);
+    setTimeout(()=>el.remove(),5000);
+  }
+}
+
+const sceneAnimators=[animateScene0,animateScene1,animateScene2,animateScene3,animateScene4,animateScene5,animateScene6,animateScene7,animateScene8,animateScene9];
+
+function resetScene(idx){
+  const scene=scenes[idx];
+  scene.querySelectorAll('.active,.passed,.done,.visible,.disabled-guard').forEach(el=>{
+    if(el!==scene) el.classList.remove('active','passed','done','disabled-guard');
+  });
+  scene.querySelectorAll('.signal-fill,.t-fill,.bar-fill,.meter-fill,.accuracy-fill').forEach(el=>{el.style.width='0'});
+  // Collapse expanded models
+  scene.querySelectorAll('.model-box.expanded').forEach(el=>el.classList.remove('expanded'));
+  // Hide guardrail warnings
+  scene.querySelectorAll('.guardrail-warning.show').forEach(el=>el.classList.remove('show'));
+  // Reset guardrail toggles to ON
+  scene.querySelectorAll('.toggle-switch input').forEach(el=>{el.checked=true});
+  // Hide weight editor
+  const we=document.getElementById('weight-editor');
+  if(we) we.classList.remove('active');
+  if(idx===0){document.getElementById('data-counter').textContent='0';document.getElementById('data-db').classList.remove('active')}
+  if(idx===2){document.getElementById('ens-output').classList.remove('active');document.getElementById('ens-core').classList.remove('active')}
+  if(idx===5){document.getElementById('test-summary').classList.remove('active')}
+  if(idx===6){document.getElementById('exec-label').style.opacity='0'}
+  if(idx===7){document.getElementById('db-icon').classList.remove('active');DB_TABLES.forEach((_,i)=>{const e=document.getElementById('tbl-count-'+i);if(e)e.textContent='0'})}
+  if(idx===9){
+    document.getElementById('clock').classList.remove('active');
+    document.getElementById('clock').textContent='09:55';
+    document.getElementById('pipeline-timer').classList.remove('active');
+    document.getElementById('finale').style.opacity='0';
+  }
+}
+
+// ============================================================
+// INTERSECTION OBSERVER — triggers scene animations
+// ============================================================
+let sceneStates=new Array(scenes.length).fill(false);
+
+const observer=new IntersectionObserver((entries)=>{
+  entries.forEach(entry=>{
+    const idx=parseInt(entry.target.id.split('-')[1]);
+    if(entry.isIntersecting && !entry.target.classList.contains('visible')){
+      entry.target.classList.add('visible');
+      if(!sceneStates[idx] && playing){
+        sceneStates[idx]=true;
+        currentScene=idx;
+        updateProgress();
+        document.getElementById('scene-select').value=idx;
+        sceneAnimators[idx]();
+      }
+    }
+  });
+},{threshold:0.25});
+
+scenes.forEach(s=>observer.observe(s));
+
+// ============================================================
+// CONTROLS
+// ============================================================
+const btnPlay=document.getElementById('btn-play');
+const btnRestart=document.getElementById('btn-restart');
+const speedSelect=document.getElementById('speed-select');
+const sceneSelect=document.getElementById('scene-select');
+
+btnPlay.addEventListener('click',()=>{
+  playing=!playing;
+  btnPlay.textContent=playing?'\u25B6 Play':'\u23F8 Pause';
+  btnPlay.classList.toggle('active',playing);
+  if(playing){
+    scenes.forEach((s,i)=>{
+      if(s.classList.contains('visible')&&!sceneStates[i]){
+        sceneStates[i]=true;
+        sceneAnimators[i]();
+      }
+    });
+  }
+});
+
+speedSelect.addEventListener('change',()=>{speed=parseFloat(speedSelect.value)});
+
+sceneSelect.addEventListener('change',()=>{
+  const idx=parseInt(sceneSelect.value);
+  scenes[idx].scrollIntoView({behavior:'smooth'});
+});
+
+btnRestart.addEventListener('click',()=>{
+  clearTimers();
+  playing=true;
+  btnPlay.textContent='\u25B6 Play';
+  btnPlay.classList.add('active');
+  sceneStates.fill(false);
+  currentScene=-1;
+  updateProgress();
+  scenes.forEach((s,i)=>{s.classList.remove('visible');resetScene(i)});
+  document.getElementById('confetti-container').innerHTML='';
+  window.scrollTo({top:0,behavior:'smooth'});
+  setTimeout(()=>{scenes.forEach(s=>observer.observe(s))},600);
+});
+
+// ============================================================
+// LIVE DATA PANEL — fetches from paper trader at localhost:8010
+// ============================================================
+const LP_BASE='http://localhost:8010';
+let lpOnline=false;
+let lpInterval=null;
+
+function toggleLivePanel(){
+  document.getElementById('live-panel').classList.toggle('collapsed');
+}
+
+function setLiveStatus(online){
+  const dot=document.getElementById('lp-dot');
+  const label=document.getElementById('lp-label');
+  dot.className='lp-dot '+(online?'online':'offline');
+  label.className='lp-label '+(online?'online':'offline');
+  label.textContent=online?'LIVE':'OFFLINE';
+  lpOnline=online;
+}
+
+function flashEl(el){
+  el.classList.remove('lp-flash');
+  void el.offsetWidth;
+  el.classList.add('lp-flash');
+}
+
+function setVal(id,text,cls){
+  const el=document.getElementById(id);
+  if(!el) return;
+  const changed=el.textContent!==text;
+  el.textContent=text;
+  if(cls) el.className='lp-v '+cls;
+  if(changed && lpOnline) flashEl(el);
+}
+
+function fmtMoney(v){
+  if(v==null) return '--';
+  return '$'+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+
+function pnlClass(v){
+  if(v==null) return 'neutral';
+  return v>0?'positive':v<0?'negative':'neutral';
+}
+
+async function fetchLiveHealth(){
+  try{
+    const r=await fetch(LP_BASE+'/health',{signal:AbortSignal.timeout(5000)});
+    if(!r.ok) throw new Error(r.status);
+    const d=await r.json();
+    setLiveStatus(true);
+
+    // Portfolio
+    setVal('lp-portfolio-val',fmtMoney(d.portfolio_value),'neutral');
+    setVal('lp-day-count',d.day_count!=null?String(d.day_count):'--','neutral');
+
+    // Status
+    setVal('lp-regime',d.regime||'--','neutral');
+    const cbTripped=d.circuit_breaker_tripped;
+    setVal('lp-cb',cbTripped?'TRIPPED':'OK',cbTripped?'negative':'positive');
+    setVal('lp-pipeline',d.is_running?'Running...':'Idle','neutral');
+
+    // Models
+    const modelsDiv=document.getElementById('lp-models');
+    if(d.infrastructure && d.infrastructure.models){
+      const m=d.infrastructure.models;
+      const details=m.details||{};
+      modelsDiv.innerHTML='';
+      const names=Object.keys(details);
+      if(names.length>0){
+        names.forEach(name=>{
+          const info=details[name];
+          const short=name.replace(/^tft_/,'').replace(/_/g,' ').slice(0,3).toUpperCase();
+          const el=document.createElement('div');
+          el.className='lp-model-dot '+(info.loaded?'loaded':'unloaded');
+          el.textContent=short;
+          el.title=name+(info.loaded?' (loaded)':' (not loaded)');
+          modelsDiv.appendChild(el);
+        });
+      } else {
+        modelsDiv.innerHTML=`<span style="font-size:.65rem;color:#5a6680;grid-column:1/-1">${m.loaded||0}/${m.registered||0} loaded</span>`;
+      }
+    }
+
+    // Strategy weights from health response
+    if(d.strategy_weights && Object.keys(d.strategy_weights).length>0){
+      renderWeights(d.strategy_weights);
+    }
+
+    return d;
+  }catch(e){
+    setLiveStatus(false);
+    return null;
+  }
+}
+
+async function fetchLiveWeights(){
+  try{
+    const r=await fetch(LP_BASE+'/weights',{signal:AbortSignal.timeout(5000)});
+    if(!r.ok) return;
+    const d=await r.json();
+    if(d && typeof d==='object' && Object.keys(d).length>0){
+      renderWeights(d);
+    }
+  }catch(e){}
+}
+
+function renderWeights(w){
+  const container=document.getElementById('lp-weights');
+  container.innerHTML='';
+  const entries=Object.entries(w).sort((a,b)=>b[1]-a[1]);
+  const maxW=Math.max(...entries.map(e=>e[1]),0.01);
+  entries.forEach(([name,val])=>{
+    const pct=(val*100).toFixed(1);
+    const barW=((val/maxW)*100).toFixed(0);
+    const shortName=name.replace(/_/g,' ').replace(/cross sectional /,'XS ');
+    const row=document.createElement('div');
+    row.className='lp-weight-row';
+    row.innerHTML=`<span class="lp-wn" title="${name}">${shortName}</span><span class="lp-wv">${pct}%</span>`;
+    container.appendChild(row);
+  });
+}
+
+async function fetchLiveHistory(){
+  try{
+    const r=await fetch(LP_BASE+'/history',{signal:AbortSignal.timeout(5000)});
+    if(!r.ok) return;
+    const d=await r.json();
+    if(!Array.isArray(d)||d.length===0){
+      setVal('lp-last-date','No runs yet','neutral');
+      return d;
+    }
+    const last=d[d.length-1];
+    setVal('lp-last-date',last.date||'--','neutral');
+    setVal('lp-last-trades',last.trades!=null?String(last.trades):'--','neutral');
+    const retPct=last.return_pct!=null?(last.return_pct>0?'+':'')+last.return_pct.toFixed(2)+'%':'--';
+    setVal('lp-last-return',retPct,pnlClass(last.return_pct));
+    setVal('lp-last-strategies',last.strategies!=null?String(last.strategies):'--','neutral');
+
+    // Day P&L from last entry
+    if(last.pnl!=null){
+      const pnlStr=(last.pnl>=0?'+':'')+fmtMoney(last.pnl);
+      setVal('lp-day-pnl',pnlStr,pnlClass(last.pnl));
+    }
+    return d;
+  }catch(e){
+    return null;
+  }
+}
+
+async function refreshLiveData(){
+  const btn=document.getElementById('lp-refresh');
+  btn.classList.add('spinning');
+  setTimeout(()=>btn.classList.remove('spinning'),600);
+
+  await fetchLiveHealth();
+  if(lpOnline){
+    await Promise.all([fetchLiveWeights(),fetchLiveHistory()]);
+  }
+  document.getElementById('lp-timestamp').textContent='Last updated: '+new Date().toLocaleTimeString();
+}
+
+// Auto-refresh every 10 seconds
+function startLivePolling(){
+  refreshLiveData();
+  lpInterval=setInterval(refreshLiveData,10000);
+}
+
+// Start polling on load
+startLivePolling();
+</script>
+</body>
+</html>
