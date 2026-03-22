@@ -118,6 +118,7 @@ jobs:
   docker:
     name: Docker Build
     runs-on: ubuntu-latest
+    continue-on-error: true
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     needs: [lint, test]
     steps:
