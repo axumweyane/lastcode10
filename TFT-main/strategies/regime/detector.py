@@ -45,15 +45,16 @@ class MarketRegime(str, Enum):
 @dataclass
 class RegimeState:
     """Current regime classification with diagnostics."""
+
     regime: MarketRegime
     vix_level: float
-    market_breadth: float        # fraction of stocks above 50-day MA
-    realized_vol: float          # annualized realized vol of market proxy
+    market_breadth: float  # fraction of stocks above 50-day MA
+    realized_vol: float  # annualized realized vol of market proxy
     is_volatile: bool
     is_trending: bool
-    confidence: float            # 0-1, how clearly we're in this regime
+    confidence: float  # 0-1, how clearly we're in this regime
     strategy_weights: Dict[str, float]  # recommended weights per strategy
-    exposure_scalar: float       # 0-1, scale gross exposure in volatile regimes
+    exposure_scalar: float  # 0-1, scale gross exposure in volatile regimes
 
     def __str__(self) -> str:
         return (
@@ -147,7 +148,8 @@ class RegimeDetector:
         if len(self._history) >= 2 and self._history[-2].regime != regime:
             logger.info(
                 "REGIME CHANGE: %s -> %s",
-                self._history[-2].regime.value, regime.value,
+                self._history[-2].regime.value,
+                regime.value,
             )
         logger.info(str(state))
 
@@ -162,7 +164,9 @@ class RegimeDetector:
     # ------------------------------------------------------------------
 
     def _get_vix(
-        self, data: pd.DataFrame, explicit_vix: Optional[float],
+        self,
+        data: pd.DataFrame,
+        explicit_vix: Optional[float],
     ) -> float:
         """
         Get VIX level from: explicit value > column in data > realized vol proxy.
@@ -185,7 +189,9 @@ class RegimeDetector:
         # Fallback: estimate from realized vol (very rough: rvol * 100 ≈ VIX)
         rvol = self._compute_realized_vol(data)
         estimated_vix = rvol * 100
-        logger.debug("VIX unavailable, estimated from realized vol: %.1f", estimated_vix)
+        logger.debug(
+            "VIX unavailable, estimated from realized vol: %.1f", estimated_vix
+        )
         return estimated_vix
 
     def _compute_breadth(self, data: pd.DataFrame) -> float:
@@ -256,7 +262,10 @@ class RegimeDetector:
         return 0.15  # default moderate vol
 
     def _compute_confidence(
-        self, vix: float, breadth: float, realized_vol: float,
+        self,
+        vix: float,
+        breadth: float,
+        realized_vol: float,
     ) -> float:
         """
         Regime confidence: how clearly we're in the classified state.
@@ -291,7 +300,9 @@ class RegimeDetector:
         return dict(zip(self.STRATEGY_KEYS, weights))
 
     def _compute_exposure_scalar(
-        self, vix: float, realized_vol: float,
+        self,
+        vix: float,
+        realized_vol: float,
     ) -> float:
         """
         Scale gross exposure inversely with volatility.
@@ -311,9 +322,7 @@ class RegimeDetector:
 
         # VIX penalty: additional reduction when VIX is elevated
         if vix > self.config.vix_high_threshold:
-            vix_penalty = 1.0 - min(
-                (vix - self.config.vix_high_threshold) / 30.0, 0.3
-            )
+            vix_penalty = 1.0 - min((vix - self.config.vix_high_threshold) / 30.0, 0.3)
             scalar *= vix_penalty
 
         return min(max(scalar, 0.3), 1.0)

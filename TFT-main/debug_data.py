@@ -3,15 +3,16 @@ import os
 import asyncpg
 import pandas as pd
 
+
 async def test_data_loading():
     conn = await asyncpg.connect(
-        host=os.getenv('POSTGRES_HOST', 'localhost'),
-        port=int(os.getenv('POSTGRES_PORT', 5432)),
-        user=os.getenv('POSTGRES_USER', 'trading_user'),
-        password=os.environ['POSTGRES_PASSWORD'],
-        database=os.getenv('POSTGRES_DB', 'stock_trading_analysis'),
+        host=os.getenv("POSTGRES_HOST", "localhost"),
+        port=int(os.getenv("POSTGRES_PORT", 5432)),
+        user=os.getenv("POSTGRES_USER", "trading_user"),
+        password=os.environ["POSTGRES_PASSWORD"],
+        database=os.getenv("POSTGRES_DB", "stock_trading_analysis"),
     )
-    
+
     query = """
     SELECT 
         ticker,
@@ -27,21 +28,22 @@ async def test_data_loading():
     ORDER BY ticker, window_start
     LIMIT $2
     """
-    
-    tickers = ['AAPL']
+
+    tickers = ["AAPL"]
     rows = await conn.fetch(query, tickers, 10)
-    
+
     print("Raw rows:")
     for row in rows:
         print(dict(row))
-    
+
     df = pd.DataFrame(rows)
     print("\nDataFrame info:")
     print(f"Shape: {df.shape}")
     print(f"Columns: {df.columns.tolist()}")
     print(f"DataFrame:\n{df}")
-    
+
     await conn.close()
+
 
 if __name__ == "__main__":
     asyncio.run(test_data_loading())

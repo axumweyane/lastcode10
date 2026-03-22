@@ -19,8 +19,8 @@ from trading.broker.base import (
     TimeInForce,
 )
 
-
 # ---------- Mock helpers ----------
+
 
 def _mock_response(status=200, json_data=None, text_data=""):
     resp = AsyncMock()
@@ -43,10 +43,13 @@ class MockContextManager:
 
 @pytest.fixture
 def broker():
-    return AlpacaBroker(api_key="test_key", secret_key="test_secret", base_url="https://mock.api")
+    return AlpacaBroker(
+        api_key="test_key", secret_key="test_secret", base_url="https://mock.api"
+    )
 
 
 # ---------- _parse_timestamp ----------
+
 
 class TestParseTimestamp:
     def test_valid_iso(self):
@@ -64,6 +67,7 @@ class TestParseTimestamp:
 
 
 # ---------- connect / disconnect ----------
+
 
 class TestConnectDisconnect:
     @pytest.mark.asyncio
@@ -85,6 +89,7 @@ class TestConnectDisconnect:
 
 # ---------- _headers ----------
 
+
 class TestHeaders:
     def test_headers_contain_keys(self, broker):
         h = broker._headers
@@ -93,6 +98,7 @@ class TestHeaders:
 
 
 # ---------- _api_call ----------
+
 
 class TestApiCall:
     @pytest.mark.asyncio
@@ -147,7 +153,10 @@ class TestApiCall:
             async def fake_connect():
                 broker._session = MagicMock()
                 broker._session.closed = False
-                broker._session.request = MagicMock(return_value=MockContextManager(resp))
+                broker._session.request = MagicMock(
+                    return_value=MockContextManager(resp)
+                )
+
             mock_connect.side_effect = fake_connect
             data = await broker._api_call("GET", "/test")
             mock_connect.assert_called_once()
@@ -155,6 +164,7 @@ class TestApiCall:
 
 
 # ---------- _parse_account ----------
+
 
 class TestParseAccount:
     def test_parse_full(self):
@@ -186,6 +196,7 @@ class TestParseAccount:
 
 # ---------- get_account ----------
 
+
 class TestGetAccount:
     @pytest.mark.asyncio
     async def test_get_account_success(self, broker):
@@ -203,6 +214,7 @@ class TestGetAccount:
 
 
 # ---------- _parse_position ----------
+
 
 class TestParsePosition:
     def test_parse_full(self):
@@ -225,6 +237,7 @@ class TestParsePosition:
 
 # ---------- get_positions ----------
 
+
 class TestGetPositions:
     @pytest.mark.asyncio
     async def test_returns_list(self, broker):
@@ -243,6 +256,7 @@ class TestGetPositions:
 
 # ---------- get_position ----------
 
+
 class TestGetPosition:
     @pytest.mark.asyncio
     async def test_returns_position(self, broker):
@@ -260,6 +274,7 @@ class TestGetPosition:
 
 # ---------- submit_order ----------
 
+
 class TestSubmitOrder:
     @pytest.mark.asyncio
     async def test_market_order_success(self, broker):
@@ -275,8 +290,11 @@ class TestSubmitOrder:
         with patch.object(broker, "_api_call", new_callable=AsyncMock) as mock:
             mock.return_value = {"id": "o2", "status": "new"}
             req = OrderRequest(
-                ticker="MSFT", side=OrderSide.SELL, quantity=5,
-                order_type=OrderType.LIMIT, limit_price=300.0,
+                ticker="MSFT",
+                side=OrderSide.SELL,
+                quantity=5,
+                order_type=OrderType.LIMIT,
+                limit_price=300.0,
             )
             result = await broker.submit_order(req)
             assert result.success is True
@@ -288,8 +306,11 @@ class TestSubmitOrder:
         with patch.object(broker, "_api_call", new_callable=AsyncMock) as mock:
             mock.return_value = {"id": "o3", "status": "new"}
             req = OrderRequest(
-                ticker="TSLA", side=OrderSide.SELL, quantity=2,
-                order_type=OrderType.STOP, stop_price=200.0,
+                ticker="TSLA",
+                side=OrderSide.SELL,
+                quantity=2,
+                order_type=OrderType.STOP,
+                stop_price=200.0,
             )
             result = await broker.submit_order(req)
             call_data = mock.call_args[0][2]
@@ -306,6 +327,7 @@ class TestSubmitOrder:
 
 # ---------- cancel_order ----------
 
+
 class TestCancelOrder:
     @pytest.mark.asyncio
     async def test_cancel(self, broker):
@@ -318,14 +340,20 @@ class TestCancelOrder:
 
 # ---------- get_order ----------
 
+
 class TestGetOrder:
     @pytest.mark.asyncio
     async def test_get_order(self, broker):
         with patch.object(broker, "_api_call", new_callable=AsyncMock) as mock:
             mock.return_value = {
-                "id": "o1", "symbol": "AAPL", "side": "buy",
-                "type": "market", "qty": "10", "filled_qty": "10",
-                "status": "filled", "time_in_force": "day",
+                "id": "o1",
+                "symbol": "AAPL",
+                "side": "buy",
+                "type": "market",
+                "qty": "10",
+                "filled_qty": "10",
+                "status": "filled",
+                "time_in_force": "day",
             }
             order = await broker.get_order("o1")
             assert order.order_id == "o1"
@@ -340,15 +368,23 @@ class TestGetOrder:
 
 # ---------- get_open_orders ----------
 
+
 class TestGetOpenOrders:
     @pytest.mark.asyncio
     async def test_returns_list(self, broker):
         with patch.object(broker, "_api_call", new_callable=AsyncMock) as mock:
-            mock.return_value = [{
-                "id": "o1", "symbol": "AAPL", "side": "buy",
-                "type": "market", "qty": "10", "filled_qty": "0",
-                "status": "new", "time_in_force": "day",
-            }]
+            mock.return_value = [
+                {
+                    "id": "o1",
+                    "symbol": "AAPL",
+                    "side": "buy",
+                    "type": "market",
+                    "qty": "10",
+                    "filled_qty": "0",
+                    "status": "new",
+                    "time_in_force": "day",
+                }
+            ]
             orders = await broker.get_open_orders()
             assert len(orders) == 1
 
@@ -361,13 +397,21 @@ class TestGetOpenOrders:
 
 # ---------- _parse_order ----------
 
+
 class TestParseOrder:
     def test_parse_with_prices(self):
         data = {
-            "id": "o1", "symbol": "AAPL", "side": "buy", "type": "limit",
-            "qty": "10", "filled_qty": "5", "status": "partially_filled",
-            "time_in_force": "gtc", "limit_price": "150.00",
-            "stop_price": None, "filled_avg_price": "149.50",
+            "id": "o1",
+            "symbol": "AAPL",
+            "side": "buy",
+            "type": "limit",
+            "qty": "10",
+            "filled_qty": "5",
+            "status": "partially_filled",
+            "time_in_force": "gtc",
+            "limit_price": "150.00",
+            "stop_price": None,
+            "filled_avg_price": "149.50",
             "created_at": "2026-03-21T10:00:00Z",
             "updated_at": "2026-03-21T10:01:00Z",
         }
@@ -378,8 +422,13 @@ class TestParseOrder:
 
     def test_unknown_status_defaults_to_new(self):
         data = {
-            "id": "o1", "symbol": "X", "side": "buy", "type": "market",
-            "qty": "1", "filled_qty": "0", "status": "weird_status",
+            "id": "o1",
+            "symbol": "X",
+            "side": "buy",
+            "type": "market",
+            "qty": "1",
+            "filled_qty": "0",
+            "status": "weird_status",
             "time_in_force": "day",
         }
         order = AlpacaBroker._parse_order(data)
@@ -387,6 +436,7 @@ class TestParseOrder:
 
 
 # ---------- close_position ----------
+
 
 class TestClosePosition:
     @pytest.mark.asyncio
@@ -406,11 +456,15 @@ class TestClosePosition:
 
 # ---------- close_all_positions ----------
 
+
 class TestCloseAllPositions:
     @pytest.mark.asyncio
     async def test_no_positions(self, broker):
-        with patch.object(broker, "_api_call", new_callable=AsyncMock) as mock_api, \
-             patch.object(broker, "get_positions", new_callable=AsyncMock) as mock_pos:
+        with patch.object(
+            broker, "_api_call", new_callable=AsyncMock
+        ) as mock_api, patch.object(
+            broker, "get_positions", new_callable=AsyncMock
+        ) as mock_pos:
             mock_pos.return_value = []
             results = await broker.close_all_positions()
             assert results == []
@@ -421,6 +475,7 @@ class TestCloseAllPositions:
         pos2 = MagicMock(ticker="GOOGL")
 
         call_count = 0
+
         async def fake_get_positions():
             nonlocal call_count
             call_count += 1
@@ -428,9 +483,13 @@ class TestCloseAllPositions:
                 return [pos1, pos2]
             return []  # verify call
 
-        with patch.object(broker, "_api_call", new_callable=AsyncMock) as mock_api, \
-             patch.object(broker, "get_positions", side_effect=fake_get_positions), \
-             patch.object(broker, "close_position", new_callable=AsyncMock) as mock_close:
+        with patch.object(
+            broker, "_api_call", new_callable=AsyncMock
+        ) as mock_api, patch.object(
+            broker, "get_positions", side_effect=fake_get_positions
+        ), patch.object(
+            broker, "close_position", new_callable=AsyncMock
+        ) as mock_close:
             mock_close.return_value = OrderResult(success=True, order_id="x")
             results = await broker.close_all_positions()
             assert len(results) == 2
@@ -440,6 +499,7 @@ class TestCloseAllPositions:
         pos = MagicMock(ticker="AAPL")
 
         call_count = 0
+
         async def fake_close(ticker):
             nonlocal call_count
             call_count += 1
@@ -447,16 +507,20 @@ class TestCloseAllPositions:
                 return OrderResult(success=False, message="fail")
             return OrderResult(success=True, order_id="retry_ok")
 
-        with patch.object(broker, "_api_call", new_callable=AsyncMock), \
-             patch.object(broker, "get_positions", new_callable=AsyncMock) as mock_pos, \
-             patch.object(broker, "close_position", side_effect=fake_close):
-            mock_pos.side_effect = [[pos], []]  # first call returns pos, verify returns empty
+        with patch.object(broker, "_api_call", new_callable=AsyncMock), patch.object(
+            broker, "get_positions", new_callable=AsyncMock
+        ) as mock_pos, patch.object(broker, "close_position", side_effect=fake_close):
+            mock_pos.side_effect = [
+                [pos],
+                [],
+            ]  # first call returns pos, verify returns empty
             results = await broker.close_all_positions()
             assert len(results) == 1
             assert results[0].success is True
 
 
 # ---------- _safe_order_status ----------
+
 
 class TestSafeOrderStatus:
     def test_valid_status(self):
@@ -468,9 +532,12 @@ class TestSafeOrderStatus:
 
 # ---------- Constructor defaults ----------
 
+
 class TestConstructorDefaults:
     def test_default_env_vars(self):
-        with patch.dict("os.environ", {"ALPACA_API_KEY": "k", "ALPACA_SECRET_KEY": "s"}):
+        with patch.dict(
+            "os.environ", {"ALPACA_API_KEY": "k", "ALPACA_SECRET_KEY": "s"}
+        ):
             b = AlpacaBroker()
             assert b.api_key == "k"
             assert b.secret_key == "s"

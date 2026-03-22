@@ -2,6 +2,7 @@
 
 import sys
 import os
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import numpy as np
@@ -29,15 +30,17 @@ def sample_data():
     open_ = close + np.random.normal(0, 0.3, n)
     volume = np.random.randint(500000, 5000000, n)
 
-    return pd.DataFrame({
-        "symbol": ["AAPL"] * n,
-        "timestamp": dates,
-        "open": open_,
-        "high": high,
-        "low": low,
-        "close": close,
-        "volume": volume,
-    })
+    return pd.DataFrame(
+        {
+            "symbol": ["AAPL"] * n,
+            "timestamp": dates,
+            "open": open_,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": volume,
+        }
+    )
 
 
 def test_returns_model_prediction_type(model, sample_data):
@@ -72,12 +75,14 @@ def test_confidence_range(model, sample_data):
 
 
 def test_too_short_data(model):
-    data = pd.DataFrame({
-        "symbol": ["AAPL"] * 5,
-        "timestamp": pd.date_range("2023-01-01", periods=5),
-        "close": [100, 101, 102, 103, 104],
-        "volume": [1000000] * 5,
-    })
+    data = pd.DataFrame(
+        {
+            "symbol": ["AAPL"] * 5,
+            "timestamp": pd.date_range("2023-01-01", periods=5),
+            "close": [100, 101, 102, 103, 104],
+            "volume": [1000000] * 5,
+        }
+    )
     preds = model.predict(data)
     assert preds == []
 

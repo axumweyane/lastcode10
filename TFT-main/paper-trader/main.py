@@ -28,7 +28,10 @@ from contextlib import asynccontextmanager
 
 # Load .env from project root
 from dotenv import load_dotenv
-load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
+
+load_dotenv(
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+)
 from datetime import datetime, date, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -71,12 +74,28 @@ from strategies.signals.publisher import SignalPublisher
 # Production trading infrastructure
 from trading.broker.alpaca import AlpacaBroker
 from trading.broker.base import OrderRequest, OrderResult, OrderSide, OrderStatus
-from trading.execution.vwap import VWAPExecutionModel, VWAPExecutionResult, VolumeProfileCache
-from trading.notifications.alerts import NotificationManager, AlertMessage, DiscordWebhookSender, EmailSender
+from trading.execution.vwap import (
+    VWAPExecutionModel,
+    VWAPExecutionResult,
+    VolumeProfileCache,
+)
+from trading.notifications.alerts import (
+    NotificationManager,
+    AlertMessage,
+    DiscordWebhookSender,
+    EmailSender,
+)
 from trading.persistence.audit import AuditLogger
-from trading.risk.circuit_breaker import CircuitBreaker, CircuitBreakerConfig, DrawdownConfig, DrawdownMethod
+from trading.risk.circuit_breaker import (
+    CircuitBreaker,
+    CircuitBreakerConfig,
+    DrawdownConfig,
+    DrawdownMethod,
+)
 from trading.safety.guardrails import (
-    SignalVarianceGuard, LeverageGate, CalibrationHealthCheck,
+    SignalVarianceGuard,
+    LeverageGate,
+    CalibrationHealthCheck,
     ExecutionFailureMonitor,
 )
 
@@ -91,10 +110,20 @@ from monitoring.metrics import PrometheusMetrics
 
 # Configuration
 from strategies.config import (
-    MomentumConfig, StatArbConfig, EnsembleConfig, RegimeConfig, FXConfig,
-    KronosConfig, DeepSurrogateConfig, TDGFConfig,
-    MeanReversionConfig, SectorRotationConfig, FXMomentumConfig, FXVolBreakoutConfig,
-    SentimentConfig, StrategyMasterConfig,
+    MomentumConfig,
+    StatArbConfig,
+    EnsembleConfig,
+    RegimeConfig,
+    FXConfig,
+    KronosConfig,
+    DeepSurrogateConfig,
+    TDGFConfig,
+    MeanReversionConfig,
+    SectorRotationConfig,
+    FXMomentumConfig,
+    FXVolBreakoutConfig,
+    SentimentConfig,
+    StrategyMasterConfig,
 )
 from strategies.options.config import VolArbConfig
 from strategies.base import StrategyPerformance
@@ -121,7 +150,9 @@ TRADING_SYMBOLS = os.getenv(
     "PAPER_TRADING_SYMBOLS",
     "AAPL,MSFT,GOOGL,AMZN,NVDA,META,TSLA,JPM,BAC,XOM",
 ).split(",")
-FX_PAIRS = os.getenv("PAPER_FX_PAIRS", "EURUSD,GBPUSD,USDJPY,AUDUSD,USDCAD,USDCHF").split(",")
+FX_PAIRS = os.getenv(
+    "PAPER_FX_PAIRS", "EURUSD,GBPUSD,USDJPY,AUDUSD,USDCAD,USDCHF"
+).split(",")
 SCHEDULE_HOUR = int(os.getenv("PAPER_SCHEDULE_HOUR", "10"))  # 10 AM ET
 SCHEDULE_MINUTE = int(os.getenv("PAPER_SCHEDULE_MINUTE", "0"))
 INITIAL_CAPITAL = float(os.getenv("PAPER_INITIAL_CAPITAL", "100000"))
@@ -271,16 +302,34 @@ db_pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
 broker: Optional[AlpacaBroker] = None
 risk_manager: Optional[PortfolioRiskManager] = None
 bayesian_updater: Optional[BayesianWeightUpdater] = None
-USE_BAYESIAN_WEIGHTS = os.getenv("ENSEMBLE_USE_BAYESIAN_WEIGHTS", "false").lower() in ("true", "1", "yes")
-USE_VWAP_EXECUTION = os.getenv("EXECUTION_USE_VWAP", "false").lower() in ("true", "1", "yes")
+USE_BAYESIAN_WEIGHTS = os.getenv("ENSEMBLE_USE_BAYESIAN_WEIGHTS", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+USE_VWAP_EXECUTION = os.getenv("EXECUTION_USE_VWAP", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 vwap_model: Optional[VWAPExecutionModel] = None
-LLM_ANALYST_ENABLED = os.getenv("LLM_ANALYST_ENABLED", "false").lower() in ("true", "1", "yes")
+LLM_ANALYST_ENABLED = os.getenv("LLM_ANALYST_ENABLED", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 signal_analyst: Optional[SignalAnalyst] = None
-SIGNAL_API_ENABLED = os.getenv("SIGNAL_API_ENABLED", "false").lower() in ("true", "1", "yes")
+SIGNAL_API_ENABLED = os.getenv("SIGNAL_API_ENABLED", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 SIGNAL_API_KEY = os.getenv("SIGNAL_API_KEY", "")
 signal_cache = SignalCache()
 METRICS_ENABLED = os.getenv("METRICS_ENABLED", "true").lower() in ("true", "1", "yes")
-prom_metrics: Optional[PrometheusMetrics] = PrometheusMetrics() if METRICS_ENABLED else None
+prom_metrics: Optional[PrometheusMetrics] = (
+    PrometheusMetrics() if METRICS_ENABLED else None
+)
 
 # Safety guardrails (March 10 incident prevention)
 signal_guard = SignalVarianceGuard()
@@ -295,8 +344,11 @@ def get_db_conn():
     if db_pool is not None:
         return db_pool.getconn()
     return psycopg2.connect(
-        host=DB_HOST, port=DB_PORT, database=DB_NAME,
-        user=DB_USER, password=DB_PASSWORD,
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
     )
 
 
@@ -349,15 +401,36 @@ def _safe_db_write(operation_name: str, query: str, params: tuple) -> bool:
             return_db_conn(conn)
 
 
-def log_trade(trade_date, symbol, side, quantity, price, order_id, strategy, score, confidence, metadata):
+def log_trade(
+    trade_date,
+    symbol,
+    side,
+    quantity,
+    price,
+    order_id,
+    strategy,
+    score,
+    confidence,
+    metadata,
+):
     _safe_db_write(
         "log_trade",
         """INSERT INTO paper_trades
            (trade_date, symbol, side, quantity, price, order_id,
             strategy_source, signal_score, signal_confidence, metadata)
            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-        (trade_date, symbol, side, quantity, price, order_id,
-         strategy, score, confidence, Json(metadata or {})),
+        (
+            trade_date,
+            symbol,
+            side,
+            quantity,
+            price,
+            order_id,
+            strategy,
+            score,
+            confidence,
+            Json(metadata or {}),
+        ),
     )
 
 
@@ -369,11 +442,20 @@ def log_daily_snapshot(snapshot):
             daily_return_pct, total_return_pct, positions_count,
             regime, strategy_weights, positions, risk_metrics)
            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-        (snapshot["date"], snapshot["portfolio_value"], snapshot["cash"],
-         snapshot["equity"], snapshot["daily_pnl"], snapshot["daily_return_pct"],
-         snapshot["total_return_pct"], snapshot["positions_count"],
-         snapshot["regime"], Json(snapshot.get("strategy_weights", {})),
-         Json(snapshot.get("positions", [])), Json(snapshot.get("risk_metrics", {}))),
+        (
+            snapshot["date"],
+            snapshot["portfolio_value"],
+            snapshot["cash"],
+            snapshot["equity"],
+            snapshot["daily_pnl"],
+            snapshot["daily_return_pct"],
+            snapshot["total_return_pct"],
+            snapshot["positions_count"],
+            snapshot["regime"],
+            Json(snapshot.get("strategy_weights", {})),
+            Json(snapshot.get("positions", [])),
+            Json(snapshot.get("risk_metrics", {})),
+        ),
     )
 
 
@@ -389,9 +471,15 @@ def log_signals(signal_date, strategy_name, signals_df):
                     """INSERT INTO paper_strategy_signals
                        (signal_date, strategy_name, symbol, score, confidence, direction, metadata)
                        VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                    (signal_date, strategy_name, row.get("symbol", ""),
-                     row.get("score", 0), row.get("confidence", 0),
-                     row.get("direction", ""), Json({})),
+                    (
+                        signal_date,
+                        strategy_name,
+                        row.get("symbol", ""),
+                        row.get("score", 0),
+                        row.get("confidence", 0),
+                        row.get("direction", ""),
+                        Json({}),
+                    ),
                 )
         conn.commit()
     except Exception as e:
@@ -414,14 +502,22 @@ def log_risk_report(report) -> bool:
            (report_time, drawdown, var_99, cvar_95, sharpe_21,
             killed_strategies, correlation_alerts, portfolio_breached, raw_json)
            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-        (report.timestamp, report.portfolio_drawdown,
-         report.var.parametric_var, report.var.cvar_95,
-         report.portfolio_sharpe_21d,
-         report.killed_strategies or [],
-         Json([{"a": a.strategy_a, "b": a.strategy_b, "corr": a.correlation}
-               for a in report.correlation_alerts]),
-         report.portfolio_breached,
-         Json(report.to_dict())),
+        (
+            report.timestamp,
+            report.portfolio_drawdown,
+            report.var.parametric_var,
+            report.var.cvar_95,
+            report.portfolio_sharpe_21d,
+            report.killed_strategies or [],
+            Json(
+                [
+                    {"a": a.strategy_a, "b": a.strategy_b, "corr": a.correlation}
+                    for a in report.correlation_alerts
+                ]
+            ),
+            report.portfolio_breached,
+            Json(report.to_dict()),
+        ),
     )
 
 
@@ -520,13 +616,22 @@ def log_execution_stats(result: VWAPExecutionResult) -> bool:
                     filled_avg_price, slippage_bps, fill_rate, num_slices,
                     used_fallback, adv_capped, elapsed_s, slices_json, error)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                (result.ticker, result.side, result.total_requested,
-                 result.total_filled, result.expected_price,
-                 result.filled_avg_price, result.slippage_bps, result.fill_rate,
-                 len(result.slices), result.used_fallback, result.adv_capped,
-                 result.elapsed_s,
-                 Json([s.__dict__ for s in result.slices]),
-                 result.error),
+                (
+                    result.ticker,
+                    result.side,
+                    result.total_requested,
+                    result.total_filled,
+                    result.expected_price,
+                    result.filled_avg_price,
+                    result.slippage_bps,
+                    result.fill_rate,
+                    len(result.slices),
+                    result.used_fallback,
+                    result.adv_capped,
+                    result.elapsed_s,
+                    Json([s.__dict__ for s in result.slices]),
+                    result.error,
+                ),
             )
         conn.commit()
         return_db_conn(conn)
@@ -556,10 +661,17 @@ def log_signal_analysis(analysis: SignalAnalysis) -> bool:
                    (regime, summary, patterns, confidence, flags_json,
                     top_signals, model_used, latency_s, raw_json)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                (analysis.regime, analysis.summary, analysis.patterns,
-                 analysis.confidence, Json(analysis.flags.to_dict()),
-                 Json(analysis.top_signals), analysis.model_used,
-                 analysis.latency_s, Json(analysis.to_dict())),
+                (
+                    analysis.regime,
+                    analysis.summary,
+                    analysis.patterns,
+                    analysis.confidence,
+                    Json(analysis.flags.to_dict()),
+                    Json(analysis.top_signals),
+                    analysis.model_used,
+                    analysis.latency_s,
+                    Json(analysis.to_dict()),
+                ),
             )
         conn.commit()
         return_db_conn(conn)
@@ -583,23 +695,34 @@ def log_signal_analysis(analysis: SignalAnalysis) -> bool:
 # ============================================================
 def fetch_stock_data(symbols: List[str], days: int = 300) -> pd.DataFrame:
     import yfinance as yf
+
     logger.info("Fetching data for %d symbols...", len(symbols))
 
     all_symbols = symbols + ["SPY"]  # always include SPY for regime
-    data = yf.download(all_symbols, period=f"{days}d", group_by="ticker",
-                       auto_adjust=True, progress=False)
+    data = yf.download(
+        all_symbols,
+        period=f"{days}d",
+        group_by="ticker",
+        auto_adjust=True,
+        progress=False,
+    )
 
     rows = []
     for sym in all_symbols:
         try:
             sym_data = data[sym].dropna() if len(all_symbols) > 1 else data.dropna()
             for dt, row in sym_data.iterrows():
-                rows.append({
-                    "symbol": sym, "timestamp": dt,
-                    "open": float(row["Open"]), "high": float(row["High"]),
-                    "low": float(row["Low"]), "close": float(row["Close"]),
-                    "volume": int(row["Volume"]),
-                })
+                rows.append(
+                    {
+                        "symbol": sym,
+                        "timestamp": dt,
+                        "open": float(row["Open"]),
+                        "high": float(row["High"]),
+                        "low": float(row["Low"]),
+                        "close": float(row["Close"]),
+                        "volume": int(row["Volume"]),
+                    }
+                )
         except Exception as e:
             logger.warning("Failed to get data for %s: %s", sym, e)
 
@@ -612,23 +735,36 @@ def fetch_fx_data(pairs: List[str], days: int = 200) -> pd.DataFrame:
     import yfinance as yf
 
     yf_map = {
-        "EURUSD": "EURUSD=X", "GBPUSD": "GBPUSD=X", "USDJPY": "JPY=X",
-        "AUDUSD": "AUDUSD=X", "USDCAD": "CAD=X", "USDCHF": "CHF=X",
+        "EURUSD": "EURUSD=X",
+        "GBPUSD": "GBPUSD=X",
+        "USDJPY": "JPY=X",
+        "AUDUSD": "AUDUSD=X",
+        "USDCAD": "CAD=X",
+        "USDCHF": "CHF=X",
     }
 
     yf_symbols = [yf_map.get(p, f"{p}=X") for p in pairs]
-    data = yf.download(yf_symbols, period=f"{days}d", group_by="ticker",
-                       auto_adjust=True, progress=False)
+    data = yf.download(
+        yf_symbols,
+        period=f"{days}d",
+        group_by="ticker",
+        auto_adjust=True,
+        progress=False,
+    )
 
     rows = []
     for pair, yf_sym in zip(pairs, yf_symbols):
         try:
             sym_data = data[yf_sym].dropna()
             for dt, row in sym_data.iterrows():
-                rows.append({
-                    "symbol": pair, "timestamp": dt,
-                    "close": float(row["Close"]), "volume": 0,
-                })
+                rows.append(
+                    {
+                        "symbol": pair,
+                        "timestamp": dt,
+                        "close": float(row["Close"]),
+                        "volume": 0,
+                    }
+                )
         except Exception:
             pass
 
@@ -638,7 +774,9 @@ def fetch_fx_data(pairs: List[str], days: int = 200) -> pd.DataFrame:
 # ============================================================
 # STRATEGY RUNNER (dynamic registry)
 # ============================================================
-def _run_strategy(name: str, strategy, data: pd.DataFrame, today: date) -> Optional[Any]:
+def _run_strategy(
+    name: str, strategy, data: pd.DataFrame, today: date
+) -> Optional[Any]:
     """Run a single strategy with error handling."""
     try:
         output = strategy.generate_signals(data)
@@ -652,20 +790,31 @@ def _run_strategy(name: str, strategy, data: pd.DataFrame, today: date) -> Optio
         return None
 
 
-def build_strategies(config: StrategyMasterConfig, mgr: Optional[ModelManager]) -> Dict[str, Any]:
+def build_strategies(
+    config: StrategyMasterConfig, mgr: Optional[ModelManager]
+) -> Dict[str, Any]:
     """Build all enabled strategies from config."""
     strategies = {}
 
     # Always-on core strategies
-    strategies["cross_sectional_momentum"] = CrossSectionalMomentum(MomentumConfig(
-        enabled=True, min_history_days=250, min_avg_dollar_volume=0,
-        long_threshold_zscore=1.0, short_threshold_zscore=-1.0,
-        max_positions_per_side=5,
-    ))
-    strategies["pairs_trading"] = PairsTrading(StatArbConfig(
-        enabled=True, cointegration_pvalue=0.10,
-        same_sector_only=False, max_pairs=10,
-    ))
+    strategies["cross_sectional_momentum"] = CrossSectionalMomentum(
+        MomentumConfig(
+            enabled=True,
+            min_history_days=250,
+            min_avg_dollar_volume=0,
+            long_threshold_zscore=1.0,
+            short_threshold_zscore=-1.0,
+            max_positions_per_side=5,
+        )
+    )
+    strategies["pairs_trading"] = PairsTrading(
+        StatArbConfig(
+            enabled=True,
+            cointegration_pvalue=0.10,
+            same_sector_only=False,
+            max_pairs=10,
+        )
+    )
 
     # FX strategies
     strategies["fx_carry_trend"] = FXCarryTrend(FXConfig(enabled=True))
@@ -678,24 +827,34 @@ def build_strategies(config: StrategyMasterConfig, mgr: Optional[ModelManager]) 
     if config.mean_reversion.enabled:
         strategies["mean_reversion"] = MeanReversionStrategy(config.mean_reversion, mgr)
     if config.sector_rotation.enabled:
-        strategies["sector_rotation"] = SectorRotationStrategy(config.sector_rotation, mgr)
+        strategies["sector_rotation"] = SectorRotationStrategy(
+            config.sector_rotation, mgr
+        )
 
     # Model-dependent strategies
     if config.kronos.enabled and mgr is not None:
         strategies["kronos"] = KronosStrategy(config=config.kronos, manager=mgr)
     if config.deep_surrogates.enabled and mgr is not None:
-        strategies["deep_surrogates"] = DeepSurrogateStrategy(config=config.deep_surrogates, manager=mgr)
+        strategies["deep_surrogates"] = DeepSurrogateStrategy(
+            config=config.deep_surrogates, manager=mgr
+        )
     if config.tdgf.enabled and mgr is not None:
         strategies["tdgf"] = TDGFStrategy(config=config.tdgf, manager=mgr)
 
     # Vol arb (integrate existing options strategy)
-    vol_arb_enabled = os.getenv("STRATEGY_VOL_ARB_ENABLED", "false").lower() in ("true", "1", "yes")
+    vol_arb_enabled = os.getenv("STRATEGY_VOL_ARB_ENABLED", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
     if vol_arb_enabled:
         strategies["vol_arb"] = VolatilityArbitrage(VolArbConfig.from_env())
 
     # Sentiment strategy (contrarian / momentum confirmation)
     if config.sentiment.enabled and mgr is not None:
-        strategies["sentiment"] = SentimentStrategy(config=config.sentiment, manager=mgr)
+        strategies["sentiment"] = SentimentStrategy(
+            config=config.sentiment, manager=mgr
+        )
 
     return strategies
 
@@ -721,7 +880,9 @@ async def run_daily_pipeline(is_manual: bool = False):
         # Audit: pipeline start
         if audit_logger is not None:
             try:
-                audit_logger.log_event("pipeline_start", reason=f"Daily pipeline {today}")
+                audit_logger.log_event(
+                    "pipeline_start", reason=f"Daily pipeline {today}"
+                )
             except Exception:
                 pass
 
@@ -736,9 +897,25 @@ async def run_daily_pipeline(is_manual: bool = False):
         # 2. Get current account state
         account = await broker.get_account()
         prev_value = state.portfolio_value
-        state.portfolio_value = float(account.portfolio_value) if hasattr(account, 'portfolio_value') else float(account.get("portfolio_value", prev_value) if isinstance(account, dict) else prev_value)
-        cash = float(account.cash) if hasattr(account, 'cash') else float(account.get("cash", 0) if isinstance(account, dict) else 0)
-        equity = float(account.equity) if hasattr(account, 'equity') else float(account.get("equity", 0) if isinstance(account, dict) else 0)
+        state.portfolio_value = (
+            float(account.portfolio_value)
+            if hasattr(account, "portfolio_value")
+            else float(
+                account.get("portfolio_value", prev_value)
+                if isinstance(account, dict)
+                else prev_value
+            )
+        )
+        cash = (
+            float(account.cash)
+            if hasattr(account, "cash")
+            else float(account.get("cash", 0) if isinstance(account, dict) else 0)
+        )
+        equity = (
+            float(account.equity)
+            if hasattr(account, "equity")
+            else float(account.get("equity", 0) if isinstance(account, dict) else 0)
+        )
 
         # 3. Circuit breaker check before trading (fail-closed)
         if circuit_breaker is not None:
@@ -748,11 +925,13 @@ async def run_daily_pipeline(is_manual: bool = False):
                     state.circuit_breaker_tripped = True
                     logger.warning("CIRCUIT BREAKER TRIPPED — skipping trade execution")
                     if notification_manager is not None:
-                        await notification_manager.send(AlertMessage(
-                            title="Circuit Breaker Tripped",
-                            body="Trading halted due to drawdown limit breach",
-                            severity="critical",
-                        ))
+                        await notification_manager.send(
+                            AlertMessage(
+                                title="Circuit Breaker Tripped",
+                                body="Trading halted due to drawdown limit breach",
+                                severity="critical",
+                            )
+                        )
                     return
                 state.circuit_breaker_tripped = False
             except Exception as e:
@@ -760,7 +939,9 @@ async def run_daily_pipeline(is_manual: bool = False):
                 state.circuit_breaker_tripped = True
                 return
         elif state.circuit_breaker_tripped:
-            logger.critical("Circuit breaker unavailable (Redis down) — FAIL CLOSED, skipping trades")
+            logger.critical(
+                "Circuit breaker unavailable (Redis down) — FAIL CLOSED, skipping trades"
+            )
             return
 
         # 4. Detect regime
@@ -768,8 +949,11 @@ async def run_daily_pipeline(is_manual: bool = False):
         regime_state = regime_detector.detect(stock_data, vix_value=None)
         state.last_regime = regime_state.regime.value
 
-        logger.info("Regime: %s (exposure_scalar=%.0f%%)",
-                     regime_state.regime.value, regime_state.exposure_scalar * 100)
+        logger.info(
+            "Regime: %s (exposure_scalar=%.0f%%)",
+            regime_state.regime.value,
+            regime_state.exposure_scalar * 100,
+        )
 
         # 5. Build and run all enabled strategies
         config = StrategyMasterConfig.from_env()
@@ -781,7 +965,11 @@ async def run_daily_pipeline(is_manual: bool = False):
 
         for strat_name, strategy in strategy_map.items():
             # Use FX data for FX strategies, stock data otherwise
-            input_data = fx_data if strat_name in fx_strategies and not fx_data.empty else stock_data
+            input_data = (
+                fx_data
+                if strat_name in fx_strategies and not fx_data.empty
+                else stock_data
+            )
             if strat_name in fx_strategies and fx_data.empty:
                 continue
 
@@ -801,8 +989,10 @@ async def run_daily_pipeline(is_manual: bool = False):
         # 6. Combine via ensemble
         combiner = EnsembleCombiner(
             config=EnsembleConfig(
-                enabled=True, weighting_method="bayesian",
-                max_total_positions=20, max_gross_leverage=1.5,
+                enabled=True,
+                weighting_method="bayesian",
+                max_total_positions=20,
+                max_gross_leverage=1.5,
                 use_bayesian_updater=USE_BAYESIAN_WEIGHTS,
             ),
             bayesian_updater=bayesian_updater,
@@ -811,16 +1001,20 @@ async def run_daily_pipeline(is_manual: bool = False):
 
         # 6a. GUARDRAIL: Signal variance check (March 10 incident prevention)
         if combined:
-            scores = [s.score for s in combined if hasattr(s, 'score')]
+            scores = [s.score for s in combined if hasattr(s, "score")]
             variance_result = signal_guard.check(scores)
             if not variance_result.passed:
-                logger.critical("Signal variance guardrail tripped — aborting execution")
+                logger.critical(
+                    "Signal variance guardrail tripped — aborting execution"
+                )
                 if notification_manager is not None:
-                    await notification_manager.send(AlertMessage(
-                        title="GUARDRAIL: Signal Variance Collapse",
-                        body=variance_result.message,
-                        severity="critical",
-                    ))
+                    await notification_manager.send(
+                        AlertMessage(
+                            title="GUARDRAIL: Signal Variance Collapse",
+                            body=variance_result.message,
+                            severity="critical",
+                        )
+                    )
                 else:
                     await _send_discord_fallback(
                         f"**GUARDRAIL HALT**\n{variance_result.message}"
@@ -833,21 +1027,30 @@ async def run_daily_pipeline(is_manual: bool = False):
             if risk_manager is not None:
                 # Feed strategy returns for correlation monitoring
                 for output in strategy_outputs:
-                    strat_return = sum(s.score for s in output.scores) / max(len(output.scores), 1)
-                    risk_manager.record_strategy_return(output.strategy_name, strat_return)
+                    strat_return = sum(s.score for s in output.scores) / max(
+                        len(output.scores), 1
+                    )
+                    risk_manager.record_strategy_return(
+                        output.strategy_name, strat_return
+                    )
 
                 risk_assessment = risk_manager.assess()
                 log_risk_report(risk_assessment)
 
                 # Kill switch: halt ALL trades
                 if risk_assessment.kill_switch_triggered:
-                    logger.critical("Portfolio risk kill switch triggered: %s", risk_assessment.kill_reason)
+                    logger.critical(
+                        "Portfolio risk kill switch triggered: %s",
+                        risk_assessment.kill_reason,
+                    )
                     if notification_manager is not None:
-                        await notification_manager.send(AlertMessage(
-                            title="RISK KILL SWITCH — All Trading Halted",
-                            body=f"Portfolio risk limit breached: {risk_assessment.kill_reason}",
-                            severity="critical",
-                        ))
+                        await notification_manager.send(
+                            AlertMessage(
+                                title="RISK KILL SWITCH — All Trading Halted",
+                                body=f"Portfolio risk limit breached: {risk_assessment.kill_reason}",
+                                severity="critical",
+                            )
+                        )
                     else:
                         await _send_discord_fallback(
                             f"**RISK KILL SWITCH**\n{risk_assessment.kill_reason}"
@@ -859,10 +1062,17 @@ async def run_daily_pipeline(is_manual: bool = False):
                 if killed:
                     killed_names = set(killed.keys())
                     logger.warning("Killed strategies excluded: %s", killed_names)
-                    combined = [
-                        s for s in combined
-                        if not any(k in s.contributing_strategies for k in killed_names)
-                    ] if combined else combined
+                    combined = (
+                        [
+                            s
+                            for s in combined
+                            if not any(
+                                k in s.contributing_strategies for k in killed_names
+                            )
+                        ]
+                        if combined
+                        else combined
+                    )
 
                 # Correlation-based weight reduction
                 if risk_assessment.correlation_alerts and combined:
@@ -872,10 +1082,16 @@ async def run_daily_pipeline(is_manual: bool = False):
                             younger = alert.strategy_b
                             logger.warning(
                                 "Correlation %.3f between %s and %s — reducing %s weight by 50%%",
-                                alert.correlation, alert.strategy_a, alert.strategy_b, younger,
+                                alert.correlation,
+                                alert.strategy_a,
+                                alert.strategy_b,
+                                younger,
                             )
                             for sig in combined:
-                                if hasattr(sig, 'contributing_strategies') and younger in sig.contributing_strategies:
+                                if (
+                                    hasattr(sig, "contributing_strategies")
+                                    and younger in sig.contributing_strategies
+                                ):
                                     sig.combined_score *= 0.5
         except Exception as e:
             logger.warning("Risk assessment failed (continuing): %s", e)
@@ -896,22 +1112,30 @@ async def run_daily_pipeline(is_manual: bool = False):
 
         # 6c. Cache signals for signal provider API
         signal_dicts = [
-            {"symbol": s.symbol, "combined_score": s.combined_score,
-             "confidence": s.confidence, "direction": s.direction.value,
-             "contributing_strategies": s.contributing_strategies}
+            {
+                "symbol": s.symbol,
+                "combined_score": s.combined_score,
+                "confidence": s.confidence,
+                "direction": s.direction.value,
+                "contributing_strategies": s.contributing_strategies,
+            }
             for s in combined
         ]
         try:
             bay_w = bayesian_updater.get_weights() if bayesian_updater else None
             bay_s = bayesian_updater.get_state_dicts() if bayesian_updater else None
-            regime_detail = {
-                "regime": regime_state.regime.value,
-                "vix_level": regime_state.vix_level,
-                "is_volatile": regime_state.is_volatile,
-                "is_trending": regime_state.is_trending,
-                "confidence": regime_state.confidence,
-                "exposure_scalar": regime_state.exposure_scalar,
-            } if regime_state else {}
+            regime_detail = (
+                {
+                    "regime": regime_state.regime.value,
+                    "vix_level": regime_state.vix_level,
+                    "is_volatile": regime_state.is_volatile,
+                    "is_trending": regime_state.is_trending,
+                    "confidence": regime_state.confidence,
+                    "exposure_scalar": regime_state.exposure_scalar,
+                }
+                if regime_state
+                else {}
+            )
             signal_cache.refresh(
                 signals=signal_dicts,
                 weights=state.last_weights,
@@ -937,31 +1161,44 @@ async def run_daily_pipeline(is_manual: bool = False):
                 )
                 if llm_analysis is not None:
                     log_signal_analysis(llm_analysis)
-                    logger.info("LLM analysis: %s (confidence=%s)",
-                                llm_analysis.summary[:100], llm_analysis.confidence)
+                    logger.info(
+                        "LLM analysis: %s (confidence=%s)",
+                        llm_analysis.summary[:100],
+                        llm_analysis.confidence,
+                    )
             except Exception as e:
                 logger.warning("LLM signal analysis failed (non-critical): %s", e)
 
         # 7. Optimize portfolio
-        optimizer = PortfolioOptimizer(EnsembleConfig(
-            enabled=True, max_total_positions=15,
-            max_gross_leverage=1.2, target_volatility=0.15,
-        ))
+        optimizer = PortfolioOptimizer(
+            EnsembleConfig(
+                enabled=True,
+                max_total_positions=15,
+                max_gross_leverage=1.2,
+                target_volatility=0.15,
+            )
+        )
         target = optimizer.optimize(combined, stock_data, regime_state)
 
-        logger.info("Target portfolio: %d positions, gross=%.2f, net=%.2f",
-                     target.position_count, target.gross_leverage, target.net_leverage)
+        logger.info(
+            "Target portfolio: %d positions, gross=%.2f, net=%.2f",
+            target.position_count,
+            target.gross_leverage,
+            target.net_leverage,
+        )
 
         # 7b. GUARDRAIL: Leverage gate before execution
         lev_result = leverage_gate.check(target.gross_leverage)
         if not lev_result.passed:
             logger.warning("Leverage guardrail tripped — skipping new orders")
             if notification_manager is not None:
-                await notification_manager.send(AlertMessage(
-                    title="GUARDRAIL: Leverage Limit Exceeded",
-                    body=lev_result.message,
-                    severity="warning",
-                ))
+                await notification_manager.send(
+                    AlertMessage(
+                        title="GUARDRAIL: Leverage Limit Exceeded",
+                        body=lev_result.message,
+                        severity="warning",
+                    )
+                )
             else:
                 await _send_discord_fallback(
                     f"**GUARDRAIL WARNING**\n{lev_result.message}"
@@ -977,9 +1214,13 @@ async def run_daily_pipeline(is_manual: bool = False):
             current_positions = await broker.get_positions()
             if isinstance(current_positions, list) and len(current_positions) > 0:
                 if isinstance(current_positions[0], dict):
-                    current_holdings = {p["symbol"]: float(p["qty"]) for p in current_positions}
+                    current_holdings = {
+                        p["symbol"]: float(p["qty"]) for p in current_positions
+                    }
                 else:
-                    current_holdings = {p.ticker: float(p.quantity) for p in current_positions}
+                    current_holdings = {
+                        p.ticker: float(p.quantity) for p in current_positions
+                    }
             else:
                 current_holdings = {}
 
@@ -988,13 +1229,17 @@ async def run_daily_pipeline(is_manual: bool = False):
                 # GUARDRAIL: Execution failure rate check before each order
                 exec_health = exec_monitor.check()
                 if not exec_health.passed:
-                    logger.critical("Execution failure rate guardrail tripped — pausing orders")
+                    logger.critical(
+                        "Execution failure rate guardrail tripped — pausing orders"
+                    )
                     if notification_manager is not None:
-                        await notification_manager.send(AlertMessage(
-                            title="GUARDRAIL: Execution Failure Rate",
-                            body=exec_health.message,
-                            severity="critical",
-                        ))
+                        await notification_manager.send(
+                            AlertMessage(
+                                title="GUARDRAIL: Execution Failure Rate",
+                                body=exec_health.message,
+                                severity="critical",
+                            )
+                        )
                     else:
                         await _send_discord_fallback(
                             f"**GUARDRAIL HALT**\n{exec_health.message}"
@@ -1026,7 +1271,9 @@ async def run_daily_pipeline(is_manual: bool = False):
                 if circuit_breaker is not None:
                     try:
                         if await circuit_breaker.is_tripped():
-                            logger.warning("Circuit breaker tripped during execution, stopping")
+                            logger.warning(
+                                "Circuit breaker tripped during execution, stopping"
+                            )
                             break
                     except Exception:
                         pass
@@ -1045,8 +1292,11 @@ async def run_daily_pipeline(is_manual: bool = False):
                             adv = float(vol_series.mean())
 
                     vwap_result = await vwap_model.execute(
-                        ticker=symbol, side=order_side, quantity=qty,
-                        current_price=price, adv=adv,
+                        ticker=symbol,
+                        side=order_side,
+                        quantity=qty,
+                        current_price=price,
+                        adv=adv,
                     )
                     log_execution_stats(vwap_result)
                     if prom_metrics is not None and vwap_result.total_filled > 0:
@@ -1055,8 +1305,16 @@ async def run_daily_pipeline(is_manual: bool = False):
                     # Synthesize OrderResult for downstream tracking
                     result = OrderResult(
                         success=(vwap_result.total_filled > 0),
-                        order_id=vwap_result.slices[0].order_id if vwap_result.slices else None,
-                        status=OrderStatus.FILLED if vwap_result.total_filled > 0 else OrderStatus.CANCELLED,
+                        order_id=(
+                            vwap_result.slices[0].order_id
+                            if vwap_result.slices
+                            else None
+                        ),
+                        status=(
+                            OrderStatus.FILLED
+                            if vwap_result.total_filled > 0
+                            else OrderStatus.CANCELLED
+                        ),
                         message=f"VWAP: filled {vwap_result.total_filled}/{vwap_result.total_requested}",
                     )
                     qty = vwap_result.total_filled or qty
@@ -1064,7 +1322,9 @@ async def run_daily_pipeline(is_manual: bool = False):
                         price = vwap_result.filled_avg_price
                 else:
                     order_req = OrderRequest(
-                        ticker=symbol, side=order_side, quantity=qty,
+                        ticker=symbol,
+                        side=order_side,
+                        quantity=qty,
                     )
                     result = await broker.submit_order(order_req)
 
@@ -1074,11 +1334,26 @@ async def run_daily_pipeline(is_manual: bool = False):
                 if result and result.success:
                     trades_executed += 1
                     order_id = result.order_id or ""
-                    log_trade(today, symbol, side, qty, price, order_id,
-                              "ensemble", pos.combined_score, pos.confidence,
-                              {"target_weight": pos.target_weight})
-                    logger.info("  %s %d %s @ $%.2f (order=%s)",
-                                side.upper(), qty, symbol, price, str(order_id)[:8])
+                    log_trade(
+                        today,
+                        symbol,
+                        side,
+                        qty,
+                        price,
+                        order_id,
+                        "ensemble",
+                        pos.combined_score,
+                        pos.confidence,
+                        {"target_weight": pos.target_weight},
+                    )
+                    logger.info(
+                        "  %s %d %s @ $%.2f (order=%s)",
+                        side.upper(),
+                        qty,
+                        symbol,
+                        price,
+                        str(order_id)[:8],
+                    )
 
                     # Audit trail
                     if audit_logger is not None:
@@ -1093,7 +1368,15 @@ async def run_daily_pipeline(is_manual: bool = False):
 
         # 9. Snapshot
         account = await broker.get_account()
-        state.portfolio_value = float(account.portfolio_value) if hasattr(account, 'portfolio_value') else float(account.get("portfolio_value", state.portfolio_value) if isinstance(account, dict) else state.portfolio_value)
+        state.portfolio_value = (
+            float(account.portfolio_value)
+            if hasattr(account, "portfolio_value")
+            else float(
+                account.get("portfolio_value", state.portfolio_value)
+                if isinstance(account, dict)
+                else state.portfolio_value
+            )
+        )
         daily_pnl = state.portfolio_value - prev_value
         daily_return = daily_pnl / prev_value if prev_value > 0 else 0
         state.last_pnl = daily_pnl
@@ -1109,13 +1392,16 @@ async def run_daily_pipeline(is_manual: bool = False):
         if bayesian_updater is not None and strategy_outputs:
             outcomes = {}
             for output in strategy_outputs:
-                strat_return = sum(s.score * (1 if daily_return > 0 else -1)
-                                  for s in output.scores) / max(len(output.scores), 1)
-                outcomes[output.strategy_name] = (strat_return > 0)
+                strat_return = sum(
+                    s.score * (1 if daily_return > 0 else -1) for s in output.scores
+                ) / max(len(output.scores), 1)
+                outcomes[output.strategy_name] = strat_return > 0
             bayesian_updater.update(outcomes)
             save_bayesian_state(bayesian_updater)
-            logger.info("Bayesian weights updated: %s",
-                        {k: f"{v:.3f}" for k, v in bayesian_updater.get_weights().items()})
+            logger.info(
+                "Bayesian weights updated: %s",
+                {k: f"{v:.3f}" for k, v in bayesian_updater.get_weights().items()},
+            )
 
         positions = await broker.get_positions()
         if isinstance(positions, list) and len(positions) > 0:
@@ -1144,8 +1430,16 @@ async def run_daily_pipeline(is_manual: bool = False):
         else:
             state.last_positions = []
 
-        acct_cash = float(account.cash) if hasattr(account, 'cash') else float(account.get("cash", 0) if isinstance(account, dict) else 0)
-        acct_equity = float(account.equity) if hasattr(account, 'equity') else float(account.get("equity", 0) if isinstance(account, dict) else 0)
+        acct_cash = (
+            float(account.cash)
+            if hasattr(account, "cash")
+            else float(account.get("cash", 0) if isinstance(account, dict) else 0)
+        )
+        acct_equity = (
+            float(account.equity)
+            if hasattr(account, "equity")
+            else float(account.get("equity", 0) if isinstance(account, dict) else 0)
+        )
 
         snapshot = {
             "date": today,
@@ -1168,15 +1462,17 @@ async def run_daily_pipeline(is_manual: bool = False):
         }
         log_daily_snapshot(snapshot)
 
-        state.run_log.append({
-            "date": str(today),
-            "pnl": round(daily_pnl, 2),
-            "return_pct": round(daily_return * 100, 2),
-            "trades": trades_executed,
-            "regime": state.last_regime,
-            "positions": len(state.last_positions),
-            "strategies": len(strategy_outputs),
-        })
+        state.run_log.append(
+            {
+                "date": str(today),
+                "pnl": round(daily_pnl, 2),
+                "return_pct": round(daily_return * 100, 2),
+                "trades": trades_executed,
+                "regime": state.last_regime,
+                "positions": len(state.last_positions),
+                "strategies": len(strategy_outputs),
+            }
+        )
 
         # 10. Send report via NotificationManager
         sharpe = 0
@@ -1184,10 +1480,14 @@ async def run_daily_pipeline(is_manual: bool = False):
             rets = np.array(state.daily_returns)
             sharpe = (rets.mean() / rets.std() * np.sqrt(252)) if rets.std() > 0 else 0
 
-        strat_summary = " | ".join(
-            f"{o.strategy_name}: {len(o.scores)}"
-            for o in strategy_outputs if o.scores
-        ) or "none"
+        strat_summary = (
+            " | ".join(
+                f"{o.strategy_name}: {len(o.scores)}"
+                for o in strategy_outputs
+                if o.scores
+            )
+            or "none"
+        )
 
         # VWAP execution stats for report
         vwap_line = ""
@@ -1223,11 +1523,13 @@ async def run_daily_pipeline(is_manual: bool = False):
 
         if notification_manager is not None:
             severity = "info" if daily_pnl >= 0 else "warning"
-            await notification_manager.send(AlertMessage(
-                title="APEX Paper Trading — Daily Report",
-                body=report,
-                severity=severity,
-            ))
+            await notification_manager.send(
+                AlertMessage(
+                    title="APEX Paper Trading — Daily Report",
+                    body=report,
+                    severity=severity,
+                )
+            )
         else:
             await _send_discord_fallback(report)
 
@@ -1237,15 +1539,22 @@ async def run_daily_pipeline(is_manual: bool = False):
                 audit_logger.log_event(
                     "pipeline_complete",
                     reason=f"Day {state.day_count}: P&L ${daily_pnl:+,.2f}",
-                    metadata={"trades": trades_executed, "strategies": len(strategy_outputs)},
+                    metadata={
+                        "trades": trades_executed,
+                        "strategies": len(strategy_outputs),
+                    },
                 )
             except Exception:
                 pass
 
         state.last_run = datetime.now(timezone.utc)
         elapsed = (state.last_run - run_start).total_seconds()
-        logger.info("Pipeline complete in %.1fs — P&L: $%+.2f (%+.2f%%)",
-                     elapsed, daily_pnl, daily_return * 100)
+        logger.info(
+            "Pipeline complete in %.1fs — P&L: $%+.2f (%+.2f%%)",
+            elapsed,
+            daily_pnl,
+            daily_return * 100,
+        )
 
         # 12. Update Prometheus metrics
         if prom_metrics is not None:
@@ -1253,7 +1562,9 @@ async def run_daily_pipeline(is_manual: bool = False):
                 prom_metrics.update_signals(signal_dicts)
                 prom_metrics.update_weights(
                     state.last_weights,
-                    bayesian_weights=bayesian_updater.get_weights() if bayesian_updater else None,
+                    bayesian_weights=(
+                        bayesian_updater.get_weights() if bayesian_updater else None
+                    ),
                 )
                 prom_metrics.update_regime(
                     regime=state.last_regime or "unknown",
@@ -1263,8 +1574,14 @@ async def run_daily_pipeline(is_manual: bool = False):
                 if risk_assessment is not None:
                     prom_metrics.update_risk(
                         drawdown=risk_assessment.portfolio_drawdown,
-                        var_99=risk_assessment.var.parametric_var if risk_assessment.var else 0,
-                        cvar_95=risk_assessment.var.cvar_95 if risk_assessment.var else 0,
+                        var_99=(
+                            risk_assessment.var.parametric_var
+                            if risk_assessment.var
+                            else 0
+                        ),
+                        cvar_95=(
+                            risk_assessment.var.cvar_95 if risk_assessment.var else 0
+                        ),
                     )
                 prom_metrics.observe_pipeline_duration(elapsed)
             except Exception as e_metrics:
@@ -1274,11 +1591,13 @@ async def run_daily_pipeline(is_manual: bool = False):
         logger.error("Pipeline failed: %s", e, exc_info=True)
         error_msg = f"**PIPELINE ERROR**\n{str(e)[:500]}"
         if notification_manager is not None:
-            await notification_manager.send(AlertMessage(
-                title="APEX Pipeline Error",
-                body=error_msg,
-                severity="critical",
-            ))
+            await notification_manager.send(
+                AlertMessage(
+                    title="APEX Pipeline Error",
+                    body=error_msg,
+                    severity="critical",
+                )
+            )
         else:
             await _send_discord_fallback(error_msg)
     finally:
@@ -1302,8 +1621,11 @@ async def _send_discord_fallback(report: str):
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(DISCORD_WEBHOOK_URL, json=payload,
-                                     timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            async with session.post(
+                DISCORD_WEBHOOK_URL,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
                 if resp.status in (200, 204):
                     logger.info("Discord report sent")
                 else:
@@ -1323,18 +1645,25 @@ async def lifespan(app: FastAPI):
 
     # Validate required environment variables before any connections
     from utils.env_validator import validate
+
     validate(strict=True)
 
     # Database connection pool
     try:
         db_pool = psycopg2.pool.ThreadedConnectionPool(
-            minconn=2, maxconn=10,
-            host=DB_HOST, port=DB_PORT, database=DB_NAME,
-            user=DB_USER, password=DB_PASSWORD,
+            minconn=2,
+            maxconn=10,
+            host=DB_HOST,
+            port=DB_PORT,
+            database=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
         )
         logger.info("Database connection pool created (2-10 connections)")
     except Exception as e:
-        logger.warning("Connection pool failed, falling back to per-query connections: %s", e)
+        logger.warning(
+            "Connection pool failed, falling back to per-query connections: %s", e
+        )
         db_pool = None
 
     # Startup
@@ -1354,20 +1683,35 @@ async def lifespan(app: FastAPI):
 
     # GUARDRAIL: Calibration health check at startup
     # Check any loaded calibration models for identity/unfitted state
-    for name, model in (model_manager.models if hasattr(model_manager, 'models') else {}).items():
-        if hasattr(model, 'calibrator_a') and hasattr(model, 'calibrator_b'):
-            cal_result = CalibrationHealthCheck.check_platt(model.calibrator_a, model.calibrator_b)
+    for name, model in (
+        model_manager.models if hasattr(model_manager, "models") else {}
+    ).items():
+        if hasattr(model, "calibrator_a") and hasattr(model, "calibrator_b"):
+            cal_result = CalibrationHealthCheck.check_platt(
+                model.calibrator_a, model.calibrator_b
+            )
             if not cal_result.passed:
-                logger.error("Startup calibration check failed for '%s': %s", name, cal_result.message)
-        elif hasattr(model, 'calibrator'):
+                logger.error(
+                    "Startup calibration check failed for '%s': %s",
+                    name,
+                    cal_result.message,
+                )
+        elif hasattr(model, "calibrator"):
             cal_result = CalibrationHealthCheck.check_generic(model.calibrator)
             if not cal_result.passed:
-                logger.error("Startup calibration check failed for '%s': %s", name, cal_result.message)
+                logger.error(
+                    "Startup calibration check failed for '%s': %s",
+                    name,
+                    cal_result.message,
+                )
 
-    logger.info("Safety guardrails initialized: signal_variance(min_std=%.4f), "
-                "leverage_gate(max=%.2f), exec_monitor(max_fail_rate=%.0f%%)",
-                signal_guard.min_std, leverage_gate.max_leverage,
-                exec_monitor.max_failure_rate * 100)
+    logger.info(
+        "Safety guardrails initialized: signal_variance(min_std=%.4f), "
+        "leverage_gate(max=%.2f), exec_monitor(max_fail_rate=%.0f%%)",
+        signal_guard.min_std,
+        leverage_gate.max_leverage,
+        exec_monitor.max_failure_rate * 100,
+    )
 
     # Notification manager (Discord + Email)
     try:
@@ -1388,10 +1732,15 @@ async def lifespan(app: FastAPI):
 
     # Audit logger
     try:
-        audit_logger = AuditLogger(db_config={
-            "host": DB_HOST, "port": int(DB_PORT), "database": DB_NAME,
-            "user": DB_USER, "password": DB_PASSWORD,
-        })
+        audit_logger = AuditLogger(
+            db_config={
+                "host": DB_HOST,
+                "port": int(DB_PORT),
+                "database": DB_NAME,
+                "user": DB_USER,
+                "password": DB_PASSWORD,
+            }
+        )
         try:
             audit_logger.create_schema()
         except Exception:
@@ -1405,12 +1754,17 @@ async def lifespan(app: FastAPI):
     risk_manager = PortfolioRiskManager(
         max_portfolio_drawdown=float(os.getenv("RISK_MAX_DRAWDOWN", "0.20")),
         var_confidence=0.99,
-        correlation_alert_threshold=float(os.getenv("RISK_CORRELATION_THRESHOLD", "0.85")),
+        correlation_alert_threshold=float(
+            os.getenv("RISK_CORRELATION_THRESHOLD", "0.85")
+        ),
     )
     historical_returns = load_historical_returns(days=30)
     for ret in historical_returns:
         risk_manager.record_portfolio_return(ret)
-    logger.info("PortfolioRiskManager initialized with %d historical returns", len(historical_returns))
+    logger.info(
+        "PortfolioRiskManager initialized with %d historical returns",
+        len(historical_returns),
+    )
 
     # Bayesian weight updater (adaptive ensemble weights)
     if USE_BAYESIAN_WEIGHTS:
@@ -1418,9 +1772,13 @@ async def lifespan(app: FastAPI):
             decay_factor=float(os.getenv("ENSEMBLE_BAYESIAN_DECAY", "0.995")),
         )
         n_loaded = load_bayesian_state(bayesian_updater)
-        logger.info("BayesianWeightUpdater initialized (loaded %d strategies from DB)", n_loaded)
+        logger.info(
+            "BayesianWeightUpdater initialized (loaded %d strategies from DB)", n_loaded
+        )
     else:
-        logger.info("BayesianWeightUpdater disabled (set ENSEMBLE_USE_BAYESIAN_WEIGHTS=true to enable)")
+        logger.info(
+            "BayesianWeightUpdater disabled (set ENSEMBLE_USE_BAYESIAN_WEIGHTS=true to enable)"
+        )
 
     # VWAP execution model (wraps AlpacaBroker for time-sliced execution)
     if USE_VWAP_EXECUTION:
@@ -1430,8 +1788,11 @@ async def lifespan(app: FastAPI):
             slice_interval_s=int(os.getenv("VWAP_SLICE_INTERVAL_S", "60")),
             adv_cap_pct=float(os.getenv("VWAP_ADV_CAP_PCT", "0.10")),
         )
-        logger.info("VWAPExecutionModel initialized (%d slices, %ds interval)",
-                     vwap_model.num_slices, vwap_model.slice_interval_s)
+        logger.info(
+            "VWAPExecutionModel initialized (%d slices, %ds interval)",
+            vwap_model.num_slices,
+            vwap_model.slice_interval_s,
+        )
     else:
         logger.info("VWAP execution disabled (set EXECUTION_USE_VWAP=true to enable)")
 
@@ -1440,18 +1801,25 @@ async def lifespan(app: FastAPI):
         signal_analyst = SignalAnalyst()
         logger.info("SignalAnalyst initialized (model=%s)", signal_analyst.client.model)
     else:
-        logger.info("LLM signal analyst disabled (set LLM_ANALYST_ENABLED=true to enable)")
+        logger.info(
+            "LLM signal analyst disabled (set LLM_ANALYST_ENABLED=true to enable)"
+        )
 
     # Circuit breaker
     try:
         import redis.asyncio as aioredis
+
         redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
         await redis_client.ping()
 
         cb_config = CircuitBreakerConfig(
             drawdown_configs=[
-                DrawdownConfig(method=DrawdownMethod.HIGH_WATER_MARK, threshold_percent=5.0),
-                DrawdownConfig(method=DrawdownMethod.START_OF_DAY, threshold_percent=3.0),
+                DrawdownConfig(
+                    method=DrawdownMethod.HIGH_WATER_MARK, threshold_percent=5.0
+                ),
+                DrawdownConfig(
+                    method=DrawdownMethod.START_OF_DAY, threshold_percent=3.0
+                ),
             ],
             initial_capital=INITIAL_CAPITAL,
         )
@@ -1465,7 +1833,10 @@ async def lifespan(app: FastAPI):
         await circuit_breaker.start()
         logger.info("CircuitBreaker initialized and started")
     except Exception as e:
-        logger.critical("CircuitBreaker not available (Redis required): %s — FAIL CLOSED, trading disabled", e)
+        logger.critical(
+            "CircuitBreaker not available (Redis required): %s — FAIL CLOSED, trading disabled",
+            e,
+        )
         circuit_breaker = None
         # Fail-closed: trip the circuit breaker state so no trades execute
         state.circuit_breaker_tripped = True
@@ -1473,6 +1844,7 @@ async def lifespan(app: FastAPI):
     # Redis signal publisher (optional — fire-and-forget)
     try:
         import redis
+
         redis_sync = redis.from_url(REDIS_URL, decode_responses=True)
         redis_sync.ping()
         signal_publisher = SignalPublisher(redis_sync)
@@ -1492,14 +1864,20 @@ async def lifespan(app: FastAPI):
     )
     scheduler.start()
     state.scheduler = scheduler
-    logger.info("Scheduler started: daily at %d:%02d ET (Mon-Fri)", SCHEDULE_HOUR, SCHEDULE_MINUTE)
+    logger.info(
+        "Scheduler started: daily at %d:%02d ET (Mon-Fri)",
+        SCHEDULE_HOUR,
+        SCHEDULE_MINUTE,
+    )
 
     # Register signal handlers for graceful shutdown
     shutdown_event = asyncio.Event()
     loop = asyncio.get_running_loop()
 
     def _signal_handler(sig):
-        logger.info("Received %s — initiating graceful shutdown", signal.Signals(sig).name)
+        logger.info(
+            "Received %s — initiating graceful shutdown", signal.Signals(sig).name
+        )
         shutdown_event.set()
 
     for sig in (signal.SIGTERM, signal.SIGINT):
@@ -1527,6 +1905,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error("Error during shutdown: %s", e)
 
+
 app = FastAPI(
     title="APEX Paper Trader",
     description="Multi-strategy paper trading runner with 10 models, 12 strategies, and live dashboard",
@@ -1536,6 +1915,7 @@ app = FastAPI(
 
 # Mount signal provider API
 if SIGNAL_API_ENABLED and SIGNAL_API_KEY:
+
     def _db_query(query: str, params: tuple) -> list:
         """Execute a read-only DB query for the signal API."""
         conn = None
@@ -1561,7 +1941,9 @@ if SIGNAL_API_ENABLED and SIGNAL_API_KEY:
     logger.info("Signal provider API mounted at /api/v1/")
 else:
     if SIGNAL_API_ENABLED and not SIGNAL_API_KEY:
-        logger.warning("SIGNAL_API_ENABLED=true but SIGNAL_API_KEY is empty — API not mounted")
+        logger.warning(
+            "SIGNAL_API_ENABLED=true but SIGNAL_API_KEY is empty — API not mounted"
+        )
 
 # Mount Prometheus /metrics endpoint
 if prom_metrics is not None:
@@ -1632,7 +2014,10 @@ async def weights():
 async def weights_bayesian():
     """Return current Bayesian weight updater state: alpha, beta, weight per strategy."""
     if bayesian_updater is None:
-        return {"enabled": False, "message": "Set ENSEMBLE_USE_BAYESIAN_WEIGHTS=true to enable"}
+        return {
+            "enabled": False,
+            "message": "Set ENSEMBLE_USE_BAYESIAN_WEIGHTS=true to enable",
+        }
     return {
         "enabled": True,
         "strategies": bayesian_updater.get_state_dicts(),
@@ -1657,7 +2042,11 @@ async def analysis_latest():
         return {"enabled": False, "message": "Set LLM_ANALYST_ENABLED=true to enable"}
     analysis = signal_analyst.last_analysis
     if analysis is None:
-        return {"enabled": True, "analysis": None, "message": "No analysis yet — waiting for first pipeline run"}
+        return {
+            "enabled": True,
+            "analysis": None,
+            "message": "No analysis yet — waiting for first pipeline run",
+        }
     return {"enabled": True, "analysis": analysis.to_dict()}
 
 
@@ -1667,10 +2056,16 @@ async def dlq_dashboard():
     db_url = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     try:
         from services.common.dlq import DeadLetterQueue
+
         dlq = DeadLetterQueue(db_url=db_url, service_name="paper-trader")
         return dlq.get_all_stats()
     except Exception as e:
-        return {"error": str(e), "by_status": {}, "recent_failures": [], "retry_success_rate_pct": 0}
+        return {
+            "error": str(e),
+            "by_status": {},
+            "recent_failures": [],
+            "retry_success_rate_pct": 0,
+        }
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
@@ -1727,8 +2122,16 @@ async def dashboard():
     try:
         conn = get_db_conn()
         with conn.cursor() as cur:
-            for strat_name in ("kronos", "deep_surrogates", "tdgf", "mean_reversion",
-                               "sector_rotation", "fx_momentum", "fx_vol_breakout", "vol_arb"):
+            for strat_name in (
+                "kronos",
+                "deep_surrogates",
+                "tdgf",
+                "mean_reversion",
+                "sector_rotation",
+                "fx_momentum",
+                "fx_vol_breakout",
+                "vol_arb",
+            ):
                 cur.execute(
                     """SELECT symbol, score, confidence, direction, metadata
                        FROM paper_strategy_signals
@@ -1788,7 +2191,11 @@ async def dashboard():
     pnl_color = "#4CAF50" if state.last_pnl >= 0 else "#F44336"
     total_color = "#4CAF50" if state.total_return_pct >= 0 else "#F44336"
 
-    cb_status = "TRIPPED" if state.circuit_breaker_tripped else ("Active" if circuit_breaker else "N/A")
+    cb_status = (
+        "TRIPPED"
+        if state.circuit_breaker_tripped
+        else ("Active" if circuit_breaker else "N/A")
+    )
     cb_color = "#F44336" if state.circuit_breaker_tripped else "#4CAF50"
 
     def _panel(title, subtitle, strat_name):

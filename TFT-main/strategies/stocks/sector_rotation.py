@@ -26,15 +26,28 @@ logger = logging.getLogger(__name__)
 
 # Default sector map if model not available
 DEFAULT_SECTOR_MAP = {
-    "AAPL": "Technology", "MSFT": "Technology", "GOOGL": "Technology",
-    "META": "Technology", "NVDA": "Technology", "AMD": "Technology",
-    "JPM": "Financials", "BAC": "Financials", "GS": "Financials",
-    "XOM": "Energy", "CVX": "Energy",
-    "JNJ": "Healthcare", "UNH": "Healthcare", "PFE": "Healthcare",
-    "AMZN": "Consumer Discretionary", "TSLA": "Consumer Discretionary",
-    "PG": "Consumer Staples", "KO": "Consumer Staples",
-    "CAT": "Industrials", "BA": "Industrials",
-    "NEE": "Utilities", "DUK": "Utilities",
+    "AAPL": "Technology",
+    "MSFT": "Technology",
+    "GOOGL": "Technology",
+    "META": "Technology",
+    "NVDA": "Technology",
+    "AMD": "Technology",
+    "JPM": "Financials",
+    "BAC": "Financials",
+    "GS": "Financials",
+    "XOM": "Energy",
+    "CVX": "Energy",
+    "JNJ": "Healthcare",
+    "UNH": "Healthcare",
+    "PFE": "Healthcare",
+    "AMZN": "Consumer Discretionary",
+    "TSLA": "Consumer Discretionary",
+    "PG": "Consumer Staples",
+    "KO": "Consumer Staples",
+    "CAT": "Industrials",
+    "BA": "Industrials",
+    "NEE": "Utilities",
+    "DUK": "Utilities",
 }
 
 
@@ -94,19 +107,21 @@ class SectorRotationStrategy(BaseStrategy):
 
                 direction = SignalDirection.LONG if tilt > 0 else SignalDirection.SHORT
 
-                scores.append(AlphaScore(
-                    symbol=symbol,
-                    score=tilt,
-                    raw_score=tilt,
-                    confidence=confidence,
-                    direction=direction,
-                    metadata={
-                        "strategy_type": "sector_rotation",
-                        "sector": meta.get("sector", "Unknown"),
-                        "curve_regime": meta.get("curve_regime", "unknown"),
-                        "yield_spread": meta.get("yield_spread", 0.0),
-                    },
-                ))
+                scores.append(
+                    AlphaScore(
+                        symbol=symbol,
+                        score=tilt,
+                        raw_score=tilt,
+                        confidence=confidence,
+                        direction=direction,
+                        metadata={
+                            "strategy_type": "sector_rotation",
+                            "sector": meta.get("sector", "Unknown"),
+                            "curve_regime": meta.get("curve_regime", "unknown"),
+                            "yield_spread": meta.get("yield_spread", 0.0),
+                        },
+                    )
+                )
         else:
             # Fallback: use simple momentum-based sector rotation
             scores = self._fallback_sector_rotation(data, symbols)
@@ -126,8 +141,13 @@ class SectorRotationStrategy(BaseStrategy):
         shorts = [s for s in scores if s.direction == SignalDirection.SHORT][:max_pos]
         scores = longs + shorts
 
-        logger.info("%s: %d signals (%d long, %d short)",
-                    self.name, len(scores), len(longs), len(shorts))
+        logger.info(
+            "%s: %d signals (%d long, %d short)",
+            self.name,
+            len(scores),
+            len(longs),
+            len(shorts),
+        )
 
         return StrategyOutput(
             strategy_name=self.name,
@@ -137,7 +157,9 @@ class SectorRotationStrategy(BaseStrategy):
             strategy_sharpe_21d=self._performance.sharpe_21d,
         )
 
-    def _fallback_sector_rotation(self, data: pd.DataFrame, symbols) -> List[AlphaScore]:
+    def _fallback_sector_rotation(
+        self, data: pd.DataFrame, symbols
+    ) -> List[AlphaScore]:
         """Simple relative strength rotation when macro model is unavailable."""
         scores = []
         sector_returns = {}
@@ -158,7 +180,9 @@ class SectorRotationStrategy(BaseStrategy):
             sector_returns[sector].append((symbol, ret_3m))
 
         # Rank sectors by average return
-        sector_avg = {s: np.mean([r for _, r in rets]) for s, rets in sector_returns.items()}
+        sector_avg = {
+            s: np.mean([r for _, r in rets]) for s, rets in sector_returns.items()
+        }
         if not sector_avg:
             return []
 
@@ -167,23 +191,31 @@ class SectorRotationStrategy(BaseStrategy):
         overall_std = np.std(avg_values) if len(avg_values) > 1 else 1.0
 
         for sector, rets in sector_returns.items():
-            sector_z = (sector_avg[sector] - overall_mean) / overall_std if overall_std > 1e-10 else 0.0
+            sector_z = (
+                (sector_avg[sector] - overall_mean) / overall_std
+                if overall_std > 1e-10
+                else 0.0
+            )
             for symbol, _ in rets:
                 if abs(sector_z) < self.config.min_tilt_threshold:
                     continue
-                direction = SignalDirection.LONG if sector_z > 0 else SignalDirection.SHORT
-                scores.append(AlphaScore(
-                    symbol=symbol,
-                    score=sector_z,
-                    raw_score=sector_z,
-                    confidence=min(abs(sector_z) / 2.0, 0.8),
-                    direction=direction,
-                    metadata={
-                        "strategy_type": "sector_rotation",
-                        "sector": sector,
-                        "method": "relative_strength_fallback",
-                    },
-                ))
+                direction = (
+                    SignalDirection.LONG if sector_z > 0 else SignalDirection.SHORT
+                )
+                scores.append(
+                    AlphaScore(
+                        symbol=symbol,
+                        score=sector_z,
+                        raw_score=sector_z,
+                        confidence=min(abs(sector_z) / 2.0, 0.8),
+                        direction=direction,
+                        metadata={
+                            "strategy_type": "sector_rotation",
+                            "sector": sector,
+                            "method": "relative_strength_fallback",
+                        },
+                    )
+                )
 
         return scores
 

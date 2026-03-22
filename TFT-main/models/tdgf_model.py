@@ -79,7 +79,11 @@ class TDGFModel(BaseTFTModel):
         df.columns = [c.lower() for c in df.columns]
 
         # Compute moneyness if not present
-        if "moneyness" not in df.columns and "spot" in df.columns and "strike" in df.columns:
+        if (
+            "moneyness" not in df.columns
+            and "spot" in df.columns
+            and "strike" in df.columns
+        ):
             df["moneyness"] = df["spot"] / df["strike"]
 
         # Compute time to maturity in years if dates are given
@@ -168,16 +172,12 @@ class TDGFModel(BaseTFTModel):
             return []
 
         predictions = []
-        symbols = (
-            data["symbol"].unique() if "symbol" in data.columns else ["OPT"]
-        )
+        symbols = data["symbol"].unique() if "symbol" in data.columns else ["OPT"]
 
         for symbol in symbols:
             try:
                 sym_data = (
-                    data[data["symbol"] == symbol]
-                    if "symbol" in data.columns
-                    else data
+                    data[data["symbol"] == symbol] if "symbol" in data.columns else data
                 )
                 preds = self._predict_symbol(symbol, sym_data)
                 predictions.extend(preds)
@@ -253,9 +253,7 @@ class TDGFModel(BaseTFTModel):
                     for greek_name, greek_vals in greeks.items():
                         if isinstance(greek_vals, (list, np.ndarray)):
                             if i < len(greek_vals):
-                                metadata[f"greek_{greek_name}"] = float(
-                                    greek_vals[i]
-                                )
+                                metadata[f"greek_{greek_name}"] = float(greek_vals[i])
                         else:
                             metadata[f"greek_{greek_name}"] = float(greek_vals)
 
@@ -266,9 +264,7 @@ class TDGFModel(BaseTFTModel):
                         lower_bound=mispricing - 0.05,
                         upper_bound=mispricing + 0.05,
                         confidence=confidence,
-                        horizon_days=int(
-                            row.get("tau", 0.1) * 365
-                        ),
+                        horizon_days=int(row.get("tau", 0.1) * 365),
                         model_name=self.name,
                         metadata=metadata,
                     )
@@ -370,13 +366,9 @@ class TDGFModel(BaseTFTModel):
                     checkpoint = torch.load(path, weights_only=False)
                     if "state_dict" in checkpoint:
                         self._solver.load_state_dict(checkpoint["state_dict"])
-                    self._pde_model = checkpoint.get(
-                        "pde_model", self._pde_model
-                    )
+                    self._pde_model = checkpoint.get("pde_model", self._pde_model)
                     self._trained_at = checkpoint.get("trained_at")
-                    self._training_metrics = checkpoint.get(
-                        "training_metrics", {}
-                    )
+                    self._training_metrics = checkpoint.get("training_metrics", {})
                     self._is_trained = True
                     logger.info("TDGF loaded pre-trained weights from %s", path)
                 except Exception as e:

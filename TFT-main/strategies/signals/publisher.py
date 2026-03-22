@@ -104,16 +104,16 @@ class SignalPublisher:
                 if hasattr(direction, "value"):
                     direction = direction.value
 
-                payload = json.dumps({
-                    "ts": ts,
-                    "symbol": symbol,
-                    "score": round(getattr(signal, "combined_score", 0.0), 6),
-                    "confidence": round(getattr(signal, "confidence", 0.0), 4),
-                    "direction": direction,
-                    "sources": {
-                        k: round(v, 4) for k, v in contributing.items()
-                    },
-                })
+                payload = json.dumps(
+                    {
+                        "ts": ts,
+                        "symbol": symbol,
+                        "score": round(getattr(signal, "combined_score", 0.0), 6),
+                        "confidence": round(getattr(signal, "confidence", 0.0), 4),
+                        "direction": direction,
+                        "sources": {k: round(v, 4) for k, v in contributing.items()},
+                    }
+                )
 
                 self._redis.publish(channel, payload)
                 published += 1
@@ -123,7 +123,8 @@ class SignalPublisher:
                 if self._error_count <= 3:
                     logger.warning(
                         "Signal publish failed for %s: %s",
-                        getattr(signal, "symbol", "?"), e,
+                        getattr(signal, "symbol", "?"),
+                        e,
                     )
                 if self._error_count == 3:
                     logger.warning("Suppressing further publish warnings this cycle")
@@ -134,7 +135,9 @@ class SignalPublisher:
         if published:
             logger.info(
                 "Published %d/%d signals to Redis (%d errors)",
-                published, len(signals), len(signals) - published,
+                published,
+                len(signals),
+                len(signals) - published,
             )
 
         # Reset per-cycle error counter
@@ -161,18 +164,22 @@ class SignalPublisher:
             composite = float(sum(risk_data.values()) / len(risk_data))
             max_risk_sym = max(risk_data, key=risk_data.get)
 
-            payload = json.dumps({
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "composite": round(composite, 4),
-                "max_symbol": max_risk_sym,
-                "max_value": round(risk_data[max_risk_sym], 4),
-                "per_symbol": {k: round(v, 4) for k, v in risk_data.items()},
-            })
+            payload = json.dumps(
+                {
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "composite": round(composite, 4),
+                    "max_symbol": max_risk_sym,
+                    "max_value": round(risk_data[max_risk_sym], 4),
+                    "per_symbol": {k: round(v, 4) for k, v in risk_data.items()},
+                }
+            )
 
             self._redis.publish(RISK_CHANNEL, payload)
             logger.info(
                 "Tail risk published: composite=%.3f, max=%s(%.3f)",
-                composite, max_risk_sym, risk_data[max_risk_sym],
+                composite,
+                max_risk_sym,
+                risk_data[max_risk_sym],
             )
             return True
 
@@ -180,18 +187,14 @@ class SignalPublisher:
             logger.warning("Tail risk publish failed: %s", e)
             return False
 
-    def _classify_channel(
-        self, symbol: str, contributing: Dict[str, float]
-    ) -> str:
+    def _classify_channel(self, symbol: str, contributing: Dict[str, float]) -> str:
         """Route signal to the correct Redis channel."""
         if symbol.upper() in FX_SYMBOLS:
             return CHANNELS["forex"]
 
         # If majority of contribution comes from options strategies
         if contributing:
-            options_weight = sum(
-                contributing.get(s, 0.0) for s in OPTIONS_STRATEGIES
-            )
+            options_weight = sum(contributing.get(s, 0.0) for s in OPTIONS_STRATEGIES)
             total_weight = sum(abs(v) for v in contributing.values())
             if total_weight > 0 and options_weight / total_weight > 0.5:
                 return CHANNELS["options"]

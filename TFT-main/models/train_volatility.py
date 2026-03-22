@@ -38,8 +38,9 @@ def download_stock_data(symbols: list, period: str = "5y") -> pd.DataFrame:
     all_symbols = list(set(symbols + ["SPY", "^VIX"]))
     logger.info("Downloading %d symbols (%s)...", len(all_symbols), period)
 
-    data = yf.download(all_symbols, period=period, group_by="ticker",
-                       auto_adjust=True, progress=False)
+    data = yf.download(
+        all_symbols, period=period, group_by="ticker", auto_adjust=True, progress=False
+    )
 
     rows = []
     for sym in all_symbols:
@@ -48,12 +49,17 @@ def download_stock_data(symbols: list, period: str = "5y") -> pd.DataFrame:
         try:
             sym_data = data[sym].dropna() if len(all_symbols) > 1 else data.dropna()
             for dt, row in sym_data.iterrows():
-                rows.append({
-                    "symbol": clean_sym, "timestamp": dt,
-                    "open": float(row["Open"]), "high": float(row["High"]),
-                    "low": float(row["Low"]), "close": float(row["Close"]),
-                    "volume": int(row.get("Volume", 0)),
-                })
+                rows.append(
+                    {
+                        "symbol": clean_sym,
+                        "timestamp": dt,
+                        "open": float(row["Open"]),
+                        "high": float(row["High"]),
+                        "low": float(row["Low"]),
+                        "close": float(row["Close"]),
+                        "volume": int(row.get("Volume", 0)),
+                    }
+                )
         except Exception as e:
             logger.warning("Failed to get %s: %s", sym, e)
 
@@ -74,9 +80,24 @@ def download_stock_data(symbols: list, period: str = "5y") -> pd.DataFrame:
 
 def main():
     parser = argparse.ArgumentParser(description="Train TFT-Volatility model")
-    parser.add_argument("--symbols", nargs="+",
-                        default=["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META",
-                                 "TSLA", "JPM", "BAC", "XOM", "SPY", "QQQ"])
+    parser.add_argument(
+        "--symbols",
+        nargs="+",
+        default=[
+            "AAPL",
+            "MSFT",
+            "GOOGL",
+            "AMZN",
+            "NVDA",
+            "META",
+            "TSLA",
+            "JPM",
+            "BAC",
+            "XOM",
+            "SPY",
+            "QQQ",
+        ],
+    )
     parser.add_argument("--period", default="5y", help="yfinance period")
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch-size", type=int, default=32)

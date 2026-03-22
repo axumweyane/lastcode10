@@ -23,8 +23,8 @@ from trading.risk.circuit_breaker import (
     _KEY_STATE,
 )
 
-
 # ---------- Fixtures ----------
+
 
 def _make_account(portfolio_value: float = 100000.0) -> AccountInfo:
     return AccountInfo(
@@ -43,9 +43,15 @@ def _make_account(portfolio_value: float = 100000.0) -> AccountInfo:
 
 def _make_position(ticker="AAPL", qty=10, side="long", mv=1500.0, pnl=50.0):
     return PositionInfo(
-        ticker=ticker, quantity=qty, side=side, market_value=mv,
-        cost_basis=mv - pnl, unrealized_pnl=pnl, unrealized_pnl_percent=pnl / mv,
-        current_price=mv / qty, avg_entry_price=(mv - pnl) / qty,
+        ticker=ticker,
+        quantity=qty,
+        side=side,
+        market_value=mv,
+        cost_basis=mv - pnl,
+        unrealized_pnl=pnl,
+        unrealized_pnl_percent=pnl / mv,
+        current_price=mv / qty,
+        avg_entry_price=(mv - pnl) / qty,
     )
 
 
@@ -112,6 +118,7 @@ def cb(config, mock_redis, mock_broker, mock_notifier, mock_audit):
 
 # ---------- CircuitBreakerState ----------
 
+
 class TestCircuitBreakerState:
     def test_to_json_and_from_json(self):
         state = CircuitBreakerState(
@@ -136,6 +143,7 @@ class TestCircuitBreakerState:
 
 
 # ---------- CircuitBreakerConfig ----------
+
 
 class TestCircuitBreakerConfig:
     def test_from_env_defaults(self):
@@ -175,6 +183,7 @@ class TestCircuitBreakerConfig:
 
 # ---------- _load_state ----------
 
+
 class TestLoadState:
     @pytest.mark.asyncio
     async def test_load_from_redis(self, cb, mock_redis):
@@ -188,10 +197,15 @@ class TestLoadState:
         mock_redis.get.return_value = None
         mock_audit.get_latest_trip_event.return_value = {"event_type": "trip"}
         mock_audit.get_recent_events.return_value = [
-            {"event_type": "trip", "created_at": "2026-03-21T10:00:00", "reason": "drawdown"}
+            {
+                "event_type": "trip",
+                "created_at": "2026-03-21T10:00:00",
+                "reason": "drawdown",
+            }
         ]
         mock_audit.get_latest_snapshot.return_value = {
-            "high_water_mark": 120000, "portfolio_value": 95000
+            "high_water_mark": 120000,
+            "portfolio_value": 95000,
         }
         await cb._load_state()
         assert cb.state.is_tripped is True
@@ -205,6 +219,7 @@ class TestLoadState:
 
 
 # ---------- _calculate_drawdown ----------
+
 
 class TestCalculateDrawdown:
     def test_hwm_drawdown(self, cb):
@@ -235,6 +250,7 @@ class TestCalculateDrawdown:
 
 
 # ---------- check ----------
+
 
 class TestCheck:
     @pytest.mark.asyncio
@@ -292,9 +308,12 @@ class TestCheck:
 
 # ---------- _trip ----------
 
+
 class TestTrip:
     @pytest.mark.asyncio
-    async def test_trip_closes_positions(self, cb, mock_broker, mock_audit, mock_notifier):
+    async def test_trip_closes_positions(
+        self, cb, mock_broker, mock_audit, mock_notifier
+    ):
         positions = [_make_position("AAPL"), _make_position("GOOGL")]
         mock_broker.get_positions.return_value = positions
         close_results = [
@@ -315,7 +334,9 @@ class TestTrip:
     async def test_trip_notification_failure_doesnt_crash(
         self, cb, mock_broker, mock_audit, mock_notifier
     ):
-        mock_notifier.notify_circuit_breaker_trip.side_effect = Exception("Discord down")
+        mock_notifier.notify_circuit_breaker_trip.side_effect = Exception(
+            "Discord down"
+        )
         await cb._trip("test", 95000, 5.0, "hwm")
         assert cb.state.is_tripped is True
 
@@ -328,6 +349,7 @@ class TestTrip:
 
 
 # ---------- is_tripped ----------
+
 
 class TestIsTripped:
     @pytest.mark.asyncio
@@ -348,16 +370,20 @@ class TestIsTripped:
 
 # ---------- set_start_of_day_value ----------
 
+
 class TestSetSODValue:
     @pytest.mark.asyncio
     async def test_sets_sod(self, cb, mock_redis, mock_audit):
         await cb.set_start_of_day_value(105000.0)
         assert cb.state.sod_value == 105000.0
         mock_redis.set.assert_any_call(_KEY_SOD, "105000.0", ex=86400)
-        mock_audit.log_portfolio_snapshot.assert_called_once_with(105000.0, cb.state.hwm, "sod")
+        mock_audit.log_portfolio_snapshot.assert_called_once_with(
+            105000.0, cb.state.hwm, "sod"
+        )
 
 
 # ---------- update_high_water_mark ----------
+
 
 class TestUpdateHWM:
     @pytest.mark.asyncio
@@ -374,6 +400,7 @@ class TestUpdateHWM:
 
 
 # ---------- reset_breaker ----------
+
 
 class TestResetBreaker:
     @pytest.mark.asyncio
@@ -398,7 +425,9 @@ class TestResetBreaker:
         mock_audit.log_reset_event.assert_called_once_with("admin", "test", 99000)
 
     @pytest.mark.asyncio
-    async def test_reset_notification_failure(self, cb, mock_broker, mock_audit, mock_notifier):
+    async def test_reset_notification_failure(
+        self, cb, mock_broker, mock_audit, mock_notifier
+    ):
         cb.state.is_tripped = True
         mock_notifier.notify_circuit_breaker_reset.side_effect = Exception("fail")
         await cb.reset_breaker("admin", "test")
@@ -407,10 +436,15 @@ class TestResetBreaker:
 
 # ---------- start / stop ----------
 
+
 class TestStartStop:
     @pytest.mark.asyncio
-    async def test_start_disabled(self, disabled_config, mock_redis, mock_broker, mock_notifier, mock_audit):
-        cb = CircuitBreaker(disabled_config, mock_broker, mock_redis, mock_notifier, mock_audit)
+    async def test_start_disabled(
+        self, disabled_config, mock_redis, mock_broker, mock_notifier, mock_audit
+    ):
+        cb = CircuitBreaker(
+            disabled_config, mock_broker, mock_redis, mock_notifier, mock_audit
+        )
         await cb.start()
         assert cb._monitor_task is None
 

@@ -21,11 +21,12 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ModelPrediction:
     """Standardized prediction output from any TFT model."""
+
     symbol: str
-    predicted_value: float          # median (50th percentile) forecast
-    lower_bound: float              # 10th percentile
-    upper_bound: float              # 90th percentile
-    confidence: float               # derived from quantile spread
+    predicted_value: float  # median (50th percentile) forecast
+    lower_bound: float  # 10th percentile
+    upper_bound: float  # 90th percentile
+    confidence: float  # derived from quantile spread
     horizon_days: int
     model_name: str
     prediction_time: datetime = field(default_factory=datetime.now)
@@ -35,8 +36,9 @@ class ModelPrediction:
 @dataclass
 class ModelInfo:
     """Metadata about a trained model."""
+
     name: str
-    asset_class: str                # "stocks", "forex", "volatility"
+    asset_class: str  # "stocks", "forex", "volatility"
     version: str
     trained_at: Optional[datetime] = None
     symbols: List[str] = field(default_factory=list)

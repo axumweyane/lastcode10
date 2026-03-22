@@ -92,9 +92,7 @@ def generate_daily_returns(config: BacktestConfig) -> np.ndarray:
     return returns
 
 
-def compute_metrics(
-    returns: np.ndarray, config: BacktestConfig
-) -> BacktestResult:
+def compute_metrics(returns: np.ndarray, config: BacktestConfig) -> BacktestResult:
     """Compute backtest performance metrics from daily returns."""
     equity = config.initial_capital * np.cumprod(1 + returns)
     equity = np.insert(equity, 0, config.initial_capital)
@@ -207,9 +205,7 @@ def main():
     )
     parser.add_argument("--start-date", type=str, default="2022-01-01")
     parser.add_argument("--end-date", type=str, default="2025-12-31")
-    parser.add_argument(
-        "--initial-capital", type=float, default=100_000.0
-    )
+    parser.add_argument("--initial-capital", type=float, default=100_000.0)
     args = parser.parse_args()
 
     config = BacktestConfig(

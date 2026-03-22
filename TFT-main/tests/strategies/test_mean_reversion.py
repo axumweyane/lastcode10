@@ -2,6 +2,7 @@
 
 import sys
 import os
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import numpy as np
@@ -26,16 +27,20 @@ def mean_reverting_data():
     prices = [100.0]
     for _ in range(n - 1):
         # Strong mean reversion toward 100
-        prices.append(prices[-1] + 0.15 * (100.0 - prices[-1]) + np.random.normal(0, 0.3))
+        prices.append(
+            prices[-1] + 0.15 * (100.0 - prices[-1]) + np.random.normal(0, 0.3)
+        )
     prices = np.maximum(np.array(prices), 1.0)
 
     dates = pd.date_range("2023-01-01", periods=n)
-    return pd.DataFrame({
-        "symbol": ["AAPL"] * n,
-        "timestamp": dates,
-        "close": prices,
-        "volume": np.random.randint(1000000, 5000000, n),
-    })
+    return pd.DataFrame(
+        {
+            "symbol": ["AAPL"] * n,
+            "timestamp": dates,
+            "close": prices,
+            "volume": np.random.randint(1000000, 5000000, n),
+        }
+    )
 
 
 def test_returns_strategy_output(strategy, mean_reverting_data):
@@ -48,7 +53,9 @@ def test_strategy_name(strategy):
 
 
 def test_handles_empty_data(strategy):
-    output = strategy.generate_signals(pd.DataFrame({"symbol": [], "timestamp": [], "close": [], "volume": []}))
+    output = strategy.generate_signals(
+        pd.DataFrame({"symbol": [], "timestamp": [], "close": [], "volume": []})
+    )
     assert isinstance(output, StrategyOutput)
     assert output.scores == []
 
@@ -77,11 +84,13 @@ def test_has_metadata(strategy, mean_reverting_data):
 
 
 def test_too_short_data_returns_empty(strategy):
-    data = pd.DataFrame({
-        "symbol": ["AAPL"] * 20,
-        "timestamp": pd.date_range("2023-01-01", periods=20),
-        "close": np.linspace(100, 110, 20),
-        "volume": [1000000] * 20,
-    })
+    data = pd.DataFrame(
+        {
+            "symbol": ["AAPL"] * 20,
+            "timestamp": pd.date_range("2023-01-01", periods=20),
+            "close": np.linspace(100, 110, 20),
+            "volume": [1000000] * 20,
+        }
+    )
     output = strategy.generate_signals(data)
     assert output.scores == []

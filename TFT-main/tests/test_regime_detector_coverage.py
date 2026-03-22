@@ -14,8 +14,8 @@ from strategies.regime.detector import (
     RegimeState,
 )
 
-
 # ---------- Data helpers ----------
+
 
 def _make_market_data(
     symbols=("AAPL", "GOOGL", "MSFT", "SPY"),
@@ -51,7 +51,9 @@ def _make_calm_choppy_data():
     """Low vol, low breadth -> CALM_CHOPPY."""
     data = _make_market_data(
         symbols=("A", "B", "C", "D", "E", "SPY"),
-        days=100, vol=0.005, trend=-0.001,
+        days=100,
+        vol=0.005,
+        trend=-0.001,
     )
     return data
 
@@ -80,13 +82,19 @@ def detector(config):
 
 # ---------- RegimeState ----------
 
+
 class TestRegimeState:
     def test_str_repr(self):
         state = RegimeState(
             regime=MarketRegime.CALM_TRENDING,
-            vix_level=18.0, market_breadth=0.7, realized_vol=0.12,
-            is_volatile=False, is_trending=True, confidence=0.6,
-            strategy_weights={"momentum": 0.4}, exposure_scalar=1.0,
+            vix_level=18.0,
+            market_breadth=0.7,
+            realized_vol=0.12,
+            is_volatile=False,
+            is_trending=True,
+            confidence=0.6,
+            strategy_weights={"momentum": 0.4},
+            exposure_scalar=1.0,
         )
         s = str(state)
         assert "calm_trending" in s
@@ -94,6 +102,7 @@ class TestRegimeState:
 
 
 # ---------- MarketRegime enum ----------
+
 
 class TestMarketRegime:
     def test_all_values(self):
@@ -104,6 +113,7 @@ class TestMarketRegime:
 
 
 # ---------- detect ----------
+
 
 class TestDetect:
     def test_explicit_vix(self, detector):
@@ -176,6 +186,7 @@ class TestDetect:
 
 # ---------- _compute_breadth ----------
 
+
 class TestComputeBreadth:
     def test_all_above_ma(self, detector):
         # Long uptrend: all stocks above 50-day MA
@@ -196,6 +207,7 @@ class TestComputeBreadth:
 
 # ---------- _compute_realized_vol ----------
 
+
 class TestComputeRealizedVol:
     def test_spy_proxy_used(self, detector):
         data = _make_market_data(symbols=("AAPL", "SPY"))
@@ -215,6 +227,7 @@ class TestComputeRealizedVol:
 
 # ---------- _compute_confidence ----------
 
+
 class TestComputeConfidence:
     def test_far_from_boundary(self, detector):
         conf = detector._compute_confidence(vix=10.0, breadth=0.9, realized_vol=0.1)
@@ -227,6 +240,7 @@ class TestComputeConfidence:
 
 
 # ---------- _get_weights ----------
+
 
 class TestGetWeights:
     def test_calm_trending(self, detector):
@@ -247,6 +261,7 @@ class TestGetWeights:
 
 
 # ---------- _compute_exposure_scalar ----------
+
 
 class TestComputeExposureScalar:
     def test_low_vol_full_exposure(self, detector):
@@ -273,6 +288,7 @@ class TestComputeExposureScalar:
 
 # ---------- get_regime_history ----------
 
+
 class TestGetRegimeHistory:
     def test_empty(self, detector):
         assert detector.get_regime_history() == []
@@ -285,6 +301,7 @@ class TestGetRegimeHistory:
 
 
 # ---------- Regime change detection ----------
+
 
 class TestRegimeChange:
     def test_regime_change_logged(self, detector):

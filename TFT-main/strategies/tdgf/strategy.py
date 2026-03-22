@@ -62,7 +62,9 @@ class TDGFStrategy(BaseStrategy):
     def initialize(self, historical_data: pd.DataFrame) -> None:
         if self._manager is not None and self._manager.is_model_loaded("tdgf"):
             self._initialized = True
-            logger.info("TDGFStrategy initialized (pde_model=%s)", self.config.pde_model)
+            logger.info(
+                "TDGFStrategy initialized (pde_model=%s)", self.config.pde_model
+            )
         else:
             logger.info("TDGF model not loaded — strategy will return empty signals")
 
@@ -93,8 +95,9 @@ class TDGFStrategy(BaseStrategy):
 
                 # Confidence from two sources:
                 # 1. PDE residual quality (lower = better)
-                pde_residual = pred.metadata.get("pde_residual",
-                                                  pred.metadata.get("pde_residual", 0.5))
+                pde_residual = pred.metadata.get(
+                    "pde_residual", pred.metadata.get("pde_residual", 0.5)
+                )
                 pde_confidence = max(0.1, 1.0 - pde_residual)
 
                 # 2. Prediction bounds width (tighter = better)
@@ -106,25 +109,28 @@ class TDGFStrategy(BaseStrategy):
 
                 # Collect Greeks for downstream consumers
                 greeks = {
-                    k: v for k, v in pred.metadata.items()
-                    if k.startswith("greek_")
+                    k: v for k, v in pred.metadata.items() if k.startswith("greek_")
                 }
 
-                scores.append(AlphaScore(
-                    symbol=pred.symbol,
-                    score=raw_score,
-                    raw_score=raw_score,
-                    confidence=confidence,
-                    direction=SignalDirection.NEUTRAL,  # set after z-scoring
-                    metadata={
-                        "tdgf_price": tdgf_price,
-                        "market_price": market_price,
-                        "mispricing_pct": raw_score,
-                        "pde_model": pred.metadata.get("pde_model", self.config.pde_model),
-                        "asset_class": "options",
-                        **greeks,
-                    },
-                ))
+                scores.append(
+                    AlphaScore(
+                        symbol=pred.symbol,
+                        score=raw_score,
+                        raw_score=raw_score,
+                        confidence=confidence,
+                        direction=SignalDirection.NEUTRAL,  # set after z-scoring
+                        metadata={
+                            "tdgf_price": tdgf_price,
+                            "market_price": market_price,
+                            "mispricing_pct": raw_score,
+                            "pde_model": pred.metadata.get(
+                                "pde_model", self.config.pde_model
+                            ),
+                            "asset_class": "options",
+                            **greeks,
+                        },
+                    )
+                )
 
             # Z-score cross-sectionally, assign direction post-normalization
             if scores:
@@ -155,7 +161,10 @@ class TDGFStrategy(BaseStrategy):
 
             logger.info(
                 "TDGF: %d signals (%d long, %d short, pde=%s)",
-                len(scores), long_count, short_count, self.config.pde_model,
+                len(scores),
+                long_count,
+                short_count,
+                self.config.pde_model,
             )
 
             return StrategyOutput(
@@ -168,9 +177,11 @@ class TDGFStrategy(BaseStrategy):
                     "pde_model": self.config.pde_model,
                     "long_count": long_count,
                     "short_count": short_count,
-                    "avg_abs_mispricing": float(np.mean(np.abs(
-                        [s.raw_score for s in scores]
-                    ))) if scores else 0.0,
+                    "avg_abs_mispricing": (
+                        float(np.mean(np.abs([s.raw_score for s in scores])))
+                        if scores
+                        else 0.0
+                    ),
                 },
             )
 

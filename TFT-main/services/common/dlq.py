@@ -70,7 +70,7 @@ def compute_backoff(retry_count: int) -> float:
     Formula: min(base * 2^retry_count + jitter, max_delay)
     Jitter: random 0-25% of the computed delay.
     """
-    delay = BASE_DELAY_S * (MULTIPLIER ** retry_count)
+    delay = BASE_DELAY_S * (MULTIPLIER**retry_count)
     jitter = random.uniform(0, JITTER_FRACTION * delay)
     return min(delay + jitter, MAX_DELAY_S)
 
@@ -143,7 +143,10 @@ class DeadLetterQueue:
             conn.commit()
             logger.info(
                 "DLQ persisted: id=%d service=%s topic=%s key=%s",
-                row_id, self.service_name, topic, key,
+                row_id,
+                self.service_name,
+                topic,
+                key,
             )
             return row_id
         finally:
@@ -177,7 +180,11 @@ class DeadLetterQueue:
                     LIMIT 50
                     FOR UPDATE SKIP LOCKED
                     """,
-                    (self.service_name, DLQStatus.PENDING.value, DLQStatus.RETRYING.value),
+                    (
+                        self.service_name,
+                        DLQStatus.PENDING.value,
+                        DLQStatus.RETRYING.value,
+                    ),
                 )
                 rows = cur.fetchall()
 
@@ -198,7 +205,9 @@ class DeadLetterQueue:
                         )
                     conn.commit()
                     success_count += 1
-                    logger.info("DLQ retry succeeded: id=%d (attempt %d)", row_id, retry_count)
+                    logger.info(
+                        "DLQ retry succeeded: id=%d (attempt %d)", row_id, retry_count
+                    )
 
                 except Exception as e:
                     if retry_count >= row["max_retries"]:
@@ -210,12 +219,19 @@ class DeadLetterQueue:
                                 SET status = %s, retry_count = %s, error = %s, updated_at = NOW()
                                 WHERE id = %s
                                 """,
-                                (DLQStatus.EXHAUSTED.value, retry_count, str(e), row_id),
+                                (
+                                    DLQStatus.EXHAUSTED.value,
+                                    retry_count,
+                                    str(e),
+                                    row_id,
+                                ),
                             )
                         conn.commit()
                         logger.error(
                             "DLQ exhausted: id=%d after %d retries — %s",
-                            row_id, retry_count, e,
+                            row_id,
+                            retry_count,
+                            e,
                         )
                         if self._on_exhausted:
                             try:
@@ -245,7 +261,10 @@ class DeadLetterQueue:
                         conn.commit()
                         logger.warning(
                             "DLQ retry failed: id=%d attempt=%d next_retry=%.1fs — %s",
-                            row_id, retry_count, delay, e,
+                            row_id,
+                            retry_count,
+                            delay,
+                            e,
                         )
 
             return success_count
@@ -316,9 +335,15 @@ class DeadLetterQueue:
                 "service_name": self.service_name,
                 "by_status": {
                     DLQStatus.PENDING.value: by_status.get(DLQStatus.PENDING.value, 0),
-                    DLQStatus.RETRYING.value: by_status.get(DLQStatus.RETRYING.value, 0),
-                    DLQStatus.EXHAUSTED.value: by_status.get(DLQStatus.EXHAUSTED.value, 0),
-                    DLQStatus.RESOLVED.value: by_status.get(DLQStatus.RESOLVED.value, 0),
+                    DLQStatus.RETRYING.value: by_status.get(
+                        DLQStatus.RETRYING.value, 0
+                    ),
+                    DLQStatus.EXHAUSTED.value: by_status.get(
+                        DLQStatus.EXHAUSTED.value, 0
+                    ),
+                    DLQStatus.RESOLVED.value: by_status.get(
+                        DLQStatus.RESOLVED.value, 0
+                    ),
                 },
                 "recent_failures": recent,
                 "retry_success_rate_pct": round(success_rate, 1),
@@ -381,9 +406,15 @@ class DeadLetterQueue:
             return {
                 "by_status": {
                     DLQStatus.PENDING.value: by_status.get(DLQStatus.PENDING.value, 0),
-                    DLQStatus.RETRYING.value: by_status.get(DLQStatus.RETRYING.value, 0),
-                    DLQStatus.EXHAUSTED.value: by_status.get(DLQStatus.EXHAUSTED.value, 0),
-                    DLQStatus.RESOLVED.value: by_status.get(DLQStatus.RESOLVED.value, 0),
+                    DLQStatus.RETRYING.value: by_status.get(
+                        DLQStatus.RETRYING.value, 0
+                    ),
+                    DLQStatus.EXHAUSTED.value: by_status.get(
+                        DLQStatus.EXHAUSTED.value, 0
+                    ),
+                    DLQStatus.RESOLVED.value: by_status.get(
+                        DLQStatus.RESOLVED.value, 0
+                    ),
                 },
                 "recent_failures": recent,
                 "retry_success_rate_pct": round(success_rate, 1),
@@ -409,6 +440,8 @@ def start_retry_worker(
                 logger.error("DLQ retry worker error: %s", e)
             time.sleep(interval_s)
 
-    t = threading.Thread(target=_loop, name=f"dlq-retry-{dlq.service_name}", daemon=True)
+    t = threading.Thread(
+        target=_loop, name=f"dlq-retry-{dlq.service_name}", daemon=True
+    )
     t.start()
     return t

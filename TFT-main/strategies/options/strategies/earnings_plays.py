@@ -20,8 +20,11 @@ import numpy as np
 import pandas as pd
 
 from strategies.base import (
-    AlphaScore, BaseStrategy, SignalDirection,
-    StrategyOutput, StrategyPerformance,
+    AlphaScore,
+    BaseStrategy,
+    SignalDirection,
+    StrategyOutput,
+    StrategyPerformance,
 )
 from strategies.options.config import EarningsPlayConfig
 from strategies.options.infrastructure.vol_monitor import VolMonitor
@@ -130,26 +133,28 @@ class EarningsPlays(BaseStrategy):
             max_risk = spread_width * 100  # per contract
             max_reward = max_risk * 2  # rough 2:1 on directional
 
-            scores.append(AlphaScore(
-                symbol=symbol,
-                score=raw_score,
-                raw_score=raw_score,
-                confidence=min(signal_confidence + 0.2, 0.95),
-                direction=direction,
-                metadata={
-                    "strategy_type": "earnings_play",
-                    "play_type": play_type,
-                    "earnings_date": str(earn_date),
-                    "days_to_earnings": days_to_earnings,
-                    "tft_signal": round(tft_signal, 4),
-                    "sentiment_signal": round(sent_signal, 4),
-                    "combined_signal": round(combined_signal, 4),
-                    "iv_rank": round(metrics.iv_rank, 1),
-                    "spot": round(spot, 2),
-                    "spread_width": spread_width,
-                    "max_risk_per_contract": max_risk,
-                },
-            ))
+            scores.append(
+                AlphaScore(
+                    symbol=symbol,
+                    score=raw_score,
+                    raw_score=raw_score,
+                    confidence=min(signal_confidence + 0.2, 0.95),
+                    direction=direction,
+                    metadata={
+                        "strategy_type": "earnings_play",
+                        "play_type": play_type,
+                        "earnings_date": str(earn_date),
+                        "days_to_earnings": days_to_earnings,
+                        "tft_signal": round(tft_signal, 4),
+                        "sentiment_signal": round(sent_signal, 4),
+                        "combined_signal": round(combined_signal, 4),
+                        "iv_rank": round(metrics.iv_rank, 1),
+                        "spot": round(spot, 2),
+                        "spread_width": spread_width,
+                        "max_risk_per_contract": max_risk,
+                    },
+                )
+            )
 
         logger.info("%s: %d earnings plays", self.name, len(scores))
 

@@ -2,6 +2,7 @@
 
 import sys
 import os
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import numpy as np
@@ -32,7 +33,9 @@ def fx_data():
         for i in range(n - 1):
             prices.append(prices[-1] * (1 + trends[pair] + np.random.normal(0, 0.003)))
         for i, dt in enumerate(dates):
-            rows.append({"symbol": pair, "timestamp": dt, "close": prices[i], "volume": 0})
+            rows.append(
+                {"symbol": pair, "timestamp": dt, "close": prices[i], "volume": 0}
+            )
     return pd.DataFrame(rows)
 
 
@@ -46,7 +49,9 @@ def test_strategy_name(strategy):
 
 
 def test_handles_empty_data(strategy):
-    output = strategy.generate_signals(pd.DataFrame({"symbol": [], "timestamp": [], "close": [], "volume": []}))
+    output = strategy.generate_signals(
+        pd.DataFrame({"symbol": [], "timestamp": [], "close": [], "volume": []})
+    )
     assert isinstance(output, StrategyOutput)
     assert output.scores == []
 
@@ -84,8 +89,13 @@ def test_has_trend_metadata(strategy, fx_data):
 
 
 def test_max_pairs_limit(fx_data):
-    config = FXMomentumConfig(enabled=True, min_lookback_days=21, signal_threshold=0.0,
-                              max_pairs_long=1, max_pairs_short=1)
+    config = FXMomentumConfig(
+        enabled=True,
+        min_lookback_days=21,
+        signal_threshold=0.0,
+        max_pairs_long=1,
+        max_pairs_short=1,
+    )
     strategy = FXMomentumStrategy(config=config)
     output = strategy.generate_signals(fx_data)
     longs = [s for s in output.scores if s.direction == SignalDirection.LONG]

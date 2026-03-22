@@ -6,6 +6,7 @@ Usage: python run_backtest.py
 """
 
 import sys
+
 sys.path.insert(0, ".")
 
 import logging
@@ -20,9 +21,17 @@ from strategies.ensemble.combiner import EnsembleCombiner, TFTAdapter
 from strategies.regime.detector import RegimeDetector
 from strategies.ensemble.portfolio_optimizer import PortfolioOptimizer
 from strategies.risk.portfolio_risk import PortfolioRiskManager
-from strategies.backtest.engine import BacktestEngine, BacktestConfig, compare_strategies
+from strategies.backtest.engine import (
+    BacktestEngine,
+    BacktestConfig,
+    compare_strategies,
+)
 from strategies.config import (
-    MomentumConfig, StatArbConfig, FXConfig, EnsembleConfig, RegimeConfig,
+    MomentumConfig,
+    StatArbConfig,
+    FXConfig,
+    EnsembleConfig,
+    RegimeConfig,
 )
 
 logging.basicConfig(level=logging.WARNING)
@@ -36,7 +45,9 @@ def load_stock_data() -> pd.DataFrame:
     # Remove SPY from trading universe (keep for benchmark)
     stocks = df[df["symbol"] != "SPY"].copy()
     print(f"Stock data: {len(stocks)} rows, {stocks['symbol'].nunique()} symbols")
-    print(f"Date range: {stocks['timestamp'].min().date()} to {stocks['timestamp'].max().date()}")
+    print(
+        f"Date range: {stocks['timestamp'].min().date()} to {stocks['timestamp'].max().date()}"
+    )
     return stocks
 
 
@@ -55,15 +66,35 @@ def load_fx_data() -> pd.DataFrame:
 def sector_mapping() -> dict:
     """Approximate sector mapping for pair scanning."""
     return {
-        "AAPL": "Technology", "MSFT": "Technology", "GOOGL": "Technology",
-        "AMZN": "Consumer", "NVDA": "Technology", "META": "Technology",
-        "TSLA": "Consumer", "AMD": "Technology", "INTC": "Technology",
-        "QCOM": "Technology", "CRM": "Technology", "NFLX": "Technology",
-        "JPM": "Financials", "BAC": "Financials", "V": "Financials", "MA": "Financials",
-        "JNJ": "Healthcare", "UNH": "Healthcare", "ABBV": "Healthcare", "MRK": "Healthcare",
-        "PG": "Consumer", "KO": "Consumer", "PEP": "Consumer", "COST": "Consumer",
-        "WMT": "Consumer", "HD": "Consumer", "DIS": "Consumer",
-        "XOM": "Energy", "CVX": "Energy",
+        "AAPL": "Technology",
+        "MSFT": "Technology",
+        "GOOGL": "Technology",
+        "AMZN": "Consumer",
+        "NVDA": "Technology",
+        "META": "Technology",
+        "TSLA": "Consumer",
+        "AMD": "Technology",
+        "INTC": "Technology",
+        "QCOM": "Technology",
+        "CRM": "Technology",
+        "NFLX": "Technology",
+        "JPM": "Financials",
+        "BAC": "Financials",
+        "V": "Financials",
+        "MA": "Financials",
+        "JNJ": "Healthcare",
+        "UNH": "Healthcare",
+        "ABBV": "Healthcare",
+        "MRK": "Healthcare",
+        "PG": "Consumer",
+        "KO": "Consumer",
+        "PEP": "Consumer",
+        "COST": "Consumer",
+        "WMT": "Consumer",
+        "HD": "Consumer",
+        "DIS": "Consumer",
+        "XOM": "Energy",
+        "CVX": "Energy",
     }
 
 
@@ -114,8 +145,8 @@ def run_statarb_backtest(stocks: pd.DataFrame, benchmark: pd.DataFrame) -> objec
         min_half_life_days=2,
         max_pairs=20,
         rescan_interval_days=14,
-        entry_zscore=1.5,   # enter earlier for more trades
-        exit_zscore=0.3,    # exit closer to mean
+        entry_zscore=1.5,  # enter earlier for more trades
+        exit_zscore=0.3,  # exit closer to mean
         stop_loss_zscore=3.5,
         lookback_window=63,
         same_sector_only=True,
@@ -156,7 +187,7 @@ def run_fx_backtest(fx_data: pd.DataFrame) -> object:
 
     bt_config = BacktestConfig(
         initial_capital=100_000,
-        transaction_cost_bps=3.0,   # lower for FX
+        transaction_cost_bps=3.0,  # lower for FX
         slippage_bps=1.0,
         rebalance_frequency="weekly",
         max_position_weight=0.20,
@@ -218,6 +249,7 @@ def main():
 
         perf = result.daily_returns
         from strategies.base import StrategyPerformance
+
         sp = StrategyPerformance(strategy_name=result.strategy_name)
         for r in result.daily_returns:
             sp.update(r)
@@ -230,17 +262,23 @@ def main():
     print(f"  Parametric VaR 99%:  {report.var.parametric_var:.3%}")
     print(f"  Historical VaR 99%:  {report.var.historical_var:.3%}")
     print(f"  Portfolio Vol (ann): {report.var.portfolio_vol:.2%}")
-    print(f"  Active strategies:   {report.active_strategy_count}/{report.total_strategy_count}")
+    print(
+        f"  Active strategies:   {report.active_strategy_count}/{report.total_strategy_count}"
+    )
     print(f"  Killed strategies:   {report.killed_strategy_count}")
 
     if report.correlation_alerts:
         print(f"\n  Correlation Alerts:")
         for alert in report.correlation_alerts:
-            print(f"    {alert.strategy_a} / {alert.strategy_b}: {alert.correlation:.3f}")
+            print(
+                f"    {alert.strategy_a} / {alert.strategy_b}: {alert.correlation:.3f}"
+            )
 
     print(f"\n  Capital Allocation (recommended):")
     for alloc in report.capital_allocations:
-        print(f"    {alloc.strategy_name}: {alloc.target_fraction:.1%} — {alloc.rationale}")
+        print(
+            f"    {alloc.strategy_name}: {alloc.target_fraction:.1%} — {alloc.rationale}"
+        )
 
     print(f"\n{SEPARATOR}")
     print("  BACKTEST COMPLETE")

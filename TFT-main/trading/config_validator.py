@@ -18,8 +18,15 @@ from trading.broker.alpaca import AlpacaBroker
 logger = logging.getLogger(__name__)
 
 PLACEHOLDER_STRINGS = {
-    "your_", "YOUR_", "sk-your", "your-", "placeholder",
-    "changeme", "CHANGEME", "xxx", "XXX",
+    "your_",
+    "YOUR_",
+    "sk-your",
+    "your-",
+    "placeholder",
+    "changeme",
+    "CHANGEME",
+    "xxx",
+    "XXX",
 }
 
 
@@ -35,7 +42,9 @@ class ConfigValidator:
     def __init__(self):
         self.results: List[CheckResult] = []
 
-    def _add(self, name: str, passed: bool, message: str, severity: str = "critical") -> None:
+    def _add(
+        self, name: str, passed: bool, message: str, severity: str = "critical"
+    ) -> None:
         self.results.append(CheckResult(name, passed, message, severity))
 
     def _is_placeholder(self, value: str) -> bool:
@@ -52,20 +61,31 @@ class ConfigValidator:
                 False,
                 f"TRADING_MODE=live but ALPACA_BASE_URL contains 'paper': {base_url}",
             )
-        elif mode == "paper" and base_url and "paper" not in base_url.lower() and "localhost" not in base_url.lower():
+        elif (
+            mode == "paper"
+            and base_url
+            and "paper" not in base_url.lower()
+            and "localhost" not in base_url.lower()
+        ):
             self._add(
                 "Trading Mode",
                 False,
                 f"TRADING_MODE=paper but ALPACA_BASE_URL looks like live: {base_url}",
             )
         else:
-            self._add("Trading Mode", True, f"TRADING_MODE={mode}, URL consistent", "info")
+            self._add(
+                "Trading Mode", True, f"TRADING_MODE={mode}, URL consistent", "info"
+            )
 
     def check_api_key_presence(self) -> None:
         key = os.getenv("ALPACA_API_KEY", "")
         secret = os.getenv("ALPACA_SECRET_KEY", "")
         if not key or not secret:
-            self._add("API Key Presence", False, "ALPACA_API_KEY or ALPACA_SECRET_KEY is empty")
+            self._add(
+                "API Key Presence",
+                False,
+                "ALPACA_API_KEY or ALPACA_SECRET_KEY is empty",
+            )
         elif self._is_placeholder(key) or self._is_placeholder(secret):
             self._add("API Key Presence", False, "API keys contain placeholder text")
         else:
@@ -83,7 +103,9 @@ class ConfigValidator:
                 "info",
             )
         except Exception as e:
-            self._add("API Key Validity", False, f"Cannot authenticate with Alpaca: {e}")
+            self._add(
+                "API Key Validity", False, f"Cannot authenticate with Alpaca: {e}"
+            )
         finally:
             await broker.disconnect()
 
@@ -155,7 +177,8 @@ class ConfigValidator:
             )
         else:
             self._add(
-                "Notifications", True,
+                "Notifications",
+                True,
                 f"Channels configured: {', '.join(channels)}",
                 "info",
             )
@@ -172,7 +195,12 @@ class ConfigValidator:
                 "TRADING_MODE=live but ALPACA_API_KEY matches ALPACA_PAPER_API_KEY",
             )
         else:
-            self._add("Paper/Live Key Mismatch", True, "Keys are distinct or mode is paper", "info")
+            self._add(
+                "Paper/Live Key Mismatch",
+                True,
+                "Keys are distinct or mode is paper",
+                "info",
+            )
 
     def check_drawdown_thresholds(self) -> None:
         raw = os.getenv("CB_DRAWDOWN_METHODS", "")
@@ -203,7 +231,12 @@ class ConfigValidator:
                 "warning",
             )
         else:
-            self._add("Drawdown Thresholds", True, f"Thresholds look reasonable: {raw}", "info")
+            self._add(
+                "Drawdown Thresholds",
+                True,
+                f"Thresholds look reasonable: {raw}",
+                "info",
+            )
 
     # ---- Run all ----
 
@@ -275,6 +308,7 @@ class ConfigValidator:
 
 async def main() -> int:
     from dotenv import load_dotenv
+
     load_dotenv()
 
     validator = ConfigValidator()

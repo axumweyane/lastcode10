@@ -69,11 +69,12 @@ PAIR_CURRENCIES: Dict[str, tuple] = {
 @dataclass
 class FXSignal:
     """Signal for a single FX pair."""
+
     pair: str
-    carry_score: float       # interest rate differential (annualized %)
-    trend_score: float       # price momentum z-score
-    combined_score: float    # weighted combination
-    direction: str           # "long" or "short" the pair
+    carry_score: float  # interest rate differential (annualized %)
+    trend_score: float  # price momentum z-score
+    combined_score: float  # weighted combination
+    direction: str  # "long" or "short" the pair
 
 
 class FXCarryTrend(BaseStrategy):
@@ -119,7 +120,8 @@ class FXCarryTrend(BaseStrategy):
         self._initialized = True
         logger.info(
             "%s initialized with %d pairs",
-            self.name, historical_data["symbol"].nunique(),
+            self.name,
+            historical_data["symbol"].nunique(),
         )
 
     def generate_signals(self, data: pd.DataFrame) -> StrategyOutput:
@@ -142,7 +144,9 @@ class FXCarryTrend(BaseStrategy):
             pair_data = data[data["symbol"] == pair].sort_values("timestamp")
 
             if len(pair_data) < self.config.trend_lookback_days:
-                logger.debug("Skipping %s: insufficient data (%d days)", pair, len(pair_data))
+                logger.debug(
+                    "Skipping %s: insufficient data (%d days)", pair, len(pair_data)
+                )
                 continue
 
             # Compute carry score
@@ -153,19 +157,20 @@ class FXCarryTrend(BaseStrategy):
 
             # Combine
             combined = (
-                self.config.carry_weight * carry
-                + self.config.trend_weight * trend
+                self.config.carry_weight * carry + self.config.trend_weight * trend
             )
 
             direction = "long" if combined > 0 else "short"
 
-            fx_signals.append(FXSignal(
-                pair=pair,
-                carry_score=carry,
-                trend_score=trend,
-                combined_score=combined,
-                direction=direction,
-            ))
+            fx_signals.append(
+                FXSignal(
+                    pair=pair,
+                    carry_score=carry,
+                    trend_score=trend,
+                    combined_score=combined,
+                    direction=direction,
+                )
+            )
 
         if not fx_signals:
             return self._empty_output()
@@ -190,35 +195,41 @@ class FXCarryTrend(BaseStrategy):
             else:
                 direction = SignalDirection.NEUTRAL
 
-            scores.append(AlphaScore(
-                symbol=sig.pair,
-                score=z,
-                raw_score=sig.combined_score,
-                confidence=confidence,
-                direction=direction,
-                metadata={
-                    "carry_score": round(sig.carry_score, 4),
-                    "trend_score": round(sig.trend_score, 4),
-                    "combined_raw": round(sig.combined_score, 4),
-                },
-            ))
+            scores.append(
+                AlphaScore(
+                    symbol=sig.pair,
+                    score=z,
+                    raw_score=sig.combined_score,
+                    confidence=confidence,
+                    direction=direction,
+                    metadata={
+                        "carry_score": round(sig.carry_score, 4),
+                        "trend_score": round(sig.trend_score, 4),
+                        "combined_raw": round(sig.combined_score, 4),
+                    },
+                )
+            )
 
         # Keep top N long and short
         longs = sorted(
             [s for s in scores if s.direction == SignalDirection.LONG],
-            key=lambda x: x.score, reverse=True,
-        )[:self.config.max_pairs_long]
+            key=lambda x: x.score,
+            reverse=True,
+        )[: self.config.max_pairs_long]
 
         shorts = sorted(
             [s for s in scores if s.direction == SignalDirection.SHORT],
             key=lambda x: x.score,
-        )[:self.config.max_pairs_short]
+        )[: self.config.max_pairs_short]
 
         final_scores = longs + shorts
 
         logger.info(
             "%s: %d signals (%d long, %d short)",
-            self.name, len(final_scores), len(longs), len(shorts),
+            self.name,
+            len(final_scores),
+            len(longs),
+            len(shorts),
         )
 
         return StrategyOutput(
@@ -327,7 +338,8 @@ class FXCarryTrend(BaseStrategy):
             logger.warning(
                 "No configured FX pairs found in data. "
                 "Available: %s, Configured: %s",
-                available, configured,
+                available,
+                configured,
             )
 
     def _empty_output(self) -> StrategyOutput:

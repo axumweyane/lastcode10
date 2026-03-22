@@ -25,20 +25,22 @@ from strategies.validation.walk_forward import (
     ANNUALIZATION_FACTORS,
 )
 
-
 # ── Helpers ────────────────────────────────────────────────────────────────
+
 
 def _make_data(n_rows: int = 500, seed: int = 42) -> pd.DataFrame:
     """Create synthetic time-series data."""
     rng = np.random.RandomState(seed)
     dates = pd.date_range("2020-01-01", periods=n_rows, freq="B")
-    return pd.DataFrame({
-        "timestamp": dates,
-        "close": 100 + np.cumsum(rng.randn(n_rows) * 0.5),
-        "volume": rng.randint(1000, 10000, n_rows).astype(float),
-        "feature_a": rng.randn(n_rows),
-        "feature_b": rng.randn(n_rows),
-    })
+    return pd.DataFrame(
+        {
+            "timestamp": dates,
+            "close": 100 + np.cumsum(rng.randn(n_rows) * 0.5),
+            "volume": rng.randint(1000, 10000, n_rows).astype(float),
+            "feature_a": rng.randn(n_rows),
+            "feature_b": rng.randn(n_rows),
+        }
+    )
 
 
 def _dummy_strategy(train: pd.DataFrame, test: pd.DataFrame, fold: int) -> np.ndarray:
@@ -57,6 +59,7 @@ def _good_then_bad_strategy(train, test, fold):
 
 
 # ── 1. Embargo Gap ─────────────────────────────────────────────────────────
+
 
 class TestEmbargoGap:
     def test_embargo_skips_bars(self):
@@ -102,12 +105,15 @@ class TestEmbargoGap:
 
 # ── 2. Most Recent Fold Deployment ─────────────────────────────────────────
 
+
 class TestMostRecentFoldDeployment:
     def test_deploys_most_recent_fold(self):
         """Deployed fold must be the last fold, NOT the best Sharpe."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = WalkForwardConfig(
-                is_window=100, oos_window=50, embargo_bars=5,
+                is_window=100,
+                oos_window=50,
+                embargo_bars=5,
                 norm_stats_dir=tmpdir,
             )
             validator = WalkForwardValidator(config)
@@ -124,7 +130,9 @@ class TestMostRecentFoldDeployment:
         """Even if the most recent fold has terrible Sharpe, still deploy it."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = WalkForwardConfig(
-                is_window=100, oos_window=50, embargo_bars=5,
+                is_window=100,
+                oos_window=50,
+                embargo_bars=5,
                 norm_stats_dir=tmpdir,
             )
             validator = WalkForwardValidator(config)
@@ -144,12 +152,15 @@ class TestMostRecentFoldDeployment:
 
 # ── 3. Normalization Stats ─────────────────────────────────────────────────
 
+
 class TestNormalizationStats:
     def test_stats_saved_per_fold(self):
         """Each fold must produce a normalization stats JSON sidecar."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = WalkForwardConfig(
-                is_window=100, oos_window=50, embargo_bars=5,
+                is_window=100,
+                oos_window=50,
+                embargo_bars=5,
                 norm_stats_dir=tmpdir,
             )
             validator = WalkForwardValidator(config)
@@ -158,15 +169,17 @@ class TestNormalizationStats:
 
             for fold in report.folds:
                 assert fold.norm_stats_path is not None
-                assert os.path.exists(fold.norm_stats_path), (
-                    f"Norm stats file missing: {fold.norm_stats_path}"
-                )
+                assert os.path.exists(
+                    fold.norm_stats_path
+                ), f"Norm stats file missing: {fold.norm_stats_path}"
 
     def test_stats_content_correct(self):
         """Normalization stats must contain correct mean/std for IS data."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = WalkForwardConfig(
-                is_window=100, oos_window=50, embargo_bars=5,
+                is_window=100,
+                oos_window=50,
+                embargo_bars=5,
                 norm_stats_dir=tmpdir,
             )
             validator = WalkForwardValidator(config)
@@ -210,22 +223,38 @@ class TestNormalizationStats:
     def test_missing_stats_raises_error(self):
         """Loading deployed norm stats when file is missing must raise."""
         fold = FoldResult(
-            fold_index=0, is_start=0, is_end=100, oos_start=105, oos_end=155,
-            embargo_bars=5, sharpe=1.0, max_drawdown=0.05, win_rate=0.6,
-            profit_factor=2.0, n_trades=50, total_return=0.10,
-            annualization_factor=np.sqrt(252), frequency="daily",
+            fold_index=0,
+            is_start=0,
+            is_end=100,
+            oos_start=105,
+            oos_end=155,
+            embargo_bars=5,
+            sharpe=1.0,
+            max_drawdown=0.05,
+            win_rate=0.6,
+            profit_factor=2.0,
+            n_trades=50,
+            total_return=0.10,
+            annualization_factor=np.sqrt(252),
+            frequency="daily",
             norm_stats_path="/nonexistent/path/stats.json",
         )
         report = WalkForwardReport(
-            folds=[fold], deployed_fold_index=0, best_sharpe_fold_index=0,
-            sharpe_mean=1.0, sharpe_std=0.0, sharpe_stability=1.0,
-            total_folds=1, config={},
+            folds=[fold],
+            deployed_fold_index=0,
+            best_sharpe_fold_index=0,
+            sharpe_mean=1.0,
+            sharpe_std=0.0,
+            sharpe_stability=1.0,
+            total_folds=1,
+            config={},
         )
         with pytest.raises(FileNotFoundError, match="Normalization stats not found"):
             WalkForwardValidator.load_deployed_norm_stats(report)
 
 
 # ── 4. Sharpe Annualization ────────────────────────────────────────────────
+
 
 class TestSharpeAnnualization:
     def test_daily_annualization(self):
@@ -240,7 +269,9 @@ class TestSharpeAnnualization:
         """Minute data must use sqrt(252 * 390)."""
         returns = np.array([0.001, 0.002, -0.001, 0.0005] * 50)
         sharpe_minute = compute_sharpe(returns, "minute")
-        expected = float(np.mean(returns) / np.std(returns, ddof=1) * np.sqrt(252 * 390))
+        expected = float(
+            np.mean(returns) / np.std(returns, ddof=1) * np.sqrt(252 * 390)
+        )
         assert abs(sharpe_minute - expected) < 1e-10
 
     def test_daily_vs_minute_different(self):
@@ -254,8 +285,11 @@ class TestSharpeAnnualization:
         """Fold results must store the frequency used."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = WalkForwardConfig(
-                is_window=100, oos_window=50, embargo_bars=5,
-                frequency="minute", norm_stats_dir=tmpdir,
+                is_window=100,
+                oos_window=50,
+                embargo_bars=5,
+                frequency="minute",
+                norm_stats_dir=tmpdir,
             )
             validator = WalkForwardValidator(config)
             data = _make_data(300)
@@ -267,12 +301,15 @@ class TestSharpeAnnualization:
 
 # ── 5. Sharpe Warning ─────────────────────────────────────────────────────
 
+
 class TestSharpeWarning:
     def test_warning_when_latest_fold_much_worse(self):
         """Warning must be emitted when deployed fold Sharpe is far below best."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = WalkForwardConfig(
-                is_window=100, oos_window=50, embargo_bars=5,
+                is_window=100,
+                oos_window=50,
+                embargo_bars=5,
                 norm_stats_dir=tmpdir,
                 sharpe_warning_threshold=0.5,
             )
@@ -293,7 +330,9 @@ class TestSharpeWarning:
         """No warning when all folds have similar Sharpe."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = WalkForwardConfig(
-                is_window=100, oos_window=50, embargo_bars=5,
+                is_window=100,
+                oos_window=50,
+                embargo_bars=5,
                 norm_stats_dir=tmpdir,
                 sharpe_warning_threshold=0.5,
             )
@@ -306,18 +345,23 @@ class TestSharpeWarning:
 
             report = validator.run(data, uniform_strategy)
             # All folds have identical returns -> no degradation warning
-            degradation_warnings = [w for w in report.warnings if "degrading" in w.lower()]
+            degradation_warnings = [
+                w for w in report.warnings if "degrading" in w.lower()
+            ]
             assert len(degradation_warnings) == 0
 
 
 # ── 6. Fold Metrics ────────────────────────────────────────────────────────
+
 
 class TestFoldMetrics:
     def test_metrics_computed(self):
         """All fold metrics must be populated."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = WalkForwardConfig(
-                is_window=100, oos_window=50, embargo_bars=5,
+                is_window=100,
+                oos_window=50,
+                embargo_bars=5,
                 norm_stats_dir=tmpdir,
             )
             validator = WalkForwardValidator(config)
@@ -336,7 +380,9 @@ class TestFoldMetrics:
         """Report must serialize to valid JSON."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = WalkForwardConfig(
-                is_window=100, oos_window=50, embargo_bars=5,
+                is_window=100,
+                oos_window=50,
+                embargo_bars=5,
                 norm_stats_dir=tmpdir,
             )
             validator = WalkForwardValidator(config)
@@ -353,7 +399,9 @@ class TestFoldMetrics:
         """Report must generate valid markdown with table."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = WalkForwardConfig(
-                is_window=100, oos_window=50, embargo_bars=5,
+                is_window=100,
+                oos_window=50,
+                embargo_bars=5,
                 norm_stats_dir=tmpdir,
             )
             validator = WalkForwardValidator(config)
@@ -369,7 +417,9 @@ class TestFoldMetrics:
         """Stability should be high when all folds have similar Sharpe."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = WalkForwardConfig(
-                is_window=100, oos_window=50, embargo_bars=5,
+                is_window=100,
+                oos_window=50,
+                embargo_bars=5,
                 norm_stats_dir=tmpdir,
             )
             validator = WalkForwardValidator(config)
@@ -387,6 +437,7 @@ class TestFoldMetrics:
 
 
 # ── 7. Edge Cases ──────────────────────────────────────────────────────────
+
 
 class TestEdgeCases:
     def test_insufficient_data_raises(self):

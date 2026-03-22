@@ -49,7 +49,9 @@ def _wait_for_health(condition_fn, timeout=RECOVERY_TIMEOUT, poll=2):
 def _redis_is_running():
     result = subprocess.run(
         ["docker", "exec", REDIS_CONTAINER, "redis-cli", "ping"],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     return result.stdout.strip() == "PONG"
 
@@ -57,7 +59,8 @@ def _redis_is_running():
 def _stop_redis():
     subprocess.run(
         ["docker", "stop", REDIS_CONTAINER],
-        capture_output=True, timeout=30,
+        capture_output=True,
+        timeout=30,
     )
     time.sleep(1)
 
@@ -65,7 +68,8 @@ def _stop_redis():
 def _start_redis():
     subprocess.run(
         ["docker", "start", REDIS_CONTAINER],
-        capture_output=True, timeout=30,
+        capture_output=True,
+        timeout=30,
     )
     for _ in range(15):
         try:
@@ -81,7 +85,9 @@ def _find_db_container():
     """Find the Docker container serving PostgreSQL on DB_PORT."""
     result = subprocess.run(
         ["docker", "ps", "--format", "{{.Names}}\t{{.Ports}}"],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     for line in result.stdout.splitlines():
         if f":{DB_PORT}->" in line:
@@ -90,6 +96,7 @@ def _find_db_container():
 
 
 # ---------- Precondition: paper trader is running ----------
+
 
 class TestPreconditions:
     def test_paper_trader_is_running(self):
@@ -102,6 +109,7 @@ class TestPreconditions:
 
 
 # ---------- 1. Redis chaos: shutdown → verify degraded → restart → verify recovery ----------
+
 
 class TestRedisChaos:
     def test_redis_shutdown_and_recovery(self):
@@ -125,17 +133,17 @@ class TestRedisChaos:
             # /health should still respond — paper trader must not crash
             time.sleep(2)
             degraded = _health()
-            assert degraded is not None, (
-                "Paper trader crashed or became unreachable after Redis shutdown"
-            )
+            assert (
+                degraded is not None
+            ), "Paper trader crashed or became unreachable after Redis shutdown"
 
             # Check that health reports Redis is down
             infra = degraded.get("infrastructure", {})
             redis_ok = infra.get("redis", None)
             if redis_ok is not None:
-                assert redis_ok is not True, (
-                    "Health should report Redis down, but says it's up"
-                )
+                assert (
+                    redis_ok is not True
+                ), "Health should report Redis down, but says it's up"
 
             # Restart Redis
             assert _start_redis(), "Failed to restart Redis container"
@@ -170,9 +178,9 @@ class TestRedisChaos:
                     resp = requests.get(
                         f"{PAPER_TRADER}/health", timeout=HEALTH_TIMEOUT
                     )
-                    assert resp.status_code == 200, (
-                        f"/health returned {resp.status_code} without Redis"
-                    )
+                    assert (
+                        resp.status_code == 200
+                    ), f"/health returned {resp.status_code} without Redis"
                 except requests.ConnectionError:
                     pytest.fail("Paper trader crashed — connection refused")
                 time.sleep(0.5)
@@ -185,40 +193,43 @@ class TestRedisChaos:
 
 # ---------- 2. Database chaos: stop container → /run-now fails gracefully → restart ----------
 
+
 class TestDatabaseChaos:
     @pytest.fixture(autouse=True)
     def _find_container(self):
         self.db_container = _find_db_container()
         if not self.db_container:
-            pytest.skip(
-                f"No Docker container found serving port {DB_PORT}"
-            )
+            pytest.skip(f"No Docker container found serving port {DB_PORT}")
 
     def _db_is_running(self):
         result = subprocess.run(
             ["docker", "inspect", "-f", "{{.State.Running}}", self.db_container],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         return result.stdout.strip() == "true"
 
     def _stop_db(self):
         subprocess.run(
             ["docker", "stop", self.db_container],
-            capture_output=True, timeout=30,
+            capture_output=True,
+            timeout=30,
         )
         time.sleep(1)
 
     def _start_db(self):
         subprocess.run(
             ["docker", "start", self.db_container],
-            capture_output=True, timeout=30,
+            capture_output=True,
+            timeout=30,
         )
         # Wait for PostgreSQL to accept connections
         for _ in range(20):
             result = subprocess.run(
-                ["docker", "exec", self.db_container,
-                 "pg_isready", "-U", "apex_user"],
-                capture_output=True, timeout=10,
+                ["docker", "exec", self.db_container, "pg_isready", "-U", "apex_user"],
+                capture_output=True,
+                timeout=10,
             )
             if result.returncode == 0:
                 return True
@@ -239,12 +250,15 @@ class TestDatabaseChaos:
             # Trigger pipeline — should fail gracefully
             try:
                 resp = requests.post(
-                    f"{PAPER_TRADER}/run-now", timeout=60,
+                    f"{PAPER_TRADER}/run-now",
+                    timeout=60,
                 )
                 # Any HTTP response means the server didn't crash
-                assert resp.status_code in (200, 500, 503), (
-                    f"Unexpected status {resp.status_code} during DB outage"
-                )
+                assert resp.status_code in (
+                    200,
+                    500,
+                    503,
+                ), f"Unexpected status {resp.status_code} during DB outage"
             except requests.ConnectionError:
                 pytest.fail(
                     "Paper trader crashed during DB outage — connection refused"
@@ -255,9 +269,9 @@ class TestDatabaseChaos:
 
             # Verify /health still responds (server is alive)
             health = _health()
-            assert health is not None, (
-                "Paper trader unreachable after /run-now during DB outage"
-            )
+            assert (
+                health is not None
+            ), "Paper trader unreachable after /run-now during DB outage"
 
         finally:
             if not self._db_is_running():
@@ -273,12 +287,10 @@ class TestDatabaseChaos:
             time.sleep(2)
 
             try:
-                resp = requests.get(
-                    f"{PAPER_TRADER}/health", timeout=HEALTH_TIMEOUT
-                )
-                assert resp.status_code == 200, (
-                    f"/health returned {resp.status_code} during DB outage"
-                )
+                resp = requests.get(f"{PAPER_TRADER}/health", timeout=HEALTH_TIMEOUT)
+                assert (
+                    resp.status_code == 200
+                ), f"/health returned {resp.status_code} during DB outage"
             except requests.ConnectionError:
                 pytest.fail("Paper trader crashed during DB outage")
 

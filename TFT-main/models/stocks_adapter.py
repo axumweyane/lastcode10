@@ -57,7 +57,9 @@ class TFTStocksAdapter(BaseTFTModel):
         Training is handled by the existing train.py / train_postgres.py.
         This adapter only loads pre-trained models.
         """
-        logger.info("TFT-Stocks training should use existing train.py or train_postgres.py")
+        logger.info(
+            "TFT-Stocks training should use existing train.py or train_postgres.py"
+        )
         return {"status": "use_existing_training_scripts"}
 
     def predict(self, data: pd.DataFrame) -> List[ModelPrediction]:
@@ -90,7 +92,11 @@ class TFTStocksAdapter(BaseTFTModel):
             symbols = processed["symbol"].unique()
 
             # Map predictions back to symbols
-            preds_array = raw_preds.numpy() if hasattr(raw_preds, "numpy") else np.array(raw_preds)
+            preds_array = (
+                raw_preds.numpy()
+                if hasattr(raw_preds, "numpy")
+                else np.array(raw_preds)
+            )
 
             for i, symbol in enumerate(symbols):
                 if i >= len(preds_array):
@@ -108,16 +114,18 @@ class TFTStocksAdapter(BaseTFTModel):
                 spread = abs(upper - lower)
                 confidence = max(0.1, 1.0 - spread * 5)
 
-                predictions.append(ModelPrediction(
-                    symbol=symbol,
-                    predicted_value=float(median),
-                    lower_bound=float(lower),
-                    upper_bound=float(upper),
-                    confidence=min(confidence, 0.95),
-                    horizon_days=5,
-                    model_name=self.name,
-                    metadata={"asset_class": "stocks"},
-                ))
+                predictions.append(
+                    ModelPrediction(
+                        symbol=symbol,
+                        predicted_value=float(median),
+                        lower_bound=float(lower),
+                        upper_bound=float(upper),
+                        confidence=min(confidence, 0.95),
+                        horizon_days=5,
+                        model_name=self.name,
+                        metadata={"asset_class": "stocks"},
+                    )
+                )
 
             logger.info("TFT-Stocks: %d predictions", len(predictions))
             return predictions
@@ -139,7 +147,10 @@ class TFTStocksAdapter(BaseTFTModel):
         load_path = path or self._model_path
 
         if not Path(load_path).exists():
-            logger.info("TFT-Stocks model not found at %s (strategies will use fallback)", load_path)
+            logger.info(
+                "TFT-Stocks model not found at %s (strategies will use fallback)",
+                load_path,
+            )
             return False
 
         try:
@@ -150,11 +161,14 @@ class TFTStocksAdapter(BaseTFTModel):
             training_dataset = checkpoint.get("training_dataset")
 
             if state_dict is None or training_dataset is None:
-                raise ValueError("checkpoint missing model_state_dict or training_dataset")
+                raise ValueError(
+                    "checkpoint missing model_state_dict or training_dataset"
+                )
 
             if "loss_type" in config:
                 # Legacy format — use EnhancedTFTModel
                 from tft_model import EnhancedTFTModel
+
                 self._model = EnhancedTFTModel()
                 self._model.config = config
                 self._model.training_dataset = training_dataset
@@ -164,6 +178,7 @@ class TFTStocksAdapter(BaseTFTModel):
                 # Postgres format — reconstruct TFT directly
                 from pytorch_forecasting import TemporalFusionTransformer
                 from pytorch_forecasting.metrics import QuantileLoss
+
                 quantiles = config.get("quantiles", [0.1, 0.5, 0.9])
                 tft = TemporalFusionTransformer.from_dataset(
                     training_dataset,

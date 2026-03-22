@@ -22,8 +22,8 @@ from agents.signal_analyst import (
     WEIGHT_SHIFT_THRESHOLD,
 )
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _run(coro):
     return asyncio.get_event_loop().run_until_complete(coro)
@@ -32,8 +32,13 @@ def _run(coro):
 def _make_signals(directions: list) -> list:
     """Create signal dicts with given directions."""
     return [
-        {"symbol": f"SYM{i}", "combined_score": 0.5 if d == "long" else -0.5,
-         "confidence": 0.7, "direction": d, "contributing_strategies": {"strat_a": 0.3}}
+        {
+            "symbol": f"SYM{i}",
+            "combined_score": 0.5 if d == "long" else -0.5,
+            "confidence": 0.7,
+            "direction": d,
+            "contributing_strategies": {"strat_a": 0.3},
+        }
         for i, d in enumerate(directions)
     ]
 
@@ -58,11 +63,13 @@ class FakeOllamaClient:
 
     def __init__(self, response: str = None, fail: bool = False):
         self.model = "test-model"
-        self._response = response or json.dumps({
-            "summary": "Markets are bullish. Momentum strategies dominate. Watch for reversal signals.",
-            "patterns": "Strong consensus among strategies.",
-            "confidence": "high",
-        })
+        self._response = response or json.dumps(
+            {
+                "summary": "Markets are bullish. Momentum strategies dominate. Watch for reversal signals.",
+                "patterns": "Strong consensus among strategies.",
+                "confidence": "high",
+            }
+        )
         self._fail = fail
         self.call_count = 0
         self.last_prompt = None
@@ -77,53 +84,96 @@ class FakeOllamaClient:
 
 # ── 1. Prompt construction ───────────────────────────────────────────────────
 
+
 class TestPromptConstruction:
     """Test that prompts include all required fields."""
 
     def test_prompt_includes_regime(self):
         signals = _make_signals(["long", "long", "short"])
-        prompt = build_prompt(signals, _make_weights(), "calm_trending", _make_risk_summary(), PatternFlags())
+        prompt = build_prompt(
+            signals,
+            _make_weights(),
+            "calm_trending",
+            _make_risk_summary(),
+            PatternFlags(),
+        )
         assert "calm_trending" in prompt
 
     def test_prompt_includes_top_signals(self):
         signals = _make_signals(["long", "short", "long", "long", "short", "long"])
-        prompt = build_prompt(signals, _make_weights(), "volatile", _make_risk_summary(), PatternFlags())
+        prompt = build_prompt(
+            signals, _make_weights(), "volatile", _make_risk_summary(), PatternFlags()
+        )
         assert "SYM0" in prompt
         # Should include up to 5 signals
         assert "SYM4" in prompt
 
     def test_prompt_includes_strategy_weights(self):
         weights = {"momentum": 0.4, "pairs": 0.3, "tft": 0.3}
-        prompt = build_prompt(_make_signals(["long"]), weights, "calm", _make_risk_summary(), PatternFlags())
+        prompt = build_prompt(
+            _make_signals(["long"]),
+            weights,
+            "calm",
+            _make_risk_summary(),
+            PatternFlags(),
+        )
         assert "momentum" in prompt
         assert "40.0%" in prompt
 
     def test_prompt_includes_risk_metrics(self):
-        risk = {"portfolio_drawdown": 0.12, "var_99": 0.035, "cvar_95": 0.045,
-                "sharpe_21d": 0.8, "killed_strategies": ["bad_strat"],
-                "correlation_alerts": [{"a": "s1", "b": "s2", "corr": 0.9}]}
-        prompt = build_prompt(_make_signals(["long"]), _make_weights(), "calm", risk, PatternFlags())
+        risk = {
+            "portfolio_drawdown": 0.12,
+            "var_99": 0.035,
+            "cvar_95": 0.045,
+            "sharpe_21d": 0.8,
+            "killed_strategies": ["bad_strat"],
+            "correlation_alerts": [{"a": "s1", "b": "s2", "corr": 0.9}],
+        }
+        prompt = build_prompt(
+            _make_signals(["long"]), _make_weights(), "calm", risk, PatternFlags()
+        )
         assert "12.00%" in prompt
         assert "bad_strat" in prompt
 
     def test_prompt_includes_pattern_flags(self):
-        flags = PatternFlags(strong_consensus=True, consensus_direction="long", consensus_pct=0.9)
-        prompt = build_prompt(_make_signals(["long"]), _make_weights(), "calm", _make_risk_summary(), flags)
+        flags = PatternFlags(
+            strong_consensus=True, consensus_direction="long", consensus_pct=0.9
+        )
+        prompt = build_prompt(
+            _make_signals(["long"]),
+            _make_weights(),
+            "calm",
+            _make_risk_summary(),
+            flags,
+        )
         assert "Strong consensus" in prompt
         assert "long" in prompt
 
     def test_prompt_asks_for_json_format(self):
-        prompt = build_prompt(_make_signals(["long"]), _make_weights(), "calm", _make_risk_summary(), PatternFlags())
+        prompt = build_prompt(
+            _make_signals(["long"]),
+            _make_weights(),
+            "calm",
+            _make_risk_summary(),
+            PatternFlags(),
+        )
         assert '"summary"' in prompt
         assert '"patterns"' in prompt
         assert '"confidence"' in prompt
 
     def test_prompt_requests_three_sentences(self):
-        prompt = build_prompt(_make_signals(["long"]), _make_weights(), "calm", _make_risk_summary(), PatternFlags())
+        prompt = build_prompt(
+            _make_signals(["long"]),
+            _make_weights(),
+            "calm",
+            _make_risk_summary(),
+            PatternFlags(),
+        )
         assert "3 sentences" in prompt or "three sentences" in prompt.lower()
 
 
 # ── 2. Graceful fallback ────────────────────────────────────────────────────
+
 
 class TestGracefulFallback:
     """Test behavior when Ollama is unreachable."""
@@ -131,12 +181,14 @@ class TestGracefulFallback:
     def test_returns_analysis_when_ollama_fails(self):
         client = FakeOllamaClient(fail=True)
         analyst = SignalAnalyst(client=client)
-        analysis = _run(analyst.analyze(
-            signals=_make_signals(["long", "short"]),
-            weights=_make_weights(),
-            regime="volatile",
-            risk_summary=_make_risk_summary(),
-        ))
+        analysis = _run(
+            analyst.analyze(
+                signals=_make_signals(["long", "short"]),
+                weights=_make_weights(),
+                regime="volatile",
+                risk_summary=_make_risk_summary(),
+            )
+        )
         assert analysis is not None
         assert "LLM unavailable" in analysis.summary
         assert analysis.confidence == "low"
@@ -146,23 +198,30 @@ class TestGracefulFallback:
         analyst = SignalAnalyst(client=client)
         # Set prior regime to trigger regime change flag
         analyst._prior_regime = "calm_trending"
-        analysis = _run(analyst.analyze(
-            signals=_make_signals(["long"] * 10),
-            weights=_make_weights(),
-            regime="volatile_choppy",
-            risk_summary=_make_risk_summary(),
-        ))
-        assert "Regime changed" in analysis.summary or "Regime changed" in analysis.patterns
+        analysis = _run(
+            analyst.analyze(
+                signals=_make_signals(["long"] * 10),
+                weights=_make_weights(),
+                regime="volatile_choppy",
+                risk_summary=_make_risk_summary(),
+            )
+        )
+        assert (
+            "Regime changed" in analysis.summary
+            or "Regime changed" in analysis.patterns
+        )
 
     def test_fallback_still_populates_top_signals(self):
         client = FakeOllamaClient(fail=True)
         analyst = SignalAnalyst(client=client)
-        analysis = _run(analyst.analyze(
-            signals=_make_signals(["long", "short", "long"]),
-            weights=_make_weights(),
-            regime="calm",
-            risk_summary=_make_risk_summary(),
-        ))
+        analysis = _run(
+            analyst.analyze(
+                signals=_make_signals(["long", "short", "long"]),
+                weights=_make_weights(),
+                regime="calm",
+                risk_summary=_make_risk_summary(),
+            )
+        )
         assert len(analysis.top_signals) > 0
 
     def test_ollama_client_returns_none_on_connection_error(self):
@@ -173,6 +232,7 @@ class TestGracefulFallback:
 
 
 # ── 3. Pattern detection ────────────────────────────────────────────────────
+
 
 class TestPatternDetection:
     """Test pattern detection flags."""
@@ -219,7 +279,9 @@ class TestPatternDetection:
         assert len(flags.weight_shifts) == 0
 
     def test_regime_change_detected(self):
-        flags = detect_patterns([], _make_weights(), None, "volatile_choppy", "calm_trending")
+        flags = detect_patterns(
+            [], _make_weights(), None, "volatile_choppy", "calm_trending"
+        )
         assert flags.regime_changed is True
         assert flags.prior_regime == "calm_trending"
         assert flags.current_regime == "volatile_choppy"
@@ -244,15 +306,24 @@ class TestPatternDetection:
         assert flags.strong_consensus is True
 
     def test_flags_to_dict_serializable(self):
-        flags = PatternFlags(strong_consensus=True, consensus_direction="long",
-                             consensus_pct=0.9, weight_shifts=[{"strategy": "x", "change": 0.15}])
+        flags = PatternFlags(
+            strong_consensus=True,
+            consensus_direction="long",
+            consensus_pct=0.9,
+            weight_shifts=[{"strategy": "x", "change": 0.15}],
+        )
         d = flags.to_dict()
         json.dumps(d)  # must be JSON-serializable
 
     def test_flags_describe(self):
-        flags = PatternFlags(strong_consensus=True, consensus_direction="long",
-                             consensus_pct=0.85, regime_changed=True,
-                             prior_regime="calm", current_regime="volatile")
+        flags = PatternFlags(
+            strong_consensus=True,
+            consensus_direction="long",
+            consensus_pct=0.85,
+            regime_changed=True,
+            prior_regime="calm",
+            current_regime="volatile",
+        )
         desc = flags.describe()
         assert "Strong consensus" in desc
         assert "Regime changed" in desc
@@ -260,17 +331,23 @@ class TestPatternDetection:
 
 # ── 4. Response parsing ─────────────────────────────────────────────────────
 
+
 class TestResponseParsing:
     """Test LLM response parsing into structured fields."""
 
     def test_valid_json_parsed(self):
-        raw = json.dumps({
-            "summary": "The market is calm. TFT signals are strong. Watch VIX.",
-            "patterns": "Momentum and TFT agree on AAPL.",
-            "confidence": "high",
-        })
+        raw = json.dumps(
+            {
+                "summary": "The market is calm. TFT signals are strong. Watch VIX.",
+                "patterns": "Momentum and TFT agree on AAPL.",
+                "confidence": "high",
+            }
+        )
         result = parse_llm_response(raw)
-        assert result["summary"] == "The market is calm. TFT signals are strong. Watch VIX."
+        assert (
+            result["summary"]
+            == "The market is calm. TFT signals are strong. Watch VIX."
+        )
         assert result["confidence"] == "high"
 
     def test_json_in_markdown_code_block(self):
@@ -305,6 +382,7 @@ class TestResponseParsing:
 
 # ── 5. Rate limiting ────────────────────────────────────────────────────────
 
+
 class TestRateLimiting:
     """Test that analysis runs at most once per pipeline call."""
 
@@ -312,54 +390,85 @@ class TestRateLimiting:
         client = FakeOllamaClient()
         analyst = SignalAnalyst(client=client, allow_manual=False)
         # First call: scheduled
-        result1 = _run(analyst.analyze(
-            _make_signals(["long"]), _make_weights(), "calm", _make_risk_summary(),
-            is_manual=False,
-        ))
+        result1 = _run(
+            analyst.analyze(
+                _make_signals(["long"]),
+                _make_weights(),
+                "calm",
+                _make_risk_summary(),
+                is_manual=False,
+            )
+        )
         assert result1 is not None
         assert client.call_count == 1
 
         # Second call: manual — should return cached, not call LLM again
-        result2 = _run(analyst.analyze(
-            _make_signals(["short"]), _make_weights(), "calm", _make_risk_summary(),
-            is_manual=True,
-        ))
+        result2 = _run(
+            analyst.analyze(
+                _make_signals(["short"]),
+                _make_weights(),
+                "calm",
+                _make_risk_summary(),
+                is_manual=True,
+            )
+        )
         assert client.call_count == 1  # no new LLM call
         assert result2 is result1  # returns cached analysis
 
     def test_manual_trigger_allowed_when_enabled(self):
         client = FakeOllamaClient()
         analyst = SignalAnalyst(client=client, allow_manual=True)
-        _run(analyst.analyze(
-            _make_signals(["long"]), _make_weights(), "calm", _make_risk_summary(),
-            is_manual=True,
-        ))
+        _run(
+            analyst.analyze(
+                _make_signals(["long"]),
+                _make_weights(),
+                "calm",
+                _make_risk_summary(),
+                is_manual=True,
+            )
+        )
         assert client.call_count == 1  # LLM was called
 
     def test_run_count_incremented(self):
         client = FakeOllamaClient()
         analyst = SignalAnalyst(client=client)
         assert analyst.run_count == 0
-        _run(analyst.analyze(
-            _make_signals(["long"]), _make_weights(), "calm", _make_risk_summary(),
-        ))
+        _run(
+            analyst.analyze(
+                _make_signals(["long"]),
+                _make_weights(),
+                "calm",
+                _make_risk_summary(),
+            )
+        )
         assert analyst.run_count == 1
-        _run(analyst.analyze(
-            _make_signals(["long"]), _make_weights(), "calm", _make_risk_summary(),
-        ))
+        _run(
+            analyst.analyze(
+                _make_signals(["long"]),
+                _make_weights(),
+                "calm",
+                _make_risk_summary(),
+            )
+        )
         assert analyst.run_count == 2
 
     def test_last_analysis_cached(self):
         client = FakeOllamaClient()
         analyst = SignalAnalyst(client=client)
         assert analyst.last_analysis is None
-        result = _run(analyst.analyze(
-            _make_signals(["long"]), _make_weights(), "calm", _make_risk_summary(),
-        ))
+        result = _run(
+            analyst.analyze(
+                _make_signals(["long"]),
+                _make_weights(),
+                "calm",
+                _make_risk_summary(),
+            )
+        )
         assert analyst.last_analysis is result
 
 
 # ── 6. SignalAnalysis dataclass ──────────────────────────────────────────────
+
 
 class TestSignalAnalysis:
     """Test the SignalAnalysis dataclass."""
@@ -394,12 +503,14 @@ class TestSignalAnalysis:
         """End-to-end: analyst produces valid, serializable analysis."""
         client = FakeOllamaClient()
         analyst = SignalAnalyst(client=client)
-        analysis = _run(analyst.analyze(
-            signals=_make_signals(["long"] * 8 + ["short"] * 2),
-            weights=_make_weights(),
-            regime="calm_trending",
-            risk_summary=_make_risk_summary(),
-        ))
+        analysis = _run(
+            analyst.analyze(
+                signals=_make_signals(["long"] * 8 + ["short"] * 2),
+                weights=_make_weights(),
+                regime="calm_trending",
+                risk_summary=_make_risk_summary(),
+            )
+        )
         assert analysis.confidence == "high"
         assert len(analysis.summary) > 0
         assert analysis.regime == "calm_trending"
@@ -413,13 +524,15 @@ class TestSignalAnalysis:
 
 # ── 7. Paper-trader structural tests ─────────────────────────────────────────
 
+
 class TestPaperTraderAnalystWiring:
     """Verify signal analyst is wired into paper-trader."""
 
     def _read_source(self):
         main_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "paper-trader", "main.py",
+            "paper-trader",
+            "main.py",
         )
         with open(main_path) as f:
             return f.read()
@@ -442,7 +555,10 @@ class TestPaperTraderAnalystWiring:
 
     def test_analyze_called_in_pipeline(self):
         source = self._read_source()
-        assert "signal_analyst.analyze(" in source or "await signal_analyst.analyze(" in source
+        assert (
+            "signal_analyst.analyze(" in source
+            or "await signal_analyst.analyze(" in source
+        )
 
     def test_log_signal_analysis_called(self):
         source = self._read_source()

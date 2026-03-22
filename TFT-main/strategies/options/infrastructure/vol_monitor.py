@@ -21,18 +21,19 @@ logger = logging.getLogger(__name__)
 @dataclass
 class VolMetrics:
     """Volatility metrics for a single underlying."""
+
     symbol: str
-    current_iv: float              # current ATM implied vol
-    iv_rank: float                 # (current - 52w low) / (52w high - 52w low) * 100
-    iv_percentile: float           # % of days IV was below current level
+    current_iv: float  # current ATM implied vol
+    iv_rank: float  # (current - 52w low) / (52w high - 52w low) * 100
+    iv_percentile: float  # % of days IV was below current level
     iv_52w_high: float
     iv_52w_low: float
-    realized_vol_21d: float        # 21-day realized vol
-    realized_vol_63d: float        # 63-day realized vol
-    iv_rv_spread: float            # current_iv - realized_vol_21d
-    iv_rv_ratio: float             # current_iv / realized_vol_21d
-    garch_forecast: float          # GARCH(1,1) 1-step ahead vol forecast
-    vol_regime: str                # "low", "normal", "elevated", "extreme"
+    realized_vol_21d: float  # 21-day realized vol
+    realized_vol_63d: float  # 63-day realized vol
+    iv_rv_spread: float  # current_iv - realized_vol_21d
+    iv_rv_ratio: float  # current_iv / realized_vol_21d
+    garch_forecast: float  # GARCH(1,1) 1-step ahead vol forecast
+    vol_regime: str  # "low", "normal", "elevated", "extreme"
 
     @property
     def is_iv_elevated(self) -> bool:
@@ -82,8 +83,12 @@ class VolMonitor:
 
         # Realized vol
         returns = np.diff(np.log(close))
-        rv_21d = float(np.std(returns[-21:]) * np.sqrt(252)) if len(returns) >= 21 else 0.20
-        rv_63d = float(np.std(returns[-63:]) * np.sqrt(252)) if len(returns) >= 63 else 0.20
+        rv_21d = (
+            float(np.std(returns[-21:]) * np.sqrt(252)) if len(returns) >= 21 else 0.20
+        )
+        rv_63d = (
+            float(np.std(returns[-63:]) * np.sqrt(252)) if len(returns) >= 63 else 0.20
+        )
 
         # IV history tracking
         self._record_iv(symbol, current_iv)
@@ -91,10 +96,12 @@ class VolMonitor:
 
         # IV Rank
         if len(iv_hist) >= 20:
-            iv_high = max(iv_hist[-self.lookback_days:])
-            iv_low = min(iv_hist[-self.lookback_days:])
+            iv_high = max(iv_hist[-self.lookback_days :])
+            iv_low = min(iv_hist[-self.lookback_days :])
             iv_range = iv_high - iv_low
-            iv_rank = ((current_iv - iv_low) / iv_range * 100) if iv_range > 0.001 else 50.0
+            iv_rank = (
+                ((current_iv - iv_low) / iv_range * 100) if iv_range > 0.001 else 50.0
+            )
         else:
             iv_high = current_iv * 1.3
             iv_low = current_iv * 0.7
@@ -102,8 +109,8 @@ class VolMonitor:
 
         # IV Percentile
         if len(iv_hist) >= 20:
-            below = sum(1 for v in iv_hist[-self.lookback_days:] if v < current_iv)
-            iv_percentile = below / len(iv_hist[-self.lookback_days:]) * 100
+            below = sum(1 for v in iv_hist[-self.lookback_days :] if v < current_iv)
+            iv_percentile = below / len(iv_hist[-self.lookback_days :]) * 100
         else:
             iv_percentile = 50.0
 
@@ -147,14 +154,21 @@ class VolMonitor:
         Returns 1-step-ahead annualized volatility forecast.
         """
         if len(returns) < 50:
-            return float(np.std(returns[-21:]) * np.sqrt(252)) if len(returns) >= 21 else 0.20
+            return (
+                float(np.std(returns[-21:]) * np.sqrt(252))
+                if len(returns) >= 21
+                else 0.20
+            )
 
         try:
             from arch import arch_model
+
             # Scale to percentage returns for numerical stability
             scaled = returns[-252:] * 100
 
-            am = arch_model(scaled, vol="Garch", p=1, q=1, mean="Constant", rescale=False)
+            am = arch_model(
+                scaled, vol="Garch", p=1, q=1, mean="Constant", rescale=False
+            )
             res = am.fit(disp="off", show_warning=False)
 
             # 1-step forecast
@@ -177,8 +191,8 @@ class VolMonitor:
             return 0.20
         weights = np.exp(-np.arange(min(len(returns), span)) / (span / 2))
         weights = weights[::-1]
-        recent = returns[-len(weights):]
-        weighted_var = np.average(recent ** 2, weights=weights)
+        recent = returns[-len(weights) :]
+        weighted_var = np.average(recent**2, weights=weights)
         return float(np.sqrt(weighted_var * 252))
 
     @staticmethod

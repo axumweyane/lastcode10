@@ -21,60 +21,115 @@ logger = logging.getLogger(__name__)
 # GICS-like sector classification for common symbols
 SECTOR_MAP = {
     # Technology
-    "AAPL": "Technology", "MSFT": "Technology", "GOOGL": "Technology",
-    "META": "Technology", "NVDA": "Technology", "AMD": "Technology",
-    "CRM": "Technology", "ADBE": "Technology", "INTC": "Technology",
+    "AAPL": "Technology",
+    "MSFT": "Technology",
+    "GOOGL": "Technology",
+    "META": "Technology",
+    "NVDA": "Technology",
+    "AMD": "Technology",
+    "CRM": "Technology",
+    "ADBE": "Technology",
+    "INTC": "Technology",
     # Financials
-    "JPM": "Financials", "BAC": "Financials", "GS": "Financials",
-    "MS": "Financials", "WFC": "Financials", "C": "Financials",
+    "JPM": "Financials",
+    "BAC": "Financials",
+    "GS": "Financials",
+    "MS": "Financials",
+    "WFC": "Financials",
+    "C": "Financials",
     # Energy
-    "XOM": "Energy", "CVX": "Energy", "COP": "Energy",
+    "XOM": "Energy",
+    "CVX": "Energy",
+    "COP": "Energy",
     # Healthcare
-    "JNJ": "Healthcare", "UNH": "Healthcare", "PFE": "Healthcare",
-    "ABBV": "Healthcare", "MRK": "Healthcare", "LLY": "Healthcare",
+    "JNJ": "Healthcare",
+    "UNH": "Healthcare",
+    "PFE": "Healthcare",
+    "ABBV": "Healthcare",
+    "MRK": "Healthcare",
+    "LLY": "Healthcare",
     # Consumer Discretionary
-    "AMZN": "Consumer Discretionary", "TSLA": "Consumer Discretionary",
-    "HD": "Consumer Discretionary", "NKE": "Consumer Discretionary",
+    "AMZN": "Consumer Discretionary",
+    "TSLA": "Consumer Discretionary",
+    "HD": "Consumer Discretionary",
+    "NKE": "Consumer Discretionary",
     # Consumer Staples
-    "PG": "Consumer Staples", "KO": "Consumer Staples", "PEP": "Consumer Staples",
-    "WMT": "Consumer Staples", "COST": "Consumer Staples",
+    "PG": "Consumer Staples",
+    "KO": "Consumer Staples",
+    "PEP": "Consumer Staples",
+    "WMT": "Consumer Staples",
+    "COST": "Consumer Staples",
     # Industrials
-    "CAT": "Industrials", "BA": "Industrials", "HON": "Industrials",
-    "UPS": "Industrials", "GE": "Industrials",
+    "CAT": "Industrials",
+    "BA": "Industrials",
+    "HON": "Industrials",
+    "UPS": "Industrials",
+    "GE": "Industrials",
     # Utilities
-    "NEE": "Utilities", "DUK": "Utilities", "SO": "Utilities",
+    "NEE": "Utilities",
+    "DUK": "Utilities",
+    "SO": "Utilities",
     # Materials
-    "LIN": "Materials", "APD": "Materials", "SHW": "Materials",
+    "LIN": "Materials",
+    "APD": "Materials",
+    "SHW": "Materials",
     # Real Estate
-    "AMT": "Real Estate", "PLD": "Real Estate", "CCI": "Real Estate",
+    "AMT": "Real Estate",
+    "PLD": "Real Estate",
+    "CCI": "Real Estate",
 }
 
 # Regime -> sector tilts (positive = overweight, negative = underweight)
 REGIME_SECTOR_TILTS = {
     "steepening_rising": {
-        "Financials": 0.6, "Energy": 0.4, "Materials": 0.3, "Industrials": 0.2,
-        "Technology": -0.1, "Utilities": -0.4, "Real Estate": -0.3,
-        "Consumer Staples": -0.2, "Healthcare": 0.0, "Consumer Discretionary": 0.1,
+        "Financials": 0.6,
+        "Energy": 0.4,
+        "Materials": 0.3,
+        "Industrials": 0.2,
+        "Technology": -0.1,
+        "Utilities": -0.4,
+        "Real Estate": -0.3,
+        "Consumer Staples": -0.2,
+        "Healthcare": 0.0,
+        "Consumer Discretionary": 0.1,
     },
     "steepening_falling": {
-        "Technology": 0.4, "Consumer Discretionary": 0.3, "Real Estate": 0.3,
-        "Financials": -0.1, "Energy": -0.2, "Materials": 0.0, "Industrials": 0.1,
-        "Utilities": 0.2, "Consumer Staples": 0.1, "Healthcare": 0.1,
+        "Technology": 0.4,
+        "Consumer Discretionary": 0.3,
+        "Real Estate": 0.3,
+        "Financials": -0.1,
+        "Energy": -0.2,
+        "Materials": 0.0,
+        "Industrials": 0.1,
+        "Utilities": 0.2,
+        "Consumer Staples": 0.1,
+        "Healthcare": 0.1,
     },
     "flattening_rising": {
-        "Financials": 0.2, "Technology": 0.1, "Healthcare": 0.3,
-        "Consumer Staples": 0.2, "Utilities": -0.2, "Real Estate": -0.4,
-        "Energy": 0.1, "Materials": 0.0, "Industrials": 0.0, "Consumer Discretionary": -0.1,
+        "Financials": 0.2,
+        "Technology": 0.1,
+        "Healthcare": 0.3,
+        "Consumer Staples": 0.2,
+        "Utilities": -0.2,
+        "Real Estate": -0.4,
+        "Energy": 0.1,
+        "Materials": 0.0,
+        "Industrials": 0.0,
+        "Consumer Discretionary": -0.1,
     },
     "inverted": {
-        "Utilities": 0.5, "Healthcare": 0.4, "Consumer Staples": 0.4,
-        "Technology": -0.2, "Financials": -0.3, "Energy": -0.2,
-        "Consumer Discretionary": -0.3, "Industrials": -0.2, "Materials": -0.1,
+        "Utilities": 0.5,
+        "Healthcare": 0.4,
+        "Consumer Staples": 0.4,
+        "Technology": -0.2,
+        "Financials": -0.3,
+        "Energy": -0.2,
+        "Consumer Discretionary": -0.3,
+        "Industrials": -0.2,
+        "Materials": -0.1,
         "Real Estate": 0.0,
     },
-    "neutral": {
-        sector: 0.0 for sector in set(SECTOR_MAP.values())
-    },
+    "neutral": {sector: 0.0 for sector in set(SECTOR_MAP.values())},
 }
 
 
@@ -109,7 +164,9 @@ class MacroRegimeModel(BaseTFTModel):
         rate_trend = macro_data["rate_trend"]
         dxy_momentum = macro_data["dxy_momentum"]
         curve_regime = macro_data["curve_regime"]
-        sector_tilts = REGIME_SECTOR_TILTS.get(curve_regime, REGIME_SECTOR_TILTS["neutral"])
+        sector_tilts = REGIME_SECTOR_TILTS.get(
+            curve_regime, REGIME_SECTOR_TILTS["neutral"]
+        )
 
         # Generate predictions for each symbol based on its sector tilt
         predictions = []
@@ -126,24 +183,28 @@ class MacroRegimeModel(BaseTFTModel):
             # Regime stability -> confidence
             confidence = min(abs(yield_spread) / 2.0 + 0.3, 0.9)
 
-            predictions.append(ModelPrediction(
-                symbol=symbol,
-                predicted_value=tilt,
-                lower_bound=tilt - 0.2,
-                upper_bound=tilt + 0.2,
-                confidence=confidence,
-                horizon_days=21,  # macro regime changes slowly
-                model_name=self.name,
-                metadata={
-                    "yield_spread": round(yield_spread, 4),
-                    "curve_regime": curve_regime,
-                    "rate_trend": round(rate_trend, 4),
-                    "dxy_momentum": round(dxy_momentum, 4),
-                    "sector": sector,
-                    "sector_tilt": round(tilt, 4),
-                    "sector_tilts": {k: round(v, 3) for k, v in sector_tilts.items()},
-                },
-            ))
+            predictions.append(
+                ModelPrediction(
+                    symbol=symbol,
+                    predicted_value=tilt,
+                    lower_bound=tilt - 0.2,
+                    upper_bound=tilt + 0.2,
+                    confidence=confidence,
+                    horizon_days=21,  # macro regime changes slowly
+                    model_name=self.name,
+                    metadata={
+                        "yield_spread": round(yield_spread, 4),
+                        "curve_regime": curve_regime,
+                        "rate_trend": round(rate_trend, 4),
+                        "dxy_momentum": round(dxy_momentum, 4),
+                        "sector": sector,
+                        "sector_tilt": round(tilt, 4),
+                        "sector_tilts": {
+                            k: round(v, 3) for k, v in sector_tilts.items()
+                        },
+                    },
+                )
+            )
 
         return predictions
 
@@ -155,7 +216,9 @@ class MacroRegimeModel(BaseTFTModel):
             # Fetch yield curve data
             tickers = yf.download(
                 ["^TNX", "^FVX", "^IRX"],
-                period="120d", auto_adjust=True, progress=False,
+                period="120d",
+                auto_adjust=True,
+                progress=False,
             )
 
             if tickers.empty:
@@ -197,11 +260,15 @@ class MacroRegimeModel(BaseTFTModel):
 
             # DXY momentum (use UUP ETF as proxy if DXY not available)
             try:
-                dxy_data = yf.download("UUP", period="63d", auto_adjust=True, progress=False)
+                dxy_data = yf.download(
+                    "UUP", period="63d", auto_adjust=True, progress=False
+                )
                 if not dxy_data.empty:
                     dxy_close = dxy_data["Close"].dropna()
                     if len(dxy_close) >= 22:
-                        dxy_momentum = float(dxy_close.iloc[-1]) / float(dxy_close.iloc[-22]) - 1.0
+                        dxy_momentum = (
+                            float(dxy_close.iloc[-1]) / float(dxy_close.iloc[-22]) - 1.0
+                        )
                     else:
                         dxy_momentum = 0.0
                 else:

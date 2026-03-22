@@ -15,8 +15,8 @@ from trading.safety.guardrails import (
     ExecutionFailureMonitor,
 )
 
-
 # ── 1. Signal Variance Guard ────────────────────────────────────────────────
+
 
 class TestSignalVarianceGuard:
     def test_passes_with_diverse_signals(self):
@@ -63,6 +63,7 @@ class TestSignalVarianceGuard:
 
 # ── 2. Leverage Gate ────────────────────────────────────────────────────────
 
+
 class TestLeverageGate:
     def test_passes_under_limit(self):
         gate = LeverageGate(max_leverage=1.5)
@@ -98,6 +99,7 @@ class TestLeverageGate:
 
 # ── 3. Calibration Health Check ─────────────────────────────────────────────
 
+
 class TestCalibrationHealthCheck:
     def test_platt_passes_normal_params(self):
         result = CalibrationHealthCheck.check_platt(a=-2.5, b=0.3)
@@ -127,17 +129,20 @@ class TestCalibrationHealthCheck:
     def test_generic_fails_unfitted(self):
         class UnfittedCalibrator:
             pass
+
         result = CalibrationHealthCheck.check_generic(UnfittedCalibrator())
         assert result.passed is False
 
     def test_generic_passes_fitted(self):
         class FittedCalibrator:
             classes_ = [0, 1]
+
         result = CalibrationHealthCheck.check_generic(FittedCalibrator())
         assert result.passed is True
 
 
 # ── 4. Model Promotion Sharpe Gate ──────────────────────────────────────────
+
 
 class TestModelPromotionGate:
     def test_passes_above_threshold(self):
@@ -174,6 +179,7 @@ class TestModelPromotionGate:
 
 
 # ── 5. Execution Failure Monitor ────────────────────────────────────────────
+
 
 class TestExecutionFailureMonitor:
     def test_passes_all_success(self):

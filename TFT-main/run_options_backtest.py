@@ -16,6 +16,7 @@ Comparison: stocks-only vs stocks+forex vs stocks+forex+options
 """
 
 import sys
+
 sys.path.insert(0, ".")
 
 import logging
@@ -25,7 +26,10 @@ from datetime import date, timedelta
 from scipy.stats import norm
 
 from strategies.options.infrastructure.pricing import (
-    PricingEngine, OptionContract, OptionRight, OptionStyle,
+    PricingEngine,
+    OptionContract,
+    OptionRight,
+    OptionStyle,
 )
 from strategies.options.infrastructure.vol_monitor import VolMonitor
 
@@ -70,16 +74,20 @@ def simulate_covered_calls(stocks: pd.DataFrame) -> pd.Series:
         # Monthly intervals (~21 trading days)
         for start in range(252, len(close) - 21, 21):
             spot = close[start]
-            rv = float(np.std(returns[start-63:start]) * np.sqrt(252))
+            rv = float(np.std(returns[start - 63 : start]) * np.sqrt(252))
             iv = rv * 1.15  # typical premium over RV
 
             # 25-delta call strike
             T = 30 / 365
-            d1_target = norm.ppf(0.75)  # delta = N(d1) = 0.75 for short call at 0.25 delta
+            d1_target = norm.ppf(
+                0.75
+            )  # delta = N(d1) = 0.75 for short call at 0.25 delta
             strike = spot * np.exp((iv * np.sqrt(T) * d1_target) - (0.5 * iv**2 * T))
 
             # Price the call
-            contract = OptionContract(symbol, strike, date.today() + timedelta(30), OptionRight.CALL)
+            contract = OptionContract(
+                symbol, strike, date.today() + timedelta(30), OptionRight.CALL
+            )
             result = engine.price(contract, spot, iv)
             premium = result.theoretical_price
 
@@ -135,12 +143,12 @@ def simulate_iron_condors(stocks: pd.DataFrame) -> pd.Series:
 
     for start in range(252, len(close) - 21, 21):
         spot = close[start]
-        rv = float(np.std(returns[start-63:start]) * np.sqrt(252))
+        rv = float(np.std(returns[start - 63 : start]) * np.sqrt(252))
         iv = rv * 1.20
 
-        metrics = vol_monitor.compute("SPY",
-                                       spy.iloc[max(0,start-252):start+1],
-                                       iv)
+        metrics = vol_monitor.compute(
+            "SPY", spy.iloc[max(0, start - 252) : start + 1], iv
+        )
 
         # Only sell condors when IV rank > 40% (relaxed for more data points)
         if metrics.iv_rank < 40:
@@ -188,7 +196,11 @@ def simulate_iron_condors(stocks: pd.DataFrame) -> pd.Series:
         ann_ret = ann_vol = sharpe = max_dd = win_rate = 0
 
     print(f"  Monthly periods: {len(monthly_returns)} ({len(nonzero)} traded)")
-    print(f"  Avg monthly return: {nonzero.mean():.3%}" if len(nonzero) > 0 else "  No trades")
+    print(
+        f"  Avg monthly return: {nonzero.mean():.3%}"
+        if len(nonzero) > 0
+        else "  No trades"
+    )
     print(f"  Ann. Return: {ann_ret:+.2%}")
     print(f"  Ann. Volatility: {ann_vol:.2%}")
     print(f"  Sharpe Ratio: {sharpe:.3f}")
@@ -222,13 +234,13 @@ def simulate_vol_arb(stocks: pd.DataFrame) -> pd.Series:
 
         for start in range(252, len(close) - 21, 21):
             spot = close[start]
-            rv_21 = float(np.std(returns[start-21:start]) * np.sqrt(252))
-            rv_63 = float(np.std(returns[start-63:start]) * np.sqrt(252))
+            rv_21 = float(np.std(returns[start - 21 : start]) * np.sqrt(252))
+            rv_63 = float(np.std(returns[start - 63 : start]) * np.sqrt(252))
             iv = rv_63 * 1.15
 
-            metrics = vol_monitor.compute(symbol,
-                                           sym.iloc[max(0,start-252):start+1],
-                                           iv)
+            metrics = vol_monitor.compute(
+                symbol, sym.iloc[max(0, start - 252) : start + 1], iv
+            )
 
             spread = iv - metrics.garch_forecast
 
@@ -236,15 +248,17 @@ def simulate_vol_arb(stocks: pd.DataFrame) -> pd.Series:
                 continue
 
             # Future realized vol over next month
-            future_rv = float(np.std(returns[start:min(start+21, len(returns))]) * np.sqrt(252))
+            future_rv = float(
+                np.std(returns[start : min(start + 21, len(returns))]) * np.sqrt(252)
+            )
 
             if spread > 0.04:
                 # Sell straddle: profit = (IV - future_RV) * vega_exposure
-                straddle_pnl = (iv - future_rv) * spot * np.sqrt(21/365) * 0.5
+                straddle_pnl = (iv - future_rv) * spot * np.sqrt(21 / 365) * 0.5
                 monthly_returns.append(straddle_pnl / spot)
             elif spread < -0.04:
                 # Buy straddle: profit = (future_RV - IV) * vega_exposure
-                straddle_pnl = (future_rv - iv) * spot * np.sqrt(21/365) * 0.5
+                straddle_pnl = (future_rv - iv) * spot * np.sqrt(21 / 365) * 0.5
                 monthly_returns.append(straddle_pnl / spot)
 
     daily_equiv = pd.Series(monthly_returns) if monthly_returns else pd.Series([0.0])
@@ -252,7 +266,11 @@ def simulate_vol_arb(stocks: pd.DataFrame) -> pd.Series:
     ann_ret = float((1 + daily_equiv.mean()) ** 12 - 1) if len(daily_equiv) > 1 else 0
     ann_vol = float(daily_equiv.std() * np.sqrt(12)) if len(daily_equiv) > 1 else 0
     sharpe = ann_ret / ann_vol if ann_vol > 0 else 0
-    max_dd = float((daily_equiv.cumsum() - daily_equiv.cumsum().cummax()).min()) if len(daily_equiv) > 1 else 0
+    max_dd = (
+        float((daily_equiv.cumsum() - daily_equiv.cumsum().cummax()).min())
+        if len(daily_equiv) > 1
+        else 0
+    )
 
     print(f"  Trades: {len(monthly_returns)}")
     print(f"  Avg monthly return: {daily_equiv.mean():.3%}")
@@ -289,11 +307,11 @@ def simulate_gamma_scalp(stocks: pd.DataFrame) -> pd.Series:
 
         for start in range(252, len(close) - 21, 21):
             spot = close[start]
-            rv_63 = float(np.std(returns[start-63:start]) * np.sqrt(252))
+            rv_63 = float(np.std(returns[start - 63 : start]) * np.sqrt(252))
             iv = rv_63 * 1.10
 
             # Only enter if we expect RV > IV (recent RV trending up)
-            rv_21 = float(np.std(returns[start-21:start]) * np.sqrt(252))
+            rv_21 = float(np.std(returns[start - 21 : start]) * np.sqrt(252))
             if rv_21 < iv * 1.05:
                 continue
 
@@ -306,8 +324,8 @@ def simulate_gamma_scalp(stocks: pd.DataFrame) -> pd.Series:
             for d in range(min(21, len(close) - start - 1)):
                 daily_move = close[start + d + 1] - close[start + d]
                 # Gamma P&L ≈ 0.5 * gamma * move^2
-                gamma_est = 0.3989 / (spot * iv * np.sqrt(max(T - d/365, 0.001)))
-                gamma_pnl += 0.5 * gamma_est * daily_move ** 2
+                gamma_est = 0.3989 / (spot * iv * np.sqrt(max(T - d / 365, 0.001)))
+                gamma_pnl += 0.5 * gamma_est * daily_move**2
 
             # Net P&L = gamma gains - straddle cost
             net_pnl = gamma_pnl - straddle_cost
@@ -318,7 +336,11 @@ def simulate_gamma_scalp(stocks: pd.DataFrame) -> pd.Series:
     ann_ret = float((1 + daily_equiv.mean()) ** 12 - 1) if len(daily_equiv) > 1 else 0
     ann_vol = float(daily_equiv.std() * np.sqrt(12)) if len(daily_equiv) > 1 else 0
     sharpe = ann_ret / ann_vol if ann_vol > 0 else 0
-    max_dd = float((daily_equiv.cumsum() - daily_equiv.cumsum().cummax()).min()) if len(daily_equiv) > 1 else 0
+    max_dd = (
+        float((daily_equiv.cumsum() - daily_equiv.cumsum().cummax()).min())
+        if len(daily_equiv) > 1
+        else 0
+    )
 
     print(f"  Trades: {len(monthly_returns)}")
     print(f"  Avg monthly return: {daily_equiv.mean():.3%}")
@@ -332,7 +354,11 @@ def simulate_gamma_scalp(stocks: pd.DataFrame) -> pd.Series:
 
 
 def portfolio_comparison(
-    cc_rets, ic_rets, va_rets, gs_rets, stocks: pd.DataFrame,
+    cc_rets,
+    ic_rets,
+    va_rets,
+    gs_rets,
+    stocks: pd.DataFrame,
 ):
     """Compare: stocks-only vs stocks+FX vs stocks+FX+options"""
     print(f"\n{SEP}")
@@ -344,7 +370,7 @@ def portfolio_comparison(
     spy_close = spy["close"].values
     spy_monthly = []
     for i in range(252, len(spy_close) - 21, 21):
-        spy_monthly.append((spy_close[i+21] - spy_close[i]) / spy_close[i])
+        spy_monthly.append((spy_close[i + 21] - spy_close[i]) / spy_close[i])
     spy_rets = pd.Series(spy_monthly)
 
     # Combine options strategies (equal weight)
@@ -361,9 +387,14 @@ def portfolio_comparison(
     min_all = min(len(spy_rets), len(combined_opts))
 
     stocks_only = spy_rets.iloc[:min_all].values
-    stocks_fx = stocks_only * 0.85 + np.random.normal(0.003, 0.015, min_all) * 0.15  # simulated FX
-    full_multi = stocks_only * 0.60 + combined_opts.iloc[:min_all].values * 0.25 + \
-                 np.random.normal(0.003, 0.015, min_all) * 0.15
+    stocks_fx = (
+        stocks_only * 0.85 + np.random.normal(0.003, 0.015, min_all) * 0.15
+    )  # simulated FX
+    full_multi = (
+        stocks_only * 0.60
+        + combined_opts.iloc[:min_all].values * 0.25
+        + np.random.normal(0.003, 0.015, min_all) * 0.15
+    )
 
     portfolios = {
         "Stocks Only (SPY)": pd.Series(stocks_only),
@@ -371,7 +402,9 @@ def portfolio_comparison(
         "Stocks + FX + Options (60/15/25)": pd.Series(full_multi),
     }
 
-    print(f"\n  {'Portfolio':<40s} {'Ann.Ret':>8s} {'Ann.Vol':>8s} {'Sharpe':>8s} {'MaxDD':>8s}")
+    print(
+        f"\n  {'Portfolio':<40s} {'Ann.Ret':>8s} {'Ann.Vol':>8s} {'Sharpe':>8s} {'MaxDD':>8s}"
+    )
     print(f"  {'-'*40} {'-'*8} {'-'*8} {'-'*8} {'-'*8}")
 
     for name, rets in portfolios.items():
@@ -379,7 +412,9 @@ def portfolio_comparison(
         ann_vol = float(rets.std() * np.sqrt(12))
         sharpe = ann_ret / ann_vol if ann_vol > 0 else 0
         max_dd = float((rets.cumsum() - rets.cumsum().cummax()).min())
-        print(f"  {name:<40s} {ann_ret:>+7.1%} {ann_vol:>7.1%} {sharpe:>7.3f} {max_dd:>7.1%}")
+        print(
+            f"  {name:<40s} {ann_ret:>+7.1%} {ann_vol:>7.1%} {sharpe:>7.3f} {max_dd:>7.1%}"
+        )
 
 
 def main():
@@ -407,7 +442,9 @@ def main():
         "Gamma Scalping": gs,
     }
 
-    print(f"\n  {'Strategy':<25s} {'Ann.Ret':>8s} {'Ann.Vol':>8s} {'Sharpe':>8s} {'MaxDD':>8s} {'WinRate':>8s} {'Trades':>7s}")
+    print(
+        f"\n  {'Strategy':<25s} {'Ann.Ret':>8s} {'Ann.Vol':>8s} {'Sharpe':>8s} {'MaxDD':>8s} {'WinRate':>8s} {'Trades':>7s}"
+    )
     print(f"  {'-'*25} {'-'*8} {'-'*8} {'-'*8} {'-'*8} {'-'*8} {'-'*7}")
 
     for name, rets in strategies.items():
@@ -420,7 +457,9 @@ def main():
         sharpe = ann_ret / ann_vol if ann_vol > 0 else 0
         max_dd = float((nonzero.cumsum() - nonzero.cumsum().cummax()).min())
         wr = (nonzero > 0).mean()
-        print(f"  {name:<25s} {ann_ret:>+7.1%} {ann_vol:>7.1%} {sharpe:>7.3f} {max_dd:>7.1%} {wr:>7.1%} {len(nonzero):>7d}")
+        print(
+            f"  {name:<25s} {ann_ret:>+7.1%} {ann_vol:>7.1%} {sharpe:>7.3f} {max_dd:>7.1%} {wr:>7.1%} {len(nonzero):>7d}"
+        )
 
     portfolio_comparison(cc, ic, va, gs, stocks)
 

@@ -9,16 +9,24 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from trading.broker.base import (
-    OrderInfo, OrderRequest, OrderResult, OrderSide, OrderStatus,
-    OrderType, TimeInForce,
+    OrderInfo,
+    OrderRequest,
+    OrderResult,
+    OrderSide,
+    OrderStatus,
+    OrderType,
+    TimeInForce,
 )
 from trading.execution.vwap import (
-    VWAPExecutionModel, VWAPExecutionResult, VolumeProfileCache,
-    SliceResult, DEFAULT_NUM_SLICES,
+    VWAPExecutionModel,
+    VWAPExecutionResult,
+    VolumeProfileCache,
+    SliceResult,
+    DEFAULT_NUM_SLICES,
 )
 
-
 # ── Fake broker for testing ──────────────────────────────────────────────────
+
 
 class FakeBroker:
     """Simulates AlpacaBroker for unit tests."""
@@ -69,11 +77,13 @@ class FailingBroker(FakeBroker):
 
 # ── Helper ────────────────────────────────────────────────────────────────────
 
+
 def _run(coro):
     return asyncio.get_event_loop().run_until_complete(coro)
 
 
 # ── 1. Slice count ──────────────────────────────────────────────────────────
+
 
 class TestSliceCount:
     """Verify correct number of slices are generated."""
@@ -108,12 +118,15 @@ class TestSliceCount:
 
 # ── 2. Volume cap (10% ADV) ────────────────────────────────────────────────
 
+
 class TestADVCap:
     """Verify ADV cap limits order size."""
 
     def test_adv_cap_reduces_quantity(self):
         broker = FakeBroker()
-        vwap = VWAPExecutionModel(broker, num_slices=5, slice_interval_s=0, adv_cap_pct=0.10)
+        vwap = VWAPExecutionModel(
+            broker, num_slices=5, slice_interval_s=0, adv_cap_pct=0.10
+        )
         # ADV = 100 shares, 10% cap = 10 shares max
         result = _run(vwap.execute("AAPL", OrderSide.BUY, 50, 150.0, adv=100))
         assert result.adv_capped is True
@@ -122,7 +135,9 @@ class TestADVCap:
 
     def test_below_adv_cap_no_reduction(self):
         broker = FakeBroker()
-        vwap = VWAPExecutionModel(broker, num_slices=5, slice_interval_s=0, adv_cap_pct=0.10)
+        vwap = VWAPExecutionModel(
+            broker, num_slices=5, slice_interval_s=0, adv_cap_pct=0.10
+        )
         # ADV = 10000, cap = 1000, requesting 50 → no cap
         result = _run(vwap.execute("AAPL", OrderSide.BUY, 50, 150.0, adv=10000))
         assert result.adv_capped is False
@@ -130,13 +145,16 @@ class TestADVCap:
 
     def test_zero_adv_skips_cap(self):
         broker = FakeBroker()
-        vwap = VWAPExecutionModel(broker, num_slices=5, slice_interval_s=0, adv_cap_pct=0.10)
+        vwap = VWAPExecutionModel(
+            broker, num_slices=5, slice_interval_s=0, adv_cap_pct=0.10
+        )
         result = _run(vwap.execute("AAPL", OrderSide.BUY, 200, 150.0, adv=0))
         assert result.adv_capped is False
         assert result.total_requested == 200
 
 
 # ── 3. Carry-forward unfilled ─────────────────────────────────────────────
+
 
 class TestCarryForward:
     """Verify unfilled shares carry forward to next slices and final sweep."""
@@ -162,14 +180,20 @@ class TestCarryForward:
 
     def test_zero_fill_triggers_sweep(self):
         broker = FakeBroker(fill_rate=0.0, fill_price=100.0)
+
         # Override get_order to return 0 filled
         async def get_order_zero(oid):
             return OrderInfo(
-                order_id=oid, ticker="AAPL", side=OrderSide.BUY,
-                order_type=OrderType.LIMIT, quantity=100,
-                filled_quantity=0, status=OrderStatus.CANCELLED,
+                order_id=oid,
+                ticker="AAPL",
+                side=OrderSide.BUY,
+                order_type=OrderType.LIMIT,
+                quantity=100,
+                filled_quantity=0,
+                status=OrderStatus.CANCELLED,
                 time_in_force=TimeInForce.IOC,
             )
+
         broker.get_order = get_order_zero
         vwap = VWAPExecutionModel(broker, num_slices=3, slice_interval_s=0)
         result = _run(vwap.execute("AAPL", OrderSide.BUY, 100, 100.0))
@@ -179,6 +203,7 @@ class TestCarryForward:
 
 
 # ── 4. Fallback to market order ───────────────────────────────────────────
+
 
 class TestFallback:
     """Verify fallback to market order on execution errors."""
@@ -213,6 +238,7 @@ class TestFallback:
 
 # ── 5. Slippage calculation ──────────────────────────────────────────────
 
+
 class TestSlippage:
     """Verify slippage tracking."""
 
@@ -243,6 +269,7 @@ class TestSlippage:
 
 # ── 6. IOC order type ────────────────────────────────────────────────────
 
+
 class TestIOCOrderType:
     """Verify slices use IOC time-in-force and limit order type."""
 
@@ -258,7 +285,9 @@ class TestIOCOrderType:
     def test_limit_price_offset_buy(self):
         broker = FakeBroker()
         vwap = VWAPExecutionModel(
-            broker, num_slices=1, slice_interval_s=0,
+            broker,
+            num_slices=1,
+            slice_interval_s=0,
             limit_offset_bps=10,  # 10 bps above for buy
         )
         _run(vwap.execute("AAPL", OrderSide.BUY, 100, 100.0))
@@ -269,7 +298,9 @@ class TestIOCOrderType:
     def test_limit_price_offset_sell(self):
         broker = FakeBroker()
         vwap = VWAPExecutionModel(
-            broker, num_slices=1, slice_interval_s=0,
+            broker,
+            num_slices=1,
+            slice_interval_s=0,
             limit_offset_bps=10,
         )
         _run(vwap.execute("AAPL", OrderSide.SELL, 100, 100.0))
@@ -279,6 +310,7 @@ class TestIOCOrderType:
 
 
 # ── 7. Volume profile cache ──────────────────────────────────────────────
+
 
 class TestVolumeProfileCache:
     """Verify volume profile caching and weight generation."""
@@ -291,7 +323,21 @@ class TestVolumeProfileCache:
 
     def test_put_and_get(self):
         cache = VolumeProfileCache()
-        custom = [0.2, 0.1, 0.1, 0.1, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.1]
+        custom = [
+            0.2,
+            0.1,
+            0.1,
+            0.1,
+            0.05,
+            0.05,
+            0.05,
+            0.05,
+            0.05,
+            0.05,
+            0.05,
+            0.05,
+            0.1,
+        ]
         cache.put("TSLA", custom)
         retrieved = cache.get("TSLA")
         assert retrieved == custom
@@ -300,6 +346,7 @@ class TestVolumeProfileCache:
         cache = VolumeProfileCache(ttl_s=0)  # instant expiry
         cache.put("AAPL", [0.1] * 13)
         import time
+
         time.sleep(0.01)
         assert cache.get("AAPL") is None
 
@@ -320,33 +367,42 @@ class TestVolumeProfileCache:
 
 # ── 8. Execution result ──────────────────────────────────────────────────
 
+
 class TestExecutionResult:
     """Verify VWAPExecutionResult dataclass and serialization."""
 
     def test_fill_rate(self):
         result = VWAPExecutionResult(
-            ticker="AAPL", side="buy",
-            total_requested=100, total_filled=75,
+            ticker="AAPL",
+            side="buy",
+            total_requested=100,
+            total_filled=75,
             filled_avg_price=100.0,
         )
         assert result.fill_rate == 0.75
 
     def test_fill_rate_zero_requested(self):
         result = VWAPExecutionResult(
-            ticker="AAPL", side="buy",
-            total_requested=0, total_filled=0,
+            ticker="AAPL",
+            side="buy",
+            total_requested=0,
+            total_filled=0,
             filled_avg_price=0.0,
         )
         assert result.fill_rate == 0.0
 
     def test_to_dict_serializable(self):
         result = VWAPExecutionResult(
-            ticker="AAPL", side="buy",
-            total_requested=100, total_filled=80,
+            ticker="AAPL",
+            side="buy",
+            total_requested=100,
+            total_filled=80,
             filled_avg_price=150.25,
             expected_price=150.0,
             slippage_bps=16.67,
-            slices=[SliceResult(0, 50, 40, 150.1, "o1", "filled", "2026-01-01T00:00:00Z")],
+            slices=[
+                SliceResult(0, 50, 40, 150.1, "o1", "filled", "2026-01-01T00:00:00Z")
+            ],
         )
         d = result.to_dict()
         json.dumps(d)  # must be JSON-serializable
@@ -365,13 +421,15 @@ class TestExecutionResult:
 
 # ── 9. Paper-trader structural tests ─────────────────────────────────────
 
+
 class TestPaperTraderVWAPWiring:
     """Verify VWAP is wired into paper-trader."""
 
     def _read_source(self):
         main_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "paper-trader", "main.py",
+            "paper-trader",
+            "main.py",
         )
         with open(main_path) as f:
             return f.read()

@@ -638,42 +638,43 @@ if __name__ == "__main__":
     import psycopg2
     import os
     from dotenv import load_dotenv
-    
+
     # Load environment variables
     load_dotenv()
-    
+
     # Database configuration
     db_config = {
-        'host': os.getenv('POSTGRES_HOST', 'localhost'),
-        'database': os.getenv('POSTGRES_DB', 'stock_trading_analysis'),
-        'user': os.getenv('POSTGRES_USER', 'trading_user'),
-        'password': os.environ['POSTGRES_PASSWORD'],
-        'port': int(os.getenv('POSTGRES_PORT', 5432))
+        "host": os.getenv("POSTGRES_HOST", "localhost"),
+        "database": os.getenv("POSTGRES_DB", "stock_trading_analysis"),
+        "user": os.getenv("POSTGRES_USER", "trading_user"),
+        "password": os.environ["POSTGRES_PASSWORD"],
+        "port": int(os.getenv("POSTGRES_PORT", 5432)),
     }
-    
+
     try:
         # Connect to PostgreSQL
         conn = psycopg2.connect(**db_config)
         conn.autocommit = True
-        
+
         print("Connected to PostgreSQL database")
-        
+
         # Execute schema creation
         with conn.cursor() as cursor:
             print("Creating database schema...")
             cursor.execute(CREATE_SCHEMA_SQL)
             print("Database schema created successfully")
-            
+
             # Optionally create sample data
             create_sample = input("Create sample symbols data? (y/n): ").lower().strip()
-            if create_sample == 'y':
+            if create_sample == "y":
                 cursor.execute(SAMPLE_DATA_SQL)
                 print("Sample data created")
-        
+
         conn.close()
         print("Database setup completed successfully")
-        
+
     except Exception as e:
         print(f"Error setting up database: {e}")
         import traceback
+
         traceback.print_exc()

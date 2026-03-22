@@ -35,14 +35,14 @@ def _env_list(key: str, default: str = "") -> List[str]:
 @dataclass
 class CoveredCallConfig:
     enabled: bool = False
-    target_delta: float = 0.25          # sell calls at ~25 delta
+    target_delta: float = 0.25  # sell calls at ~25 delta
     min_delta: float = 0.15
     max_delta: float = 0.35
-    min_dte: int = 25                   # minimum days to expiry
+    min_dte: int = 25  # minimum days to expiry
     max_dte: int = 45
-    roll_dte: int = 7                   # auto-roll when DTE <= 7
-    profit_target_pct: float = 50.0     # close at 50% of max profit
-    min_iv_rank: float = 20.0           # don't sell when IV is cheap
+    roll_dte: int = 7  # auto-roll when DTE <= 7
+    profit_target_pct: float = 50.0  # close at 50% of max profit
+    min_iv_rank: float = 20.0  # don't sell when IV is cheap
     max_position_pct: float = 0.10
     kill_max_drawdown: float = 0.15
     kill_min_sharpe: float = -1.0
@@ -64,12 +64,12 @@ class CoveredCallConfig:
 class IronCondorConfig:
     enabled: bool = False
     underlyings: List[str] = field(default_factory=lambda: ["SPY", "QQQ"])
-    wing_width_std: float = 1.0         # wings at 1 standard deviation
+    wing_width_std: float = 1.0  # wings at 1 standard deviation
     min_dte: int = 30
     max_dte: int = 50
-    min_iv_rank: float = 50.0           # only sell when IV is elevated
+    min_iv_rank: float = 50.0  # only sell when IV is elevated
     profit_target_pct: float = 50.0
-    stop_loss_pct: float = 200.0        # close at 2x credit received
+    stop_loss_pct: float = 200.0  # close at 2x credit received
     max_position_pct: float = 0.05
     kill_max_drawdown: float = 0.20
     kill_min_sharpe: float = -1.0
@@ -91,14 +91,14 @@ class IronCondorConfig:
 @dataclass
 class ProtectivePutConfig:
     enabled: bool = False
-    target_delta: float = -0.20         # buy puts at ~20 delta
+    target_delta: float = -0.20  # buy puts at ~20 delta
     min_dte: int = 30
     max_dte: int = 60
-    hedge_ratio: float = 0.50           # hedge 50% of portfolio
+    hedge_ratio: float = 0.50  # hedge 50% of portfolio
     only_volatile_regime: bool = True
-    max_premium_pct: float = 2.0        # max 2% of portfolio on puts
+    max_premium_pct: float = 2.0  # max 2% of portfolio on puts
     kill_max_drawdown: float = 0.25
-    kill_min_sharpe: float = -2.0       # higher tolerance (insurance)
+    kill_min_sharpe: float = -2.0  # higher tolerance (insurance)
 
     @classmethod
     def from_env(cls) -> "ProtectivePutConfig":
@@ -122,7 +122,7 @@ class VolArbConfig:
     min_dte: int = 20
     max_dte: int = 45
     target_delta: float = 0.25
-    use_tft_timing: bool = True          # use TFT forecast to time entries
+    use_tft_timing: bool = True  # use TFT forecast to time entries
     max_position_pct: float = 0.05
     kill_max_drawdown: float = 0.20
     kill_min_sharpe: float = -1.0
@@ -141,12 +141,12 @@ class VolArbConfig:
 @dataclass
 class EarningsPlayConfig:
     enabled: bool = False
-    min_confidence: float = 0.60         # TFT + sentiment confidence threshold
-    directional_spread_width: int = 5    # $5 wide spreads
+    min_confidence: float = 0.60  # TFT + sentiment confidence threshold
+    directional_spread_width: int = 5  # $5 wide spreads
     neutral_wing_std: float = 1.0
-    max_risk_per_play: float = 0.02      # 2% max risk per earnings play
-    entry_days_before: int = 3           # enter 3 days before earnings
-    exit_days_after: int = 1             # exit 1 day after earnings
+    max_risk_per_play: float = 0.02  # 2% max risk per earnings play
+    entry_days_before: int = 3  # enter 3 days before earnings
+    exit_days_after: int = 1  # exit 1 day after earnings
     min_iv_rank: float = 40.0
     kill_max_drawdown: float = 0.25
     kill_min_sharpe: float = -1.5
@@ -166,13 +166,13 @@ class EarningsPlayConfig:
 @dataclass
 class GammaScalpConfig:
     enabled: bool = False
-    rv_iv_threshold: float = 0.03        # enter when RV - IV > 3 vol points
-    hedge_frequency_hours: int = 4       # delta hedge every 4 hours
+    rv_iv_threshold: float = 0.03  # enter when RV - IV > 3 vol points
+    hedge_frequency_hours: int = 4  # delta hedge every 4 hours
     min_dte: int = 14
     max_dte: int = 30
     max_position_pct: float = 0.05
-    profit_target_pct: float = 100.0     # close at 100% of premium paid
-    stop_loss_pct: float = 80.0          # close if 80% of premium lost
+    profit_target_pct: float = 100.0  # close at 100% of premium paid
+    stop_loss_pct: float = 80.0  # close if 80% of premium lost
     kill_max_drawdown: float = 0.20
     kill_min_sharpe: float = -1.0
 
@@ -190,13 +190,14 @@ class GammaScalpConfig:
 @dataclass
 class OptionsInfraConfig:
     """Infrastructure-level config for the options system."""
+
     risk_free_rate: float = 0.045
-    data_source: str = "yfinance"        # "alpaca" or "yfinance"
+    data_source: str = "yfinance"  # "alpaca" or "yfinance"
     min_option_volume: int = 10
     max_bid_ask_spread_pct: float = 10.0  # max 10% of mid
     iv_rank_lookback_days: int = 252
-    vol_surface_strikes: int = 20         # strikes per expiry for surface
-    vol_surface_expiries: int = 6         # expiry dates for surface
+    vol_surface_strikes: int = 20  # strikes per expiry for surface
+    vol_surface_expiries: int = 6  # expiry dates for surface
 
     @classmethod
     def from_env(cls) -> "OptionsInfraConfig":
@@ -231,8 +232,14 @@ class OptionsMasterConfig:
             gamma_scalp=GammaScalpConfig.from_env(),
         )
         enabled = []
-        for name in ["covered_calls", "iron_condors", "protective_puts",
-                      "vol_arb", "earnings", "gamma_scalp"]:
+        for name in [
+            "covered_calls",
+            "iron_condors",
+            "protective_puts",
+            "vol_arb",
+            "earnings",
+            "gamma_scalp",
+        ]:
             if getattr(getattr(cfg, name), "enabled", False):
                 enabled.append(name)
         if enabled:

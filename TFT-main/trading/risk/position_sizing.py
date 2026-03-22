@@ -29,8 +29,8 @@ class SizingInput:
     stop_loss_distance_percent: float = 2.0
     max_position_size: float = 0.05  # fraction of portfolio
     # TFT confidence params (for Kelly)
-    win_probability: Optional[float] = None   # from TFT quantile spread
-    avg_win_ratio: Optional[float] = None     # avg win / avg loss
+    win_probability: Optional[float] = None  # from TFT quantile spread
+    avg_win_ratio: Optional[float] = None  # avg win / avg loss
     # Volatility params (for vol-scaled)
     atr: Optional[float] = None
     atr_multiplier: float = 2.0
@@ -57,7 +57,9 @@ class FixedFractionalSizer(BasePositionSizer):
 
     def calculate(self, inputs: SizingInput) -> SizingResult:
         risk_amount = inputs.portfolio_value * (inputs.risk_per_trade_percent / 100)
-        dollar_risk_per_share = inputs.current_price * (inputs.stop_loss_distance_percent / 100)
+        dollar_risk_per_share = inputs.current_price * (
+            inputs.stop_loss_distance_percent / 100
+        )
 
         if dollar_risk_per_share <= 0 or inputs.current_price <= 0:
             return _zero_result("Invalid price or stop loss")
@@ -69,7 +71,11 @@ class FixedFractionalSizer(BasePositionSizer):
         return SizingResult(
             shares=shares,
             position_value=position_value,
-            position_percent=(position_value / inputs.portfolio_value * 100) if inputs.portfolio_value > 0 else 0,
+            position_percent=(
+                (position_value / inputs.portfolio_value * 100)
+                if inputs.portfolio_value > 0
+                else 0
+            ),
             risk_amount=shares * dollar_risk_per_share,
             risk_percent=inputs.risk_per_trade_percent,
             rationale=(
@@ -112,7 +118,11 @@ class KellyCriterionSizer(BasePositionSizer):
         return SizingResult(
             shares=shares,
             position_value=actual_value,
-            position_percent=(actual_value / inputs.portfolio_value * 100) if inputs.portfolio_value > 0 else 0,
+            position_percent=(
+                (actual_value / inputs.portfolio_value * 100)
+                if inputs.portfolio_value > 0
+                else 0
+            ),
             risk_amount=risk_amount,
             risk_percent=inputs.risk_per_trade_percent,
             rationale=(
@@ -146,7 +156,11 @@ class VolatilityScaledSizer(BasePositionSizer):
         return SizingResult(
             shares=shares,
             position_value=actual_value,
-            position_percent=(actual_value / inputs.portfolio_value * 100) if inputs.portfolio_value > 0 else 0,
+            position_percent=(
+                (actual_value / inputs.portfolio_value * 100)
+                if inputs.portfolio_value > 0
+                else 0
+            ),
             risk_amount=shares * dollar_risk_per_share,
             risk_percent=inputs.risk_per_trade_percent,
             rationale=(
@@ -176,7 +190,9 @@ class PositionSizerFactory:
         try:
             strategy = SizingStrategy(strategy_name)
         except ValueError:
-            logger.warning("Unknown strategy '%s', falling back to fixed_fractional", strategy_name)
+            logger.warning(
+                "Unknown strategy '%s', falling back to fixed_fractional", strategy_name
+            )
             strategy = SizingStrategy.FIXED_FRACTIONAL
         return cls.create(strategy)
 
@@ -186,7 +202,9 @@ def _apply_caps(raw_shares: float, inputs: SizingInput) -> int:
     shares = max(0, int(math.floor(raw_shares)))
     if inputs.current_price > 0 and inputs.portfolio_value > 0:
         max_shares = int(
-            math.floor(inputs.portfolio_value * inputs.max_position_size / inputs.current_price)
+            math.floor(
+                inputs.portfolio_value * inputs.max_position_size / inputs.current_price
+            )
         )
         shares = min(shares, max_shares)
     return shares

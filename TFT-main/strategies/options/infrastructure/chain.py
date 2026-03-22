@@ -13,7 +13,11 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from strategies.options.infrastructure.pricing import OptionContract, OptionRight, OptionStyle
+from strategies.options.infrastructure.pricing import (
+    OptionContract,
+    OptionRight,
+    OptionStyle,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +25,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ChainEntry:
     """Single option in the chain with market data."""
+
     contract: OptionContract
     bid: float = 0.0
     ask: float = 0.0
@@ -48,6 +53,7 @@ class ChainEntry:
 @dataclass
 class OptionsChain:
     """Full options chain for an underlying on a specific expiry."""
+
     underlying: str
     expiry: date
     spot_price: float
@@ -59,11 +65,15 @@ class OptionsChain:
     def dte(self) -> int:
         return max((self.expiry - date.today()).days, 0)
 
-    def get_call_by_delta(self, target_delta: float, tolerance: float = 0.05) -> Optional[ChainEntry]:
+    def get_call_by_delta(
+        self, target_delta: float, tolerance: float = 0.05
+    ) -> Optional[ChainEntry]:
         """Find call closest to target delta."""
         return self._find_by_delta(self.calls, abs(target_delta), tolerance)
 
-    def get_put_by_delta(self, target_delta: float, tolerance: float = 0.05) -> Optional[ChainEntry]:
+    def get_put_by_delta(
+        self, target_delta: float, tolerance: float = 0.05
+    ) -> Optional[ChainEntry]:
         """Find put closest to target delta (use positive value, we'll negate)."""
         return self._find_by_delta(self.puts, abs(target_delta), tolerance)
 
@@ -74,7 +84,9 @@ class OptionsChain:
             return self.spot_price
         return min(all_strikes, key=lambda k: abs(k - self.spot_price))
 
-    def get_strike_by_std(self, std_devs: float, vol: float, right: str = "call") -> Optional[float]:
+    def get_strike_by_std(
+        self, std_devs: float, vol: float, right: str = "call"
+    ) -> Optional[float]:
         """Get strike N standard deviations from spot."""
         dte_years = max(self.dte / 365.0, 1e-6)
         move = self.spot_price * vol * np.sqrt(dte_years) * std_devs
@@ -86,7 +98,9 @@ class OptionsChain:
         return closest.contract.strike
 
     @staticmethod
-    def _find_by_delta(entries: List[ChainEntry], target: float, tolerance: float) -> Optional[ChainEntry]:
+    def _find_by_delta(
+        entries: List[ChainEntry], target: float, tolerance: float
+    ) -> Optional[ChainEntry]:
         if not entries:
             return None
         best = min(entries, key=lambda e: abs(abs(e.delta) - target))
@@ -121,14 +135,24 @@ class ChainFetcher:
         Returns list of OptionsChain (one per expiry within DTE range).
         """
         if self.data_source == "yfinance":
-            return self._fetch_yfinance(underlying, min_dte, max_dte, min_volume, max_spread_pct)
+            return self._fetch_yfinance(
+                underlying, min_dte, max_dte, min_volume, max_spread_pct
+            )
         else:
-            logger.warning("Alpaca options data not yet implemented, falling back to yfinance")
-            return self._fetch_yfinance(underlying, min_dte, max_dte, min_volume, max_spread_pct)
+            logger.warning(
+                "Alpaca options data not yet implemented, falling back to yfinance"
+            )
+            return self._fetch_yfinance(
+                underlying, min_dte, max_dte, min_volume, max_spread_pct
+            )
 
     def _fetch_yfinance(
-        self, underlying: str, min_dte: int, max_dte: int,
-        min_volume: int, max_spread_pct: float,
+        self,
+        underlying: str,
+        min_dte: int,
+        max_dte: int,
+        min_volume: int,
+        max_spread_pct: float,
     ) -> List[OptionsChain]:
         try:
             import yfinance as yf
@@ -161,31 +185,47 @@ class ChainFetcher:
                 try:
                     chain_data = ticker.option_chain(exp_str)
                 except Exception as e:
-                    logger.debug("Failed to fetch chain for %s %s: %s", underlying, exp_str, e)
+                    logger.debug(
+                        "Failed to fetch chain for %s %s: %s", underlying, exp_str, e
+                    )
                     continue
 
                 calls = self._parse_yf_chain(
-                    chain_data.calls, underlying, exp_date, OptionRight.CALL, spot,
-                    min_volume, max_spread_pct,
+                    chain_data.calls,
+                    underlying,
+                    exp_date,
+                    OptionRight.CALL,
+                    spot,
+                    min_volume,
+                    max_spread_pct,
                 )
                 puts = self._parse_yf_chain(
-                    chain_data.puts, underlying, exp_date, OptionRight.PUT, spot,
-                    min_volume, max_spread_pct,
+                    chain_data.puts,
+                    underlying,
+                    exp_date,
+                    OptionRight.PUT,
+                    spot,
+                    min_volume,
+                    max_spread_pct,
                 )
 
                 if calls or puts:
-                    chains.append(OptionsChain(
-                        underlying=underlying,
-                        expiry=exp_date,
-                        spot_price=spot,
-                        calls=calls,
-                        puts=puts,
-                        fetch_time=datetime.now(),
-                    ))
+                    chains.append(
+                        OptionsChain(
+                            underlying=underlying,
+                            expiry=exp_date,
+                            spot_price=spot,
+                            calls=calls,
+                            puts=puts,
+                            fetch_time=datetime.now(),
+                        )
+                    )
 
             logger.info(
                 "Fetched %d expiries for %s (spot=$%.2f)",
-                len(chains), underlying, spot,
+                len(chains),
+                underlying,
+                spot,
             )
             return chains
 
@@ -194,9 +234,14 @@ class ChainFetcher:
             return []
 
     def _parse_yf_chain(
-        self, df: pd.DataFrame, underlying: str, expiry: date,
-        right: OptionRight, spot: float,
-        min_volume: int, max_spread_pct: float,
+        self,
+        df: pd.DataFrame,
+        underlying: str,
+        expiry: date,
+        right: OptionRight,
+        spot: float,
+        min_volume: int,
+        max_spread_pct: float,
     ) -> List[ChainEntry]:
         entries = []
         if df is None or df.empty:
@@ -233,12 +278,18 @@ class ChainFetcher:
             # Approximate delta from IV if available
             delta = self._approx_delta(spot, strike, iv, expiry, right)
 
-            entries.append(ChainEntry(
-                contract=contract,
-                bid=bid, ask=ask, last=last,
-                volume=volume, open_interest=oi,
-                implied_vol=iv, delta=delta,
-            ))
+            entries.append(
+                ChainEntry(
+                    contract=contract,
+                    bid=bid,
+                    ask=ask,
+                    last=last,
+                    volume=volume,
+                    open_interest=oi,
+                    implied_vol=iv,
+                    delta=delta,
+                )
+            )
 
         return entries
 
@@ -249,7 +300,7 @@ class ChainFetcher:
             return 0.5 if right == OptionRight.CALL else -0.5
 
         T = max((expiry - date.today()).days / 365.0, 1e-6)
-        d1 = (np.log(spot / strike) + 0.5 * iv ** 2 * T) / (iv * np.sqrt(T))
+        d1 = (np.log(spot / strike) + 0.5 * iv**2 * T) / (iv * np.sqrt(T))
         if right == OptionRight.CALL:
             return float(norm.cdf(d1))
         else:

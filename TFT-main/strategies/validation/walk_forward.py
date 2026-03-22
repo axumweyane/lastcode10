@@ -41,6 +41,7 @@ ANNUALIZATION_FACTORS = {
 @dataclass
 class NormalizationStats:
     """Per-fold normalization statistics saved as JSON sidecar."""
+
     fold_index: int
     mean: Dict[str, float]
     std: Dict[str, float]
@@ -65,7 +66,9 @@ class NormalizationStats:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as f:
             f.write(self.to_json())
-        logger.info("Saved normalization stats for fold %d to %s", self.fold_index, path)
+        logger.info(
+            "Saved normalization stats for fold %d to %s", self.fold_index, path
+        )
 
     @classmethod
     def load(cls, path: str) -> "NormalizationStats":
@@ -76,10 +79,11 @@ class NormalizationStats:
 @dataclass
 class FoldResult:
     """Metrics from a single walk-forward fold."""
+
     fold_index: int
-    is_start: int          # row index into original data
+    is_start: int  # row index into original data
     is_end: int
-    oos_start: int         # after embargo
+    oos_start: int  # after embargo
     oos_end: int
     embargo_bars: int
     sharpe: float
@@ -103,12 +107,13 @@ class FoldResult:
 @dataclass
 class WalkForwardReport:
     """Summary report across all folds."""
+
     folds: List[FoldResult]
     deployed_fold_index: int
     best_sharpe_fold_index: int
     sharpe_mean: float
     sharpe_std: float
-    sharpe_stability: float   # 1 - (std / mean) if mean > 0, else 0
+    sharpe_stability: float  # 1 - (std / mean) if mean > 0, else 0
     total_folds: int
     config: Dict[str, Any]
     warnings: List[str] = field(default_factory=list)
@@ -224,7 +229,8 @@ class WalkForwardValidator:
         self.config = config or WalkForwardConfig.from_env()
 
     def generate_folds(
-        self, n_rows: int,
+        self,
+        n_rows: int,
     ) -> List[Tuple[Tuple[int, int], Tuple[int, int]]]:
         """
         Generate (IS, OOS) index ranges for walk-forward folds.
@@ -261,7 +267,9 @@ class WalkForwardValidator:
         return folds
 
     def compute_normalization_stats(
-        self, data: pd.DataFrame, fold_index: int,
+        self,
+        data: pd.DataFrame,
+        fold_index: int,
     ) -> NormalizationStats:
         """Compute and return normalization stats for the IS window."""
         numeric_cols = data.select_dtypes(include=[np.number]).columns.tolist()
@@ -281,7 +289,9 @@ class WalkForwardValidator:
         )
 
     def _save_norm_stats(
-        self, stats: NormalizationStats, fold_index: int,
+        self,
+        stats: NormalizationStats,
+        fold_index: int,
     ) -> str:
         """Save normalization stats and return the file path."""
         directory = self.config.norm_stats_dir
@@ -315,13 +325,17 @@ class WalkForwardValidator:
 
         logger.info(
             "Walk-forward: %d folds, IS=%d, OOS=%d, embargo=%d, freq=%s",
-            len(folds), self.config.is_window, self.config.oos_window,
-            self.config.embargo_bars, self.config.frequency,
+            len(folds),
+            self.config.is_window,
+            self.config.oos_window,
+            self.config.embargo_bars,
+            self.config.frequency,
         )
 
         fold_results: List[FoldResult] = []
         ann_factor = ANNUALIZATION_FACTORS.get(
-            self.config.frequency, ANNUALIZATION_FACTORS["daily"],
+            self.config.frequency,
+            ANNUALIZATION_FACTORS["daily"],
         )
 
         for i, ((is_start, is_end), (oos_start, oos_end)) in enumerate(folds):
@@ -370,8 +384,13 @@ class WalkForwardValidator:
             logger.info(
                 "Fold %d: Sharpe=%.4f, MaxDD=%.2f%%, WinRate=%.1f%%, "
                 "PF=%.2f, Trades=%d, Return=%.2f%%",
-                i, sharpe, max_dd * 100, win_rate * 100,
-                pf, n_trades, total_return * 100,
+                i,
+                sharpe,
+                max_dd * 100,
+                win_rate * 100,
+                pf,
+                n_trades,
+                total_return * 100,
             )
 
         # CF-1 fix: ALWAYS deploy the most recent fold
@@ -382,7 +401,9 @@ class WalkForwardValidator:
         best_sharpe_index = int(np.argmax(sharpes))
         sharpe_mean = float(np.mean(sharpes))
         sharpe_std = float(np.std(sharpes, ddof=1)) if len(sharpes) > 1 else 0.0
-        sharpe_stability = (1.0 - sharpe_std / abs(sharpe_mean)) if abs(sharpe_mean) > 1e-8 else 0.0
+        sharpe_stability = (
+            (1.0 - sharpe_std / abs(sharpe_mean)) if abs(sharpe_mean) > 1e-8 else 0.0
+        )
 
         # Warnings
         warn_list: List[str] = []
@@ -423,8 +444,12 @@ class WalkForwardValidator:
         logger.info(
             "Walk-forward complete: %d folds, deployed=fold_%d (Sharpe=%.4f), "
             "best=fold_%d (Sharpe=%.4f), stability=%.4f",
-            len(fold_results), deployed_index, deployed_sharpe,
-            best_sharpe_index, best_sharpe, sharpe_stability,
+            len(fold_results),
+            deployed_index,
+            deployed_sharpe,
+            best_sharpe_index,
+            best_sharpe,
+            sharpe_stability,
         )
 
         return report

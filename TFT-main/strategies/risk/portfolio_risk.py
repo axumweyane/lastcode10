@@ -29,19 +29,21 @@ logger = logging.getLogger(__name__)
 @dataclass
 class VaRResult:
     """Value at Risk calculation result."""
-    parametric_var: float      # from normal distribution assumption
-    historical_var: float      # from actual return distribution
-    cvar_95: float             # Conditional VaR (Expected Shortfall) at 95%
-    confidence: float          # e.g. 0.99
-    horizon_days: int          # e.g. 1
-    portfolio_vol: float       # annualized
-    worst_case_daily: float    # worst observed daily return
-    method_used: str           # which VaR was binding
+
+    parametric_var: float  # from normal distribution assumption
+    historical_var: float  # from actual return distribution
+    cvar_95: float  # Conditional VaR (Expected Shortfall) at 95%
+    confidence: float  # e.g. 0.99
+    horizon_days: int  # e.g. 1
+    portfolio_vol: float  # annualized
+    worst_case_daily: float  # worst observed daily return
+    method_used: str  # which VaR was binding
 
 
 @dataclass
 class CorrelationAlert:
     """Alert when strategy returns become too correlated."""
+
     strategy_a: str
     strategy_b: str
     correlation: float
@@ -53,6 +55,7 @@ class CorrelationAlert:
 @dataclass
 class KillSwitchEvent:
     """Record of a per-strategy kill switch trigger."""
+
     strategy_name: str
     reason: str
     drawdown: float
@@ -63,16 +66,18 @@ class KillSwitchEvent:
 @dataclass
 class CapitalAllocation:
     """Target capital allocation per strategy."""
+
     strategy_name: str
-    target_fraction: float     # fraction of total capital
-    current_fraction: float    # current allocation
-    adjustment: float          # change from current
+    target_fraction: float  # fraction of total capital
+    current_fraction: float  # current allocation
+    adjustment: float  # change from current
     rationale: str
 
 
 @dataclass
 class RiskReport:
     """Complete risk assessment snapshot."""
+
     timestamp: datetime
     var: VaRResult
     correlation_alerts: List[CorrelationAlert]
@@ -101,7 +106,9 @@ class RiskReport:
     def kill_reason(self) -> str:
         reasons = []
         if self.portfolio_breached:
-            reasons.append(f"Portfolio drawdown {self.portfolio_drawdown:.1%} exceeds limit")
+            reasons.append(
+                f"Portfolio drawdown {self.portfolio_drawdown:.1%} exceeds limit"
+            )
         for e in self.kill_events:
             reasons.append(f"{e.strategy_name}: {e.reason}")
         return "; ".join(reasons) if reasons else ""
@@ -161,13 +168,17 @@ class PortfolioRiskManager:
     # ------------------------------------------------------------------
 
     def update_strategy_performance(
-        self, strategy_name: str, perf: StrategyPerformance,
+        self,
+        strategy_name: str,
+        perf: StrategyPerformance,
     ) -> None:
         """Update stored performance for a strategy."""
         self._strategy_performances[strategy_name] = perf
 
     def record_strategy_return(
-        self, strategy_name: str, daily_return: float,
+        self,
+        strategy_name: str,
+        daily_return: float,
     ) -> None:
         """Record a single daily return for a strategy."""
         if strategy_name not in self._strategy_daily_returns:
@@ -212,8 +223,13 @@ class PortfolioRiskManager:
         logger.info(
             "Risk report: DD=%.1f%%, VaR99=%.2f%%, CVaR95=%.2f%%, Sharpe21=%.2f, "
             "%d active / %d killed, %d correlation alerts",
-            dd * 100, var.parametric_var * 100, var.cvar_95 * 100, sharpe_21,
-            active, len(self._killed_strategies), len(corr_alerts),
+            dd * 100,
+            var.parametric_var * 100,
+            var.cvar_95 * 100,
+            sharpe_21,
+            active,
+            len(self._killed_strategies),
+            len(corr_alerts),
         )
 
         return report
@@ -235,9 +251,13 @@ class PortfolioRiskManager:
 
         if len(returns) < 5:
             return VaRResult(
-                parametric_var=0.0, historical_var=0.0, cvar_95=0.0,
-                confidence=self.var_confidence, horizon_days=1,
-                portfolio_vol=0.0, worst_case_daily=0.0,
+                parametric_var=0.0,
+                historical_var=0.0,
+                cvar_95=0.0,
+                confidence=self.var_confidence,
+                horizon_days=1,
+                portfolio_vol=0.0,
+                worst_case_daily=0.0,
                 method_used="insufficient_data",
             )
 
@@ -292,7 +312,7 @@ class PortfolioRiskManager:
             return alerts
 
         for i, name_a in enumerate(strat_names):
-            for name_b in strat_names[i + 1:]:
+            for name_b in strat_names[i + 1 :]:
                 ret_a = self._strategy_daily_returns[name_a]
                 ret_b = self._strategy_daily_returns[name_b]
 
@@ -307,22 +327,26 @@ class PortfolioRiskManager:
                 corr = float(np.corrcoef(a, b)[0, 1])
 
                 if abs(corr) > self.correlation_alert_threshold:
-                    alerts.append(CorrelationAlert(
-                        strategy_a=name_a,
-                        strategy_b=name_b,
-                        correlation=corr,
-                        threshold=self.correlation_alert_threshold,
-                        window_days=min_len,
-                        message=(
-                            f"Strategies {name_a} and {name_b} have {min_len}-day "
-                            f"correlation {corr:.3f} (threshold: "
-                            f"{self.correlation_alert_threshold}). "
-                            f"Diversification benefit reduced."
-                        ),
-                    ))
+                    alerts.append(
+                        CorrelationAlert(
+                            strategy_a=name_a,
+                            strategy_b=name_b,
+                            correlation=corr,
+                            threshold=self.correlation_alert_threshold,
+                            window_days=min_len,
+                            message=(
+                                f"Strategies {name_a} and {name_b} have {min_len}-day "
+                                f"correlation {corr:.3f} (threshold: "
+                                f"{self.correlation_alert_threshold}). "
+                                f"Diversification benefit reduced."
+                            ),
+                        )
+                    )
                     logger.warning(
                         "CORRELATION ALERT: %s / %s = %.3f",
-                        name_a, name_b, corr,
+                        name_a,
+                        name_b,
+                        corr,
                     )
 
         return alerts
@@ -354,8 +378,9 @@ class PortfolioRiskManager:
                     f"limit {self.kill_max_drawdown:.1%}"
                 )
 
-            elif (len(perf.daily_returns) >= 21
-                  and perf.sharpe_21d < self.kill_min_sharpe):
+            elif (
+                len(perf.daily_returns) >= 21 and perf.sharpe_21d < self.kill_min_sharpe
+            ):
                 reason = (
                     f"21d Sharpe {perf.sharpe_21d:.2f} < "
                     f"floor {self.kill_min_sharpe:.2f}"
@@ -384,7 +409,9 @@ class PortfolioRiskManager:
         """Manually re-enable a killed strategy."""
         if strategy_name in self._killed_strategies:
             logger.info(
-                "Strategy %s revived by %s", strategy_name, operator,
+                "Strategy %s revived by %s",
+                strategy_name,
+                operator,
             )
             del self._killed_strategies[strategy_name]
             return True
@@ -461,26 +488,30 @@ class PortfolioRiskManager:
             current = 1.0 / n_active if n_active > 0 else 0.0
 
             sharpe, vol = active_strats[name]
-            results.append(CapitalAllocation(
-                strategy_name=name,
-                target_fraction=target_frac,
-                current_fraction=current,
-                adjustment=target_frac - current,
-                rationale=(
-                    f"Sharpe63d={sharpe:.2f}, Vol={vol:.1%}, "
-                    f"risk-adj={sharpe/vol:.2f}"
-                ),
-            ))
+            results.append(
+                CapitalAllocation(
+                    strategy_name=name,
+                    target_fraction=target_frac,
+                    current_fraction=current,
+                    adjustment=target_frac - current,
+                    rationale=(
+                        f"Sharpe63d={sharpe:.2f}, Vol={vol:.1%}, "
+                        f"risk-adj={sharpe/vol:.2f}"
+                    ),
+                )
+            )
 
         # Add killed strategies with 0 allocation
         for name, event in self._killed_strategies.items():
-            results.append(CapitalAllocation(
-                strategy_name=name,
-                target_fraction=0.0,
-                current_fraction=0.0,
-                adjustment=0.0,
-                rationale=f"KILLED: {event.reason}",
-            ))
+            results.append(
+                CapitalAllocation(
+                    strategy_name=name,
+                    target_fraction=0.0,
+                    current_fraction=0.0,
+                    adjustment=0.0,
+                    rationale=f"KILLED: {event.reason}",
+                )
+            )
 
         results.sort(key=lambda a: a.target_fraction, reverse=True)
         return results

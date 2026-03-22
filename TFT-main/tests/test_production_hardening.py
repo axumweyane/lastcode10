@@ -16,6 +16,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # ── 1. Kafka retention config in docker-compose.yml ─────────────────────────
 
+
 class TestKafkaRetention:
     """Verify Kafka broker service has correct retention config."""
 
@@ -53,14 +54,24 @@ class TestKafkaRetention:
         assert "kafka-broker" in deps
 
     def test_microservices_depend_on_kafka(self):
-        for svc in ["data-ingestion", "sentiment-engine", "tft-predictor",
-                     "trading-engine", "orchestrator"]:
+        for svc in [
+            "data-ingestion",
+            "sentiment-engine",
+            "tft-predictor",
+            "trading-engine",
+            "orchestrator",
+        ]:
             deps = self.compose["services"][svc]["depends_on"]
             assert "kafka-broker" in deps, f"{svc} should depend on kafka-broker"
 
     def test_microservices_have_schema_registry_url(self):
-        for svc in ["data-ingestion", "sentiment-engine", "tft-predictor",
-                     "trading-engine", "orchestrator"]:
+        for svc in [
+            "data-ingestion",
+            "sentiment-engine",
+            "tft-predictor",
+            "trading-engine",
+            "orchestrator",
+        ]:
             env = self.compose["services"][svc]["environment"]
             sr_vars = [e for e in env if "SCHEMA_REGISTRY_URL" in str(e)]
             assert len(sr_vars) == 1, f"{svc} should have SCHEMA_REGISTRY_URL"
@@ -76,12 +87,14 @@ class TestKafkaRetention:
 
 # ── 2. TimescaleDB retention policies in postgres_schema.py ──────────────────
 
+
 class TestTimescaleDBSchema:
     """Verify TimescaleDB hypertables, retention, and continuous aggregates in schema SQL."""
 
     @pytest.fixture(autouse=True)
     def load_schema(self):
         from postgres_schema import CREATE_SCHEMA_SQL
+
         self.sql = CREATE_SCHEMA_SQL
 
     def test_timescaledb_extension(self):
@@ -109,13 +122,21 @@ class TestTimescaleDBSchema:
         assert "add_retention_policy('ohlcv', INTERVAL '365 days'" in self.sql
 
     def test_risk_reports_retention_90d(self):
-        assert "add_retention_policy('paper_risk_reports', INTERVAL '90 days'" in self.sql
+        assert (
+            "add_retention_policy('paper_risk_reports', INTERVAL '90 days'" in self.sql
+        )
 
     def test_execution_stats_retention_90d(self):
-        assert "add_retention_policy('paper_execution_stats', INTERVAL '90 days'" in self.sql
+        assert (
+            "add_retention_policy('paper_execution_stats', INTERVAL '90 days'"
+            in self.sql
+        )
 
     def test_signal_analyses_retention_90d(self):
-        assert "add_retention_policy('paper_signal_analyses', INTERVAL '90 days'" in self.sql
+        assert (
+            "add_retention_policy('paper_signal_analyses', INTERVAL '90 days'"
+            in self.sql
+        )
 
     def test_retention_idempotent(self):
         assert self.sql.count("if_not_exists => true") >= 4
@@ -141,7 +162,7 @@ class TestTimescaleDBSchema:
         for view in ["ohlcv_15m", "ohlcv_1h", "ohlcv_1d"]:
             # Find the section for this view
             idx = self.sql.index(view)
-            section = self.sql[idx:idx + 500]
+            section = self.sql[idx : idx + 500]
             for col in ["open", "high", "low", "close", "volume"]:
                 assert col in section, f"{view} should aggregate {col}"
 
@@ -151,6 +172,7 @@ class TestTimescaleDBSchema:
 
 # ── 3. Schema registry connection cache ──────────────────────────────────────
 
+
 class TestSchemaRegistryCache:
     """Verify singleton pattern and exponential backoff retry."""
 
@@ -158,12 +180,14 @@ class TestSchemaRegistryCache:
     def reset(self):
         sys.path.insert(0, os.path.join(BASE_DIR, "microservices"))
         import microservices.schema_registry as sr
+
         sr.reset_client()
         yield
         sr.reset_client()
 
     def test_singleton_returns_same_instance(self):
         import microservices.schema_registry as sr
+
         with patch.object(sr, "SchemaRegistryClient") as MockClient:
             mock = MagicMock()
             MockClient.return_value = mock
@@ -174,6 +198,7 @@ class TestSchemaRegistryCache:
 
     def test_different_url_creates_new_instance(self):
         import microservices.schema_registry as sr
+
         mock1 = MagicMock()
         mock2 = MagicMock()
         with patch.object(sr, "SchemaRegistryClient", side_effect=[mock1, mock2]):
@@ -185,6 +210,7 @@ class TestSchemaRegistryCache:
 
     def test_retry_with_exponential_backoff(self):
         import microservices.schema_registry as sr
+
         call_times = []
 
         def failing_init(url):
@@ -205,6 +231,7 @@ class TestSchemaRegistryCache:
 
     def test_retry_succeeds_on_second_attempt(self):
         import microservices.schema_registry as sr
+
         attempt = {"count": 0}
 
         def flaky_init(url):
@@ -221,6 +248,7 @@ class TestSchemaRegistryCache:
 
     def test_reset_client_clears_cache(self):
         import microservices.schema_registry as sr
+
         with patch.object(sr, "SchemaRegistryClient") as MockClient:
             mock = MagicMock()
             MockClient.return_value = mock
@@ -230,6 +258,7 @@ class TestSchemaRegistryCache:
 
     def test_thread_safety(self):
         import microservices.schema_registry as sr
+
         results = []
 
         def get_client():
@@ -266,6 +295,7 @@ class TestSchemaRegistryClientAPI:
 
             sys.path.insert(0, os.path.join(BASE_DIR, "microservices"))
             from microservices.schema_registry import SchemaRegistryClient
+
             client = SchemaRegistryClient("http://test:8081")
             client.get_schema("my-subject")
 
@@ -281,6 +311,7 @@ class TestSchemaRegistryClientAPI:
             MockSession.return_value = mock_session
 
             from microservices.schema_registry import SchemaRegistryClient
+
             client = SchemaRegistryClient("http://test:8081")
             subjects = client.get_subjects()
             assert subjects == ["subject1", "subject2"]

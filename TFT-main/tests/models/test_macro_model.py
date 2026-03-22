@@ -2,6 +2,7 @@
 
 import sys
 import os
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import numpy as np
@@ -27,11 +28,14 @@ def sample_data():
     rows = []
     for sym in symbols:
         for i, dt in enumerate(dates):
-            rows.append({
-                "symbol": sym, "timestamp": dt,
-                "close": 100 + i * 0.1 + np.random.normal(0, 1),
-                "volume": 1000000,
-            })
+            rows.append(
+                {
+                    "symbol": sym,
+                    "timestamp": dt,
+                    "close": 100 + i * 0.1 + np.random.normal(0, 1),
+                    "volume": 1000000,
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -72,7 +76,7 @@ def test_confidence_range(model, sample_data):
         "curve_regime": "steepening_rising",
         "current_10y": 4.5,
     }
-    with patch.object(model, '_fetch_macro_data', return_value=mock_macro):
+    with patch.object(model, "_fetch_macro_data", return_value=mock_macro):
         preds = model.predict(sample_data)
         for p in preds:
             assert 0.0 <= p.confidence <= 1.0
@@ -87,7 +91,7 @@ def test_predictions_have_metadata(model, sample_data):
         "curve_regime": "steepening_rising",
         "current_10y": 4.5,
     }
-    with patch.object(model, '_fetch_macro_data', return_value=mock_macro):
+    with patch.object(model, "_fetch_macro_data", return_value=mock_macro):
         preds = model.predict(sample_data)
         assert len(preds) > 0
         for p in preds:
@@ -98,6 +102,6 @@ def test_predictions_have_metadata(model, sample_data):
 
 
 def test_returns_empty_when_no_macro_data(model, sample_data):
-    with patch.object(model, '_fetch_macro_data', return_value=None):
+    with patch.object(model, "_fetch_macro_data", return_value=None):
         preds = model.predict(sample_data)
         assert preds == []

@@ -31,10 +31,11 @@ class SignalDirection(str, Enum):
 @dataclass
 class AlphaScore:
     """Per-symbol alpha output from a strategy."""
+
     symbol: str
-    score: float          # z-scored alpha (positive = long, negative = short)
-    raw_score: float      # pre-normalization score for diagnostics
-    confidence: float     # 0-1, how much the strategy trusts this signal
+    score: float  # z-scored alpha (positive = long, negative = short)
+    raw_score: float  # pre-normalization score for diagnostics
+    confidence: float  # 0-1, how much the strategy trusts this signal
     direction: SignalDirection
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -42,33 +43,38 @@ class AlphaScore:
 @dataclass
 class StrategyOutput:
     """Full output from a strategy's generate_signals() call."""
+
     strategy_name: str
     timestamp: datetime
     scores: List[AlphaScore]
-    strategy_sharpe_63d: float = 0.0   # rolling 63-day Sharpe for weighting
-    strategy_sharpe_21d: float = 0.0   # rolling 21-day Sharpe for fast regime adapt
+    strategy_sharpe_63d: float = 0.0  # rolling 63-day Sharpe for weighting
+    strategy_sharpe_21d: float = 0.0  # rolling 21-day Sharpe for fast regime adapt
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convert scores to DataFrame for easy combination."""
         if not self.scores:
-            return pd.DataFrame(columns=["symbol", "score", "raw_score",
-                                         "confidence", "direction"])
+            return pd.DataFrame(
+                columns=["symbol", "score", "raw_score", "confidence", "direction"]
+            )
         rows = []
         for s in self.scores:
-            rows.append({
-                "symbol": s.symbol,
-                "score": s.score,
-                "raw_score": s.raw_score,
-                "confidence": s.confidence,
-                "direction": s.direction.value,
-            })
+            rows.append(
+                {
+                    "symbol": s.symbol,
+                    "score": s.score,
+                    "raw_score": s.raw_score,
+                    "confidence": s.confidence,
+                    "direction": s.direction.value,
+                }
+            )
         return pd.DataFrame(rows)
 
 
 @dataclass
 class StrategyPerformance:
     """Rolling performance tracking for a strategy."""
+
     strategy_name: str
     daily_returns: pd.Series = field(default_factory=lambda: pd.Series(dtype=float))
     cumulative_pnl: float = 0.0
@@ -83,16 +89,17 @@ class StrategyPerformance:
 
     def update(self, daily_return: float) -> None:
         """Append a daily return and recalculate metrics."""
-        self.daily_returns = pd.concat([
-            self.daily_returns,
-            pd.Series([daily_return])
-        ]).reset_index(drop=True)
+        self.daily_returns = pd.concat(
+            [self.daily_returns, pd.Series([daily_return])]
+        ).reset_index(drop=True)
 
         self.cumulative_pnl += daily_return
         self.peak_pnl = max(self.peak_pnl, self.cumulative_pnl)
 
         if self.peak_pnl > 0:
-            self.current_drawdown = (self.peak_pnl - self.cumulative_pnl) / self.peak_pnl
+            self.current_drawdown = (
+                self.peak_pnl - self.cumulative_pnl
+            ) / self.peak_pnl
         else:
             self.current_drawdown = 0.0
 
@@ -155,17 +162,22 @@ class BaseStrategy(ABC):
     def get_performance(self) -> StrategyPerformance:
         """Return rolling performance metrics for ensemble weighting."""
 
-    def should_be_killed(self, max_drawdown: float = 0.20,
-                         min_sharpe: float = -1.0) -> Optional[str]:
+    def should_be_killed(
+        self, max_drawdown: float = 0.20, min_sharpe: float = -1.0
+    ) -> Optional[str]:
         """
         Check per-strategy kill switch conditions.
         Returns kill reason string if triggered, None otherwise.
         """
         perf = self.get_performance()
         if perf.current_drawdown >= max_drawdown:
-            return (f"Strategy drawdown {perf.current_drawdown:.1%} "
-                    f"exceeds limit {max_drawdown:.1%}")
+            return (
+                f"Strategy drawdown {perf.current_drawdown:.1%} "
+                f"exceeds limit {max_drawdown:.1%}"
+            )
         if len(perf.daily_returns) >= 21 and perf.sharpe_21d < min_sharpe:
-            return (f"21-day Sharpe {perf.sharpe_21d:.2f} "
-                    f"below kill threshold {min_sharpe:.2f}")
+            return (
+                f"21-day Sharpe {perf.sharpe_21d:.2f} "
+                f"below kill threshold {min_sharpe:.2f}"
+            )
         return None

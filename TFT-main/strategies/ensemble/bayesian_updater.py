@@ -27,6 +27,7 @@ DEFAULT_MAX_WINDOW = 500
 @dataclass
 class StrategyBeta:
     """Beta distribution state for a single strategy."""
+
     strategy_name: str
     alpha: float = 1.0
     beta: float = 1.0
@@ -47,7 +48,7 @@ class StrategyBeta:
         total = self.alpha + self.beta
         if total <= 0:
             return 0.0
-        return (self.alpha * self.beta) / (total ** 2 * (total + 1))
+        return (self.alpha * self.beta) / (total**2 * (total + 1))
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -149,9 +150,7 @@ class BayesianWeightUpdater:
         data = {
             "decay_factor": self.decay_factor,
             "max_window": self.max_window,
-            "strategies": {
-                name: asdict(s) for name, s in self._strategies.items()
-            },
+            "strategies": {name: asdict(s) for name, s in self._strategies.items()},
         }
         return json.dumps(data, indent=2)
 
@@ -171,10 +170,15 @@ class BayesianWeightUpdater:
         """Return list of (strategy_name, alpha, beta, n_updates, state_json) tuples for DB."""
         rows = []
         for name, s in self._strategies.items():
-            rows.append((
-                name, s.alpha, s.beta, s.n_updates,
-                json.dumps(s.to_dict()),
-            ))
+            rows.append(
+                (
+                    name,
+                    s.alpha,
+                    s.beta,
+                    s.n_updates,
+                    json.dumps(s.to_dict()),
+                )
+            )
         return rows
 
     def load_from_rows(self, rows: List[Tuple]) -> None:
@@ -193,6 +197,8 @@ class BayesianWeightUpdater:
         logger.info(
             "Loaded Bayesian state for %d strategies: %s",
             len(rows),
-            {name: f"a={s.alpha:.2f} b={s.beta:.2f} w={s.weight:.3f}"
-             for name, s in self._strategies.items()},
+            {
+                name: f"a={s.alpha:.2f} b={s.beta:.2f} w={s.weight:.3f}"
+                for name, s in self._strategies.items()
+            },
         )

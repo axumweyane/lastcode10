@@ -36,16 +36,18 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_NUM_SLICES = 5
 DEFAULT_SLICE_INTERVAL_S = 60
-DEFAULT_ADV_CAP_PCT = 0.10       # 10 % of average daily volume
-DEFAULT_LIMIT_OFFSET_BPS = 5     # limit price offset from mid in bps
+DEFAULT_ADV_CAP_PCT = 0.10  # 10 % of average daily volume
+DEFAULT_LIMIT_OFFSET_BPS = 5  # limit price offset from mid in bps
 DEFAULT_VOLUME_CACHE_TTL_S = 86_400  # 1 day
 
 
 # ── Data classes ───────────────────────────────────────────────────────────────
 
+
 @dataclass
 class SliceResult:
     """Result of one time-slice within a VWAP execution."""
+
     slice_index: int
     requested_qty: float
     filled_qty: float
@@ -58,6 +60,7 @@ class SliceResult:
 @dataclass
 class VWAPExecutionResult:
     """Aggregate result of a full VWAP execution."""
+
     ticker: str
     side: str
     total_requested: float
@@ -97,6 +100,7 @@ class VWAPExecutionResult:
 
 # ── Volume profile ─────────────────────────────────────────────────────────────
 
+
 class VolumeProfileCache:
     """
     Caches intraday volume distribution per ticker.
@@ -109,8 +113,19 @@ class VolumeProfileCache:
 
     # U-shaped default: elevated at open/close, dip mid-day
     DEFAULT_PROFILE: List[float] = [
-        0.12, 0.09, 0.08, 0.07, 0.06, 0.06, 0.06,
-        0.06, 0.06, 0.07, 0.08, 0.09, 0.10,
+        0.12,
+        0.09,
+        0.08,
+        0.07,
+        0.06,
+        0.06,
+        0.06,
+        0.06,
+        0.06,
+        0.07,
+        0.08,
+        0.09,
+        0.10,
     ]
 
     def __init__(self, ttl_s: int = DEFAULT_VOLUME_CACHE_TTL_S):
@@ -169,6 +184,7 @@ class VolumeProfileCache:
 
 
 # ── VWAP Execution Model ──────────────────────────────────────────────────────
+
 
 class VWAPExecutionModel:
     """
@@ -240,7 +256,11 @@ class VWAPExecutionModel:
             if quantity > max_qty:
                 logger.warning(
                     "VWAP %s %s: capping %d → %d (10%% of ADV %d)",
-                    side.value, ticker, int(quantity), max_qty, int(adv),
+                    side.value,
+                    ticker,
+                    int(quantity),
+                    max_qty,
+                    int(adv),
                 )
                 quantity = max_qty
                 result.total_requested = quantity
@@ -253,7 +273,9 @@ class VWAPExecutionModel:
         try:
             await self._execute_slices(ticker, side, quantity, current_price, result)
         except Exception as e:
-            logger.error("VWAP execution error for %s: %s — falling back to market", ticker, e)
+            logger.error(
+                "VWAP execution error for %s: %s — falling back to market", ticker, e
+            )
             result.error = str(e)
             await self._fallback_market(ticker, side, quantity, result)
 
@@ -318,11 +340,15 @@ class VWAPExecutionModel:
                 if order_info is not None:
                     filled_qty = order_info.filled_quantity
                     filled_price = order_info.filled_avg_price
-                    status_str = order_info.status.value if order_info.status else "unknown"
+                    status_str = (
+                        order_info.status.value if order_info.status else "unknown"
+                    )
                 else:
                     status_str = "no_info"
             elif order_result:
-                status_str = order_result.status.value if order_result.status else "failed"
+                status_str = (
+                    order_result.status.value if order_result.status else "failed"
+                )
 
             slice_result = SliceResult(
                 slice_index=i,
@@ -341,8 +367,12 @@ class VWAPExecutionModel:
 
             logger.info(
                 "VWAP %s %s slice %d/%d: req=%d filled=%d @ %s (remaining=%d)",
-                side.value, ticker, i + 1, self.num_slices,
-                slice_qty, int(filled_qty),
+                side.value,
+                ticker,
+                i + 1,
+                self.num_slices,
+                slice_qty,
+                int(filled_qty),
                 f"${filled_price:.2f}" if filled_price else "N/A",
                 int(remaining),
             )
@@ -353,10 +383,19 @@ class VWAPExecutionModel:
 
         # Sweep: if shares remain after all slices, send market order
         if remaining >= 1:
-            logger.info("VWAP %s %s: sweeping %d remaining shares via market order", side.value, ticker, int(remaining))
-            sweep = await self.broker.submit_order(OrderRequest(
-                ticker=ticker, side=side, quantity=int(remaining),
-            ))
+            logger.info(
+                "VWAP %s %s: sweeping %d remaining shares via market order",
+                side.value,
+                ticker,
+                int(remaining),
+            )
+            sweep = await self.broker.submit_order(
+                OrderRequest(
+                    ticker=ticker,
+                    side=side,
+                    quantity=int(remaining),
+                )
+            )
             sweep_filled = 0.0
             sweep_price = None
             if sweep and sweep.success and sweep.order_id:
@@ -365,15 +404,17 @@ class VWAPExecutionModel:
                 if info is not None:
                     sweep_filled = info.filled_quantity
                     sweep_price = info.filled_avg_price
-            result.slices.append(SliceResult(
-                slice_index=self.num_slices,
-                requested_qty=int(remaining),
-                filled_qty=sweep_filled,
-                filled_avg_price=sweep_price,
-                order_id=sweep.order_id if sweep else None,
-                status="sweep",
-                timestamp=datetime.now(timezone.utc).isoformat(),
-            ))
+            result.slices.append(
+                SliceResult(
+                    slice_index=self.num_slices,
+                    requested_qty=int(remaining),
+                    filled_qty=sweep_filled,
+                    filled_avg_price=sweep_price,
+                    order_id=sweep.order_id if sweep else None,
+                    status="sweep",
+                    timestamp=datetime.now(timezone.utc).isoformat(),
+                )
+            )
             if sweep_filled > 0 and sweep_price is not None:
                 total_cost += sweep_filled * sweep_price
                 remaining -= sweep_filled
@@ -390,12 +431,14 @@ class VWAPExecutionModel:
             if side == OrderSide.BUY:
                 result.slippage_bps = (
                     (result.filled_avg_price - result.expected_price)
-                    / result.expected_price * 10_000
+                    / result.expected_price
+                    * 10_000
                 )
             else:
                 result.slippage_bps = (
                     (result.expected_price - result.filled_avg_price)
-                    / result.expected_price * 10_000
+                    / result.expected_price
+                    * 10_000
                 )
 
     async def _fallback_market(
@@ -408,9 +451,13 @@ class VWAPExecutionModel:
         """Fall back to a single market order."""
         result.used_fallback = True
         try:
-            order_result = await self.broker.submit_order(OrderRequest(
-                ticker=ticker, side=side, quantity=int(quantity),
-            ))
+            order_result = await self.broker.submit_order(
+                OrderRequest(
+                    ticker=ticker,
+                    side=side,
+                    quantity=int(quantity),
+                )
+            )
             filled_qty = 0.0
             filled_price = None
             if order_result and order_result.success and order_result.order_id:
@@ -422,17 +469,23 @@ class VWAPExecutionModel:
 
             result.total_filled = filled_qty
             result.filled_avg_price = filled_price or 0.0
-            result.slices.append(SliceResult(
-                slice_index=0,
-                requested_qty=int(quantity),
-                filled_qty=filled_qty,
-                filled_avg_price=filled_price,
-                order_id=order_result.order_id if order_result else None,
-                status="fallback_market",
-                timestamp=datetime.now(timezone.utc).isoformat(),
-            ))
+            result.slices.append(
+                SliceResult(
+                    slice_index=0,
+                    requested_qty=int(quantity),
+                    filled_qty=filled_qty,
+                    filled_avg_price=filled_price,
+                    order_id=order_result.order_id if order_result else None,
+                    status="fallback_market",
+                    timestamp=datetime.now(timezone.utc).isoformat(),
+                )
+            )
         except Exception as fallback_err:
-            logger.error("VWAP fallback market order also failed for %s: %s", ticker, fallback_err)
+            logger.error(
+                "VWAP fallback market order also failed for %s: %s",
+                ticker,
+                fallback_err,
+            )
             result.error += f"; fallback also failed: {fallback_err}"
 
     def get_execution_history(self, n: int = 50) -> List[VWAPExecutionResult]:
@@ -450,9 +503,13 @@ class VWAPExecutionModel:
 
         return {
             "total_executions": len(history),
-            "avg_slippage_bps": round(sum(slippages) / len(slippages), 2) if slippages else 0.0,
+            "avg_slippage_bps": (
+                round(sum(slippages) / len(slippages), 2) if slippages else 0.0
+            ),
             "max_slippage_bps": round(max(slippages), 2) if slippages else 0.0,
-            "avg_fill_rate": round(sum(fill_rates) / len(fill_rates), 4) if fill_rates else 0.0,
+            "avg_fill_rate": (
+                round(sum(fill_rates) / len(fill_rates), 4) if fill_rates else 0.0
+            ),
             "fallback_count": fallbacks,
             "adv_capped_count": sum(1 for r in history if r.adv_capped),
         }

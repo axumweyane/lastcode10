@@ -27,9 +27,7 @@ from models.base import BaseTFTModel, ModelInfo, ModelPrediction
 
 logger = logging.getLogger(__name__)
 
-DEEP_SURROGATE_REPO_PATH = os.getenv(
-    "DEEP_SURROGATE_REPO_PATH", "/opt/deep_surrogate"
-)
+DEEP_SURROGATE_REPO_PATH = os.getenv("DEEP_SURROGATE_REPO_PATH", "/opt/deep_surrogate")
 DEEP_SURROGATE_MODEL_TYPE = os.getenv("DEEP_SURROGATE_MODEL_TYPE", "heston")
 
 # Tail risk index thresholds
@@ -102,23 +100,17 @@ class DeepSurrogateModel(BaseTFTModel):
             return []
 
         predictions = []
-        symbols = (
-            data["symbol"].unique() if "symbol" in data.columns else ["SPY"]
-        )
+        symbols = data["symbol"].unique() if "symbol" in data.columns else ["SPY"]
 
         for symbol in symbols:
             try:
                 sym_data = (
-                    data[data["symbol"] == symbol]
-                    if "symbol" in data.columns
-                    else data
+                    data[data["symbol"] == symbol] if "symbol" in data.columns else data
                 )
                 preds = self._predict_symbol(symbol, sym_data)
                 predictions.extend(preds)
             except Exception as e:
-                logger.error(
-                    "DeepSurrogate prediction failed for %s: %s", symbol, e
-                )
+                logger.error("DeepSurrogate prediction failed for %s: %s", symbol, e)
 
         logger.info("DeepSurrogate generated %d predictions", len(predictions))
         return predictions
@@ -181,9 +173,7 @@ class DeepSurrogateModel(BaseTFTModel):
 
         return results
 
-    def _compute_iv_surface(
-        self, df: pd.DataFrame
-    ) -> Optional[Dict[str, np.ndarray]]:
+    def _compute_iv_surface(self, df: pd.DataFrame) -> Optional[Dict[str, np.ndarray]]:
         """Use surrogate to compute IV for all strikes/expiries."""
         required = ["kappa", "theta", "sigma", "rho", "v0", "rate", "tau", "moneyness"]
         if not all(col in df.columns for col in required):
@@ -196,16 +186,12 @@ class DeepSurrogateModel(BaseTFTModel):
                 return None
 
             ivs = self._surrogate.get_iv(input_df, model_type=self._model_type)
-            deltas = self._surrogate.get_iv_delta(
-                input_df, model_type=self._model_type
-            )
+            deltas = self._surrogate.get_iv_delta(input_df, model_type=self._model_type)
 
             return {
                 "iv": np.array(ivs) if not isinstance(ivs, np.ndarray) else ivs,
                 "delta": (
-                    np.array(deltas)
-                    if not isinstance(deltas, np.ndarray)
-                    else deltas
+                    np.array(deltas) if not isinstance(deltas, np.ndarray) else deltas
                 ),
                 "moneyness": input_df["moneyness"].values,
                 "tau": input_df["tau"].values,
@@ -278,7 +264,11 @@ class DeepSurrogateModel(BaseTFTModel):
         # Add momentum component if we have history
         if len(self._tail_risk_history) >= 5:
             recent = np.mean(self._tail_risk_history[-5:])
-            older = np.mean(self._tail_risk_history[-21:-5]) if len(self._tail_risk_history) >= 21 else recent
+            older = (
+                np.mean(self._tail_risk_history[-21:-5])
+                if len(self._tail_risk_history) >= 21
+                else recent
+            )
             momentum = max(0.0, recent - older)
             tail_risk = min(1.0, tail_risk + momentum * 0.5)
 
@@ -365,7 +355,16 @@ class DeepSurrogateModel(BaseTFTModel):
             df = df.copy()
             df["moneyness"] = df["strike"] / df["spot"]
 
-        surrogate_cols = ["kappa", "theta", "sigma", "rho", "v0", "rate", "tau", "moneyness"]
+        surrogate_cols = [
+            "kappa",
+            "theta",
+            "sigma",
+            "rho",
+            "v0",
+            "rate",
+            "tau",
+            "moneyness",
+        ]
 
         def objective(params):
             kappa, theta, sigma, rho, v0 = params
@@ -378,7 +377,8 @@ class DeepSurrogateModel(BaseTFTModel):
 
             try:
                 model_prices = self._surrogate.get_price(
-                    cal_df[surrogate_cols], model_type=self._model_type,
+                    cal_df[surrogate_cols],
+                    model_type=self._model_type,
                 )
                 model_prices = np.array(model_prices).flatten()
                 if len(model_prices) != len(market_prices):
@@ -390,11 +390,11 @@ class DeepSurrogateModel(BaseTFTModel):
                 return 1e10
 
         bounds = [
-            (0.01, 20.0),   # kappa (mean reversion speed)
-            (0.001, 1.0),   # theta (long-run variance)
-            (0.01, 2.0),    # sigma (vol of vol)
-            (-0.99, 0.0),   # rho (correlation, negative for equities)
-            (0.001, 1.0),   # v0 (initial variance)
+            (0.01, 20.0),  # kappa (mean reversion speed)
+            (0.001, 1.0),  # theta (long-run variance)
+            (0.01, 2.0),  # sigma (vol of vol)
+            (-0.99, 0.0),  # rho (correlation, negative for equities)
+            (0.001, 1.0),  # v0 (initial variance)
         ]
 
         # Multi-start: deterministic first, then random
@@ -403,13 +403,15 @@ class DeepSurrogateModel(BaseTFTModel):
         ]
         rng = np.random.default_rng(42)
         for _ in range(n_restarts - 1):
-            starting_points.append([
-                rng.uniform(0.5, 10.0),    # kappa
-                rng.uniform(0.01, 0.15),   # theta
-                rng.uniform(0.1, 1.0),     # sigma
-                rng.uniform(-0.95, -0.2),  # rho
-                rng.uniform(0.01, 0.15),   # v0
-            ])
+            starting_points.append(
+                [
+                    rng.uniform(0.5, 10.0),  # kappa
+                    rng.uniform(0.01, 0.15),  # theta
+                    rng.uniform(0.1, 1.0),  # sigma
+                    rng.uniform(-0.95, -0.2),  # rho
+                    rng.uniform(0.01, 0.15),  # v0
+                ]
+            )
 
         best_result = None
         best_fun = float("inf")
@@ -417,7 +419,10 @@ class DeepSurrogateModel(BaseTFTModel):
         for x0 in starting_points:
             try:
                 result = minimize(
-                    objective, x0, method="L-BFGS-B", bounds=bounds,
+                    objective,
+                    x0,
+                    method="L-BFGS-B",
+                    bounds=bounds,
                     options={"maxiter": 200, "ftol": 1e-10},
                 )
                 if result.fun < best_fun:
@@ -434,7 +439,7 @@ class DeepSurrogateModel(BaseTFTModel):
 
         # Feller condition: 2*kappa*theta > sigma^2
         # When satisfied, variance process stays strictly positive
-        feller = 2.0 * kappa * theta > sigma ** 2
+        feller = 2.0 * kappa * theta > sigma**2
 
         calibrated = {
             "kappa": round(kappa, 6),
@@ -453,13 +458,21 @@ class DeepSurrogateModel(BaseTFTModel):
                 "Heston calibration: Feller condition NOT satisfied "
                 "(2*kappa*theta=%.4f < sigma^2=%.4f). "
                 "Variance process may hit zero.",
-                2 * kappa * theta, sigma ** 2,
+                2 * kappa * theta,
+                sigma**2,
             )
 
         logger.info(
             "Heston calibrated from %d options: kappa=%.3f theta=%.4f "
             "sigma=%.3f rho=%.3f v0=%.4f (error=%.6f, feller=%s)",
-            len(df), kappa, theta, sigma, rho, v0, best_fun, feller,
+            len(df),
+            kappa,
+            theta,
+            sigma,
+            rho,
+            v0,
+            best_fun,
+            feller,
         )
         return calibrated
 
@@ -478,9 +491,7 @@ class DeepSurrogateModel(BaseTFTModel):
 
             self._surrogate = DeepSurrogate(self._model_type)
             self._is_loaded = True
-            logger.info(
-                "DeepSurrogate loaded (model_type=%s)", self._model_type
-            )
+            logger.info("DeepSurrogate loaded (model_type=%s)", self._model_type)
             return True
         except ImportError as e:
             logger.warning(
@@ -503,9 +514,7 @@ class DeepSurrogateModel(BaseTFTModel):
             is_loaded=self._is_loaded,
             metrics={
                 "tail_risk_latest": (
-                    self._tail_risk_history[-1]
-                    if self._tail_risk_history
-                    else 0.0
+                    self._tail_risk_history[-1] if self._tail_risk_history else 0.0
                 ),
                 "param_history_length": len(self._param_history),
             },

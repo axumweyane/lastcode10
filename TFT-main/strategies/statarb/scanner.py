@@ -32,14 +32,15 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TradingPair:
     """A validated cointegrated pair ready for trading."""
-    symbol_a: str                   # the "Y" leg (dependent variable)
-    symbol_b: str                   # the "X" leg (independent variable)
-    hedge_ratio: float              # OLS beta: units of B per unit of A
-    coint_pvalue: float             # Engle-Granger p-value (lower = stronger)
-    half_life: float                # mean-reversion half-life in trading days
-    spread_mean: float              # rolling spread mean at scan time
-    spread_std: float               # rolling spread std at scan time
-    correlation: float              # price correlation
+
+    symbol_a: str  # the "Y" leg (dependent variable)
+    symbol_b: str  # the "X" leg (independent variable)
+    hedge_ratio: float  # OLS beta: units of B per unit of A
+    coint_pvalue: float  # Engle-Granger p-value (lower = stronger)
+    half_life: float  # mean-reversion half-life in trading days
+    spread_mean: float  # rolling spread mean at scan time
+    spread_std: float  # rolling spread std at scan time
+    correlation: float  # price correlation
     sector_a: str = ""
     sector_b: str = ""
     scan_date: Optional[datetime] = None
@@ -99,9 +100,7 @@ class PairScanner:
         )
 
         # Pivot to wide format: dates x symbols
-        wide = prices.pivot_table(
-            index="timestamp", columns="symbol", values="close"
-        )
+        wide = prices.pivot_table(index="timestamp", columns="symbol", values="close")
         # Drop symbols with too many NaN values
         min_obs = self.config.lookback_window
         wide = wide.dropna(axis=1, thresh=min_obs)
@@ -151,18 +150,23 @@ class PairScanner:
 
         # Sort by p-value (best first), cap at max_pairs
         validated.sort(key=lambda p: p.coint_pvalue)
-        validated = validated[:self.config.max_pairs]
+        validated = validated[: self.config.max_pairs]
 
         logger.info(
             "Pair scan complete: %d valid pairs from %d candidates",
-            len(validated), len(candidates),
+            len(validated),
+            len(candidates),
         )
 
         for p in validated[:5]:
             logger.info(
                 "  %s/%s: pval=%.4f, HL=%.1fd, hedge=%.3f, corr=%.3f",
-                p.symbol_a, p.symbol_b, p.coint_pvalue,
-                p.half_life, p.hedge_ratio, p.correlation,
+                p.symbol_a,
+                p.symbol_b,
+                p.coint_pvalue,
+                p.half_life,
+                p.hedge_ratio,
+                p.correlation,
             )
 
         return validated
@@ -268,8 +272,10 @@ class PairScanner:
 # Statistical helpers
 # ---------------------------------------------------------------------------
 
+
 def _ols_hedge_ratio(
-    y: np.ndarray, x: np.ndarray,
+    y: np.ndarray,
+    x: np.ndarray,
 ) -> Tuple[float, float]:
     """
     Ordinary Least Squares: y = intercept + beta * x.

@@ -39,7 +39,9 @@ class AlpacaBroker(BaseBroker):
     ):
         self.api_key = api_key or os.getenv("ALPACA_API_KEY", "")
         self.secret_key = secret_key or os.getenv("ALPACA_SECRET_KEY", "")
-        self.base_url = (base_url or os.getenv("ALPACA_BASE_URL", PAPER_BASE_URL)).rstrip("/")
+        self.base_url = (
+            base_url or os.getenv("ALPACA_BASE_URL", PAPER_BASE_URL)
+        ).rstrip("/")
         self._session: Optional[aiohttp.ClientSession] = None
 
     @property
@@ -52,7 +54,9 @@ class AlpacaBroker(BaseBroker):
 
     async def connect(self) -> None:
         if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
+            self._session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=30)
+            )
         logger.info("AlpacaBroker connected (base_url=%s)", self.base_url)
 
     async def disconnect(self) -> None:
@@ -84,7 +88,9 @@ class AlpacaBroker(BaseBroker):
                     # Multi-status for bulk close
                     return await resp.json()
                 body = await resp.text()
-                logger.error("Alpaca %s %s -> %s: %s", method, endpoint, resp.status, body)
+                logger.error(
+                    "Alpaca %s %s -> %s: %s", method, endpoint, resp.status, body
+                )
                 return None
         except Exception as e:
             logger.error("Alpaca API call failed %s %s: %s", method, endpoint, e)
@@ -208,7 +214,11 @@ class AlpacaBroker(BaseBroker):
             time_in_force=TimeInForce(data.get("time_in_force", "day")),
             limit_price=float(data["limit_price"]) if data.get("limit_price") else None,
             stop_price=float(data["stop_price"]) if data.get("stop_price") else None,
-            filled_avg_price=float(data["filled_avg_price"]) if data.get("filled_avg_price") else None,
+            filled_avg_price=(
+                float(data["filled_avg_price"])
+                if data.get("filled_avg_price")
+                else None
+            ),
             created_at=_parse_timestamp(data.get("created_at")),
             updated_at=_parse_timestamp(data.get("updated_at")),
             raw=data,
@@ -219,7 +229,9 @@ class AlpacaBroker(BaseBroker):
     async def close_position(self, ticker: str) -> OrderResult:
         data = await self._api_call("DELETE", f"/v2/positions/{ticker}")
         if data is None:
-            return OrderResult(success=False, message=f"Failed to close position {ticker}")
+            return OrderResult(
+                success=False, message=f"Failed to close position {ticker}"
+            )
         return OrderResult(
             success=True,
             order_id=data.get("id"),
@@ -247,6 +259,7 @@ class AlpacaBroker(BaseBroker):
             if not result.success:
                 # Retry up to 2 more times with brief pause
                 import asyncio
+
                 for attempt in range(2):
                     await asyncio.sleep(1)
                     result = await self.close_position(pos.ticker)

@@ -20,8 +20,11 @@ import numpy as np
 import pandas as pd
 
 from strategies.base import (
-    AlphaScore, BaseStrategy, SignalDirection,
-    StrategyOutput, StrategyPerformance,
+    AlphaScore,
+    BaseStrategy,
+    SignalDirection,
+    StrategyOutput,
+    StrategyPerformance,
 )
 from strategies.options.config import GammaScalpConfig
 from strategies.options.infrastructure.vol_monitor import VolMonitor
@@ -87,7 +90,7 @@ class GammaScalping(BaseStrategy):
 
             # Daily gamma P&L ≈ 0.5 * gamma * (daily_move)^2
             expected_daily_move = spot * garch_rv / np.sqrt(252)
-            daily_gamma_pnl = 0.5 * gamma_estimate * expected_daily_move ** 2
+            daily_gamma_pnl = 0.5 * gamma_estimate * expected_daily_move**2
 
             # Daily theta ≈ -S * N'(0) * vol / (2 * sqrt(T)) / 365
             daily_theta = -spot * 0.3989 * estimated_iv / (2 * sqrt_t) / 365
@@ -99,36 +102,42 @@ class GammaScalping(BaseStrategy):
                 continue  # theta would eat the gamma — skip
 
             # Straddle premium estimate
-            straddle_premium = spot * estimated_iv * sqrt_t * 0.80  # ~80% of theoretical
+            straddle_premium = (
+                spot * estimated_iv * sqrt_t * 0.80
+            )  # ~80% of theoretical
 
             # Score: higher RV-IV spread → stronger signal
             raw_score = rv_iv_spread / 0.10  # normalize: 10 vol pts → score 1.0
             confidence = min(rv_iv_spread / 0.15, 0.90)
 
-            scores.append(AlphaScore(
-                symbol=symbol,
-                score=raw_score,
-                raw_score=rv_iv_spread,
-                confidence=confidence,
-                direction=SignalDirection.LONG,  # buying straddle = long vol
-                metadata={
-                    "strategy_type": "gamma_scalp",
-                    "estimated_iv": round(estimated_iv, 4),
-                    "rv_21d": round(rv_21d, 4),
-                    "garch_rv_forecast": round(garch_rv, 4),
-                    "rv_iv_spread": round(rv_iv_spread, 4),
-                    "gamma_estimate": round(gamma_estimate, 6),
-                    "daily_gamma_pnl": round(daily_gamma_pnl, 4),
-                    "daily_theta": round(daily_theta, 4),
-                    "net_daily_estimate": round(net_daily, 4),
-                    "straddle_premium": round(straddle_premium, 2),
-                    "spot": round(spot, 2),
-                    "hedge_freq_hours": self.config.hedge_frequency_hours,
-                },
-            ))
+            scores.append(
+                AlphaScore(
+                    symbol=symbol,
+                    score=raw_score,
+                    raw_score=rv_iv_spread,
+                    confidence=confidence,
+                    direction=SignalDirection.LONG,  # buying straddle = long vol
+                    metadata={
+                        "strategy_type": "gamma_scalp",
+                        "estimated_iv": round(estimated_iv, 4),
+                        "rv_21d": round(rv_21d, 4),
+                        "garch_rv_forecast": round(garch_rv, 4),
+                        "rv_iv_spread": round(rv_iv_spread, 4),
+                        "gamma_estimate": round(gamma_estimate, 6),
+                        "daily_gamma_pnl": round(daily_gamma_pnl, 4),
+                        "daily_theta": round(daily_theta, 4),
+                        "net_daily_estimate": round(net_daily, 4),
+                        "straddle_premium": round(straddle_premium, 2),
+                        "spot": round(spot, 2),
+                        "hedge_freq_hours": self.config.hedge_frequency_hours,
+                    },
+                )
+            )
 
         scores.sort(key=lambda s: s.score, reverse=True)
-        logger.info("%s: %d signals from %d symbols", self.name, len(scores), len(symbols))
+        logger.info(
+            "%s: %d signals from %d symbols", self.name, len(scores), len(symbols)
+        )
 
         return StrategyOutput(
             strategy_name=self.name,

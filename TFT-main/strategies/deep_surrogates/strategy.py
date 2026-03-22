@@ -90,7 +90,9 @@ class DeepSurrogateStrategy(BaseStrategy):
         self._composite_tail_risk: float = 0.0
 
     def initialize(self, historical_data: pd.DataFrame) -> None:
-        if self._manager is not None and self._manager.is_model_loaded("deep_surrogates"):
+        if self._manager is not None and self._manager.is_model_loaded(
+            "deep_surrogates"
+        ):
             self._initialized = True
             logger.info("DeepSurrogateStrategy initialized")
         else:
@@ -102,7 +104,9 @@ class DeepSurrogateStrategy(BaseStrategy):
         if not self._initialized:
             self.initialize(data)
 
-        if self._manager is None or not self._manager.is_model_loaded("deep_surrogates"):
+        if self._manager is None or not self._manager.is_model_loaded(
+            "deep_surrogates"
+        ):
             return self._empty_output()
 
         if data.empty:
@@ -139,36 +143,40 @@ class DeepSurrogateStrategy(BaseStrategy):
 
                 # Higher tail risk = more crash risk = bearish alpha
                 raw_score = -tail_risk
-                scores.append(AlphaScore(
-                    symbol=pred.symbol,
-                    score=raw_score,
-                    raw_score=raw_score,
-                    confidence=min(max(pred.confidence, 0.0), 1.0),
-                    direction=SignalDirection.NEUTRAL,  # set after z-scoring
-                    metadata={
-                        "signal_type": "tail_risk",
-                        "tail_risk_index": tail_risk,
-                        "heston_sigma": pred.metadata.get("heston_sigma", 0),
-                        "heston_rho": pred.metadata.get("heston_rho", 0),
-                        "asset_class": "options",
-                    },
-                ))
+                scores.append(
+                    AlphaScore(
+                        symbol=pred.symbol,
+                        score=raw_score,
+                        raw_score=raw_score,
+                        confidence=min(max(pred.confidence, 0.0), 1.0),
+                        direction=SignalDirection.NEUTRAL,  # set after z-scoring
+                        metadata={
+                            "signal_type": "tail_risk",
+                            "tail_risk_index": tail_risk,
+                            "heston_sigma": pred.metadata.get("heston_sigma", 0),
+                            "heston_rho": pred.metadata.get("heston_rho", 0),
+                            "asset_class": "options",
+                        },
+                    )
+                )
 
             # Process IV surface signals
             for pred in iv_surface_preds:
                 raw_score = pred.predicted_value  # already directional from model
-                scores.append(AlphaScore(
-                    symbol=pred.symbol,
-                    score=raw_score,
-                    raw_score=raw_score,
-                    confidence=min(max(pred.confidence, 0.0), 1.0),
-                    direction=SignalDirection.NEUTRAL,
-                    metadata={
-                        "signal_type": "iv_surface",
-                        "atm_iv": pred.metadata.get("atm_iv", 0),
-                        "asset_class": "options",
-                    },
-                ))
+                scores.append(
+                    AlphaScore(
+                        symbol=pred.symbol,
+                        score=raw_score,
+                        raw_score=raw_score,
+                        confidence=min(max(pred.confidence, 0.0), 1.0),
+                        direction=SignalDirection.NEUTRAL,
+                        metadata={
+                            "signal_type": "iv_surface",
+                            "atm_iv": pred.metadata.get("atm_iv", 0),
+                            "asset_class": "options",
+                        },
+                    )
+                )
 
             # Z-score cross-sectionally (direction assigned AFTER normalization)
             _zscore_scores(scores)

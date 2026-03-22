@@ -27,12 +27,12 @@ logger = logging.getLogger(__name__)
 
 # Interest rate differentials (base - USD for xxxUSD pairs, USD - base for USDxxx)
 DEFAULT_RATE_DIFFS = {
-    "EURUSD": -1.75,   # EUR 2.75% - USD 4.50%
-    "GBPUSD": 0.00,    # GBP 4.50% - USD 4.50%
-    "USDJPY": 4.00,    # USD 4.50% - JPY 0.50%
-    "AUDUSD": -0.40,   # AUD 4.10% - USD 4.50%
-    "USDCAD": 1.25,    # USD 4.50% - CAD 3.25%
-    "USDCHF": 4.00,    # USD 4.50% - CHF 0.50%
+    "EURUSD": -1.75,  # EUR 2.75% - USD 4.50%
+    "GBPUSD": 0.00,  # GBP 4.50% - USD 4.50%
+    "USDJPY": 4.00,  # USD 4.50% - JPY 0.50%
+    "AUDUSD": -0.40,  # AUD 4.10% - USD 4.50%
+    "USDCAD": 1.25,  # USD 4.50% - CAD 3.25%
+    "USDCHF": 4.00,  # USD 4.50% - CHF 0.50%
 }
 
 
@@ -148,22 +148,35 @@ class TFTForexModel(BaseTFTModel):
         # Target: 5-day forward return
         for pair, group in df.groupby("symbol"):
             mask = df["symbol"] == pair
-            df.loc[mask, "target"] = df.loc[mask, "close"].shift(-5) / df.loc[mask, "close"] - 1
+            df.loc[mask, "target"] = (
+                df.loc[mask, "close"].shift(-5) / df.loc[mask, "close"] - 1
+            )
 
         # Time index
         df["time_idx"] = df.groupby("symbol").cumcount()
 
         # Drop NaN rows
-        feature_cols = ["returns_1d", "returns_5d", "rsi", "macd", "bollinger_ratio",
-                        "realized_vol", "target"]
+        feature_cols = [
+            "returns_1d",
+            "returns_5d",
+            "rsi",
+            "macd",
+            "bollinger_ratio",
+            "realized_vol",
+            "target",
+        ]
         df = df.dropna(subset=[c for c in feature_cols if c in df.columns])
 
         # Fill remaining NaN
         for col in df.select_dtypes(include=[np.number]).columns:
             df[col] = df[col].fillna(0)
 
-        logger.info("FX features: %d rows, %d pairs, %d columns",
-                     len(df), df["symbol"].nunique(), len(df.columns))
+        logger.info(
+            "FX features: %d rows, %d pairs, %d columns",
+            len(df),
+            df["symbol"].nunique(),
+            len(df.columns),
+        )
         return df
 
     def train(self, data: pd.DataFrame, **kwargs) -> Dict[str, float]:
@@ -178,16 +191,36 @@ class TFTForexModel(BaseTFTModel):
         max_time_idx = df["time_idx"].max()
         training_cutoff = int(max_time_idx * 0.8)
 
-        time_varying_known = [c for c in [
-            "time_idx", "day_sin", "day_cos", "month_sin", "month_cos",
-            "rate_diff", "carry_score",
-        ] if c in df.columns]
+        time_varying_known = [
+            c
+            for c in [
+                "time_idx",
+                "day_sin",
+                "day_cos",
+                "month_sin",
+                "month_cos",
+                "rate_diff",
+                "carry_score",
+            ]
+            if c in df.columns
+        ]
 
-        time_varying_unknown = [c for c in [
-            "close", "returns_1d", "returns_5d", "returns_21d",
-            "rsi", "macd", "macd_signal", "bollinger_ratio",
-            "realized_vol", "usd_strength",
-        ] if c in df.columns]
+        time_varying_unknown = [
+            c
+            for c in [
+                "close",
+                "returns_1d",
+                "returns_5d",
+                "returns_21d",
+                "rsi",
+                "macd",
+                "macd_signal",
+                "bollinger_ratio",
+                "realized_vol",
+                "usd_strength",
+            ]
+            if c in df.columns
+        ]
 
         training_ds = TimeSeriesDataSet(
             df[df["time_idx"] <= training_cutoff],
@@ -206,14 +239,20 @@ class TFTForexModel(BaseTFTModel):
         )
 
         val_ds = TimeSeriesDataSet.from_dataset(
-            training_ds, df[df["time_idx"] > training_cutoff],
-            predict=True, stop_randomization=True,
+            training_ds,
+            df[df["time_idx"] > training_cutoff],
+            predict=True,
+            stop_randomization=True,
         )
 
         self._training_dataset = training_ds
 
-        train_dl = training_ds.to_dataloader(train=True, batch_size=self.config["batch_size"], num_workers=0)
-        val_dl = val_ds.to_dataloader(train=False, batch_size=self.config["batch_size"], num_workers=0)
+        train_dl = training_ds.to_dataloader(
+            train=True, batch_size=self.config["batch_size"], num_workers=0
+        )
+        val_dl = val_ds.to_dataloader(
+            train=False, batch_size=self.config["batch_size"], num_workers=0
+        )
 
         model = TemporalFusionTransformer.from_dataset(
             training_ds,
@@ -231,8 +270,12 @@ class TFTForexModel(BaseTFTModel):
             max_epochs=self.config["max_epochs"],
             accelerator="auto",
             callbacks=[
-                pl.callbacks.EarlyStopping(monitor="val_loss", patience=self.config["patience"]),
-                pl.callbacks.ModelCheckpoint(monitor="val_loss", save_top_k=1, mode="min"),
+                pl.callbacks.EarlyStopping(
+                    monitor="val_loss", patience=self.config["patience"]
+                ),
+                pl.callbacks.ModelCheckpoint(
+                    monitor="val_loss", save_top_k=1, mode="min"
+                ),
             ],
             gradient_clip_val=0.1,
             enable_progress_bar=True,
@@ -256,13 +299,21 @@ class TFTForexModel(BaseTFTModel):
             df = self.prepare_features(data)
 
             val_ds = self._training_dataset.from_dataset(
-                self._training_dataset, df,
-                predict=True, stop_randomization=True,
+                self._training_dataset,
+                df,
+                predict=True,
+                stop_randomization=True,
             )
-            dl = val_ds.to_dataloader(train=False, batch_size=self.config["batch_size"], num_workers=0)
+            dl = val_ds.to_dataloader(
+                train=False, batch_size=self.config["batch_size"], num_workers=0
+            )
 
             raw_preds = self._model.predict(dl, mode="prediction")
-            preds_np = raw_preds.numpy() if hasattr(raw_preds, "numpy") else np.array(raw_preds)
+            preds_np = (
+                raw_preds.numpy()
+                if hasattr(raw_preds, "numpy")
+                else np.array(raw_preds)
+            )
 
             pairs = df["symbol"].unique()
             predictions = []
@@ -273,7 +324,11 @@ class TFTForexModel(BaseTFTModel):
 
                 pred = preds_np[i]
                 if pred.ndim >= 2 and pred.shape[-1] >= 3:
-                    lower, median, upper = float(pred[-1, 0]), float(pred[-1, 1]), float(pred[-1, 2])
+                    lower, median, upper = (
+                        float(pred[-1, 0]),
+                        float(pred[-1, 1]),
+                        float(pred[-1, 2]),
+                    )
                 else:
                     median = float(pred.flatten()[-1])
                     lower, upper = median * 0.8, median * 1.2
@@ -281,16 +336,18 @@ class TFTForexModel(BaseTFTModel):
                 spread = abs(upper - lower)
                 confidence = max(0.1, 1.0 - spread * 10)
 
-                predictions.append(ModelPrediction(
-                    symbol=pair,
-                    predicted_value=median,
-                    lower_bound=lower,
-                    upper_bound=upper,
-                    confidence=min(confidence, 0.95),
-                    horizon_days=5,
-                    model_name=self.name,
-                    metadata={"rate_diff": DEFAULT_RATE_DIFFS.get(pair, 0)},
-                ))
+                predictions.append(
+                    ModelPrediction(
+                        symbol=pair,
+                        predicted_value=median,
+                        lower_bound=lower,
+                        upper_bound=upper,
+                        confidence=min(confidence, 0.95),
+                        horizon_days=5,
+                        model_name=self.name,
+                        metadata={"rate_diff": DEFAULT_RATE_DIFFS.get(pair, 0)},
+                    )
+                )
 
             logger.info("TFT-Forex: %d predictions", len(predictions))
             return predictions
@@ -303,12 +360,15 @@ class TFTForexModel(BaseTFTModel):
         if self._model is None:
             raise ValueError("No model to save")
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        torch.save({
-            "model_state_dict": self._model.state_dict(),
-            "config": self.config,
-            "training_dataset": self._training_dataset,
-            "trained_at": self._trained_at,
-        }, path)
+        torch.save(
+            {
+                "model_state_dict": self._model.state_dict(),
+                "config": self.config,
+                "training_dataset": self._training_dataset,
+                "trained_at": self._trained_at,
+            },
+            path,
+        )
         logger.info("TFT-Forex saved to %s", path)
 
     def load(self, path: str) -> bool:
@@ -317,11 +377,13 @@ class TFTForexModel(BaseTFTModel):
             return False
         try:
             from pytorch_forecasting import TemporalFusionTransformer
+
             checkpoint = torch.load(path, map_location="cpu", weights_only=False)
             self.config = checkpoint["config"]
             self._training_dataset = checkpoint["training_dataset"]
             self._trained_at = checkpoint.get("trained_at")
             from pytorch_forecasting.metrics import QuantileLoss
+
             self._model = TemporalFusionTransformer.from_dataset(
                 self._training_dataset,
                 learning_rate=self.config["learning_rate"],
@@ -341,6 +403,9 @@ class TFTForexModel(BaseTFTModel):
 
     def get_info(self) -> ModelInfo:
         return ModelInfo(
-            name=self.name, asset_class=self.asset_class, version="1.0",
-            trained_at=self._trained_at, is_loaded=self._is_loaded,
+            name=self.name,
+            asset_class=self.asset_class,
+            version="1.0",
+            trained_at=self._trained_at,
+            is_loaded=self._is_loaded,
         )

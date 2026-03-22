@@ -45,10 +45,15 @@ class SentimentModel(BaseTFTModel):
         required = {"symbol", "text"}
         if not required.issubset(raw_data.columns):
             return pd.DataFrame()
-        return raw_data[raw_data["text"].notna() & (raw_data["text"].str.len() > 0)].copy()
+        return raw_data[
+            raw_data["text"].notna() & (raw_data["text"].str.len() > 0)
+        ].copy()
 
     def train(self, data: pd.DataFrame, **kwargs) -> Dict[str, float]:
-        return {"status": "pretrained", "note": "FinBERT is pre-trained, no fine-tuning needed"}
+        return {
+            "status": "pretrained",
+            "note": "FinBERT is pre-trained, no fine-tuning needed",
+        }
 
     def predict(self, data: pd.DataFrame) -> List[ModelPrediction]:
         if data.empty or "text" not in data.columns or "symbol" not in data.columns:
@@ -75,24 +80,30 @@ class SentimentModel(BaseTFTModel):
             sentiment_momentum = float(np.mean(recent_scores) - np.mean(scores))
             sentiment_dispersion = float(np.std(scores)) if len(scores) > 1 else 0.0
 
-            confidence = min(0.3 + len(sym_texts) * 0.05 + (1.0 - sentiment_dispersion) * 0.3, 1.0)
+            confidence = min(
+                0.3 + len(sym_texts) * 0.05 + (1.0 - sentiment_dispersion) * 0.3, 1.0
+            )
 
-            predictions.append(ModelPrediction(
-                symbol=symbol,
-                predicted_value=mean_sentiment,
-                lower_bound=max(mean_sentiment - sentiment_dispersion, -1.0),
-                upper_bound=min(mean_sentiment + sentiment_dispersion, 1.0),
-                confidence=confidence,
-                horizon_days=1,
-                model_name=self.name,
-                metadata={
-                    "sentiment_score": round(mean_sentiment, 4),
-                    "sentiment_momentum": round(sentiment_momentum, 4),
-                    "sentiment_dispersion": round(sentiment_dispersion, 4),
-                    "article_count": len(sym_texts),
-                    "source": "finbert" if not self._use_vader_fallback else "vader",
-                },
-            ))
+            predictions.append(
+                ModelPrediction(
+                    symbol=symbol,
+                    predicted_value=mean_sentiment,
+                    lower_bound=max(mean_sentiment - sentiment_dispersion, -1.0),
+                    upper_bound=min(mean_sentiment + sentiment_dispersion, 1.0),
+                    confidence=confidence,
+                    horizon_days=1,
+                    model_name=self.name,
+                    metadata={
+                        "sentiment_score": round(mean_sentiment, 4),
+                        "sentiment_momentum": round(sentiment_momentum, 4),
+                        "sentiment_dispersion": round(sentiment_dispersion, 4),
+                        "article_count": len(sym_texts),
+                        "source": (
+                            "finbert" if not self._use_vader_fallback else "vader"
+                        ),
+                    },
+                )
+            )
 
         return predictions
 
@@ -109,7 +120,10 @@ class SentimentModel(BaseTFTModel):
     def _score_finbert(self, text: str) -> Optional[float]:
         try:
             import torch
-            inputs = self._tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
+
+            inputs = self._tokenizer(
+                text, return_tensors="pt", truncation=True, max_length=512
+            )
             with torch.no_grad():
                 outputs = self._model(**inputs)
             probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
@@ -124,6 +138,7 @@ class SentimentModel(BaseTFTModel):
     def _score_vader(self, text: str) -> Optional[float]:
         try:
             from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
             analyzer = SentimentIntensityAnalyzer()
             scores = analyzer.polarity_scores(text)
             return float(scores["compound"])
@@ -139,8 +154,11 @@ class SentimentModel(BaseTFTModel):
         # Try FinBERT first
         try:
             from transformers import AutoTokenizer, AutoModelForSequenceClassification
+
             self._tokenizer = AutoTokenizer.from_pretrained(self._model_name)
-            self._model = AutoModelForSequenceClassification.from_pretrained(self._model_name)
+            self._model = AutoModelForSequenceClassification.from_pretrained(
+                self._model_name
+            )
             self._model.eval()
             self._is_loaded = True
             self._use_vader_fallback = False
@@ -152,6 +170,7 @@ class SentimentModel(BaseTFTModel):
         # Try VADER fallback
         try:
             from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
             SentimentIntensityAnalyzer()  # validate it works
             self._is_loaded = True
             self._use_vader_fallback = True

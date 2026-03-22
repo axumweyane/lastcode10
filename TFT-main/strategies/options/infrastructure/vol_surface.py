@@ -27,21 +27,23 @@ logger = logging.getLogger(__name__)
 @dataclass
 class VolSurfacePoint:
     """Single point on the IV surface."""
+
     strike: float
     expiry_days: int
     implied_vol: float
-    moneyness: float       # strike / spot
+    moneyness: float  # strike / spot
 
 
 @dataclass
 class VolSurface:
     """Implied volatility surface for one underlying."""
+
     underlying: str
     spot: float
     points: List[VolSurfacePoint] = field(default_factory=list)
-    strikes: Optional[np.ndarray] = None       # unique strikes
-    expiry_days: Optional[np.ndarray] = None   # unique DTE values
-    iv_grid: Optional[np.ndarray] = None       # 2D grid [strikes x expiries]
+    strikes: Optional[np.ndarray] = None  # unique strikes
+    expiry_days: Optional[np.ndarray] = None  # unique DTE values
+    iv_grid: Optional[np.ndarray] = None  # 2D grid [strikes x expiries]
     _interpolator: Optional[RectBivariateSpline] = None
     build_time: Optional[str] = None
 
@@ -57,8 +59,10 @@ class VolSurface:
         # Fallback: nearest neighbor
         if not self.points:
             return 0.20
-        nearest = min(self.points,
-                      key=lambda p: abs(p.strike - strike) + abs(p.expiry_days - dte) * 0.1)
+        nearest = min(
+            self.points,
+            key=lambda p: abs(p.strike - strike) + abs(p.expiry_days - dte) * 0.1,
+        )
         return nearest.implied_vol
 
     def get_skew(self, dte: int) -> Optional[Dict]:
@@ -160,7 +164,9 @@ class VolSurfaceBuilder:
                     price = entry.mid if use_mid_prices else entry.last
                     if price > 0:
                         computed_iv = self.engine.implied_vol(
-                            entry.contract, spot, price,
+                            entry.contract,
+                            spot,
+                            price,
                         )
                         if computed_iv is not None:
                             iv = computed_iv
@@ -175,17 +181,20 @@ class VolSurfaceBuilder:
                 if moneyness < 0.7 or moneyness > 1.3:
                     continue
 
-                points.append(VolSurfacePoint(
-                    strike=entry.contract.strike,
-                    expiry_days=dte,
-                    implied_vol=iv,
-                    moneyness=moneyness,
-                ))
+                points.append(
+                    VolSurfacePoint(
+                        strike=entry.contract.strike,
+                        expiry_days=dte,
+                        implied_vol=iv,
+                        moneyness=moneyness,
+                    )
+                )
 
         if len(points) < 6:
             logger.warning(
                 "Only %d valid IV points for %s — surface may be sparse",
-                len(points), underlying,
+                len(points),
+                underlying,
             )
             return VolSurface(underlying=underlying, spot=spot, points=points)
 
@@ -204,8 +213,13 @@ class VolSurfaceBuilder:
         dtes = np.array(sorted(set(p.expiry_days for p in points)))
 
         if len(strikes) < 2 or len(dtes) < 2:
-            return VolSurface(underlying=underlying, spot=spot, points=points,
-                              strikes=strikes, expiry_days=dtes)
+            return VolSurface(
+                underlying=underlying,
+                spot=spot,
+                points=points,
+                strikes=strikes,
+                expiry_days=dtes,
+            )
 
         # Build 2D grid by averaging IVs at each (strike, dte) node
         iv_grid = np.full((len(strikes), len(dtes)), np.nan)
@@ -226,8 +240,13 @@ class VolSurfaceBuilder:
             col = iv_grid[:, j]
             valid = ~np.isnan(col)
             if valid.sum() >= 2:
-                f = interp1d(strikes[valid], col[valid], kind="linear",
-                             fill_value="extrapolate", bounds_error=False)
+                f = interp1d(
+                    strikes[valid],
+                    col[valid],
+                    kind="linear",
+                    fill_value="extrapolate",
+                    bounds_error=False,
+                )
                 iv_grid[:, j] = f(strikes)
             elif valid.sum() == 1:
                 iv_grid[:, j] = col[valid][0]
@@ -237,8 +256,13 @@ class VolSurfaceBuilder:
             row = iv_grid[i, :]
             valid = ~np.isnan(row)
             if valid.sum() >= 2:
-                f = interp1d(dtes[valid], row[valid], kind="linear",
-                             fill_value="extrapolate", bounds_error=False)
+                f = interp1d(
+                    dtes[valid],
+                    row[valid],
+                    kind="linear",
+                    fill_value="extrapolate",
+                    bounds_error=False,
+                )
                 iv_grid[i, :] = f(dtes)
             elif valid.sum() == 1:
                 iv_grid[i, :] = row[valid][0]
@@ -256,11 +280,14 @@ class VolSurfaceBuilder:
             k_s = min(3, len(strikes) - 1)
             k_d = min(3, len(dtes) - 1)
             if k_s >= 1 and k_d >= 1:
-                interpolator = RectBivariateSpline(strikes, dtes, iv_grid, kx=k_s, ky=k_d)
+                interpolator = RectBivariateSpline(
+                    strikes, dtes, iv_grid, kx=k_s, ky=k_d
+                )
         except Exception as e:
             logger.debug("Spline fitting failed: %s", e)
 
         from datetime import datetime
+
         surface = VolSurface(
             underlying=underlying,
             spot=spot,
@@ -274,6 +301,9 @@ class VolSurfaceBuilder:
 
         logger.info(
             "Vol surface built for %s: %d strikes x %d expiries, %d points",
-            underlying, len(strikes), len(dtes), len(points),
+            underlying,
+            len(strikes),
+            len(dtes),
+            len(points),
         )
         return surface

@@ -23,8 +23,11 @@ import numpy as np
 import pandas as pd
 
 from strategies.base import (
-    AlphaScore, BaseStrategy, SignalDirection,
-    StrategyOutput, StrategyPerformance,
+    AlphaScore,
+    BaseStrategy,
+    SignalDirection,
+    StrategyOutput,
+    StrategyPerformance,
 )
 from strategies.options.config import VolArbConfig
 from strategies.options.infrastructure.vol_monitor import VolMonitor
@@ -110,25 +113,27 @@ class VolatilityArbitrage(BaseStrategy):
 
             confidence = min(abs(adjusted_spread) / 0.10, 0.95)
 
-            scores.append(AlphaScore(
-                symbol=symbol,
-                score=raw_score,
-                raw_score=adjusted_spread,
-                confidence=confidence,
-                direction=direction,
-                metadata={
-                    "strategy_type": "vol_arb",
-                    "trade_type": trade_type,
-                    "iv_estimate": round(estimated_iv, 4),
-                    "rv_21d": round(rv_21d, 4),
-                    "garch_forecast": round(garch_forecast, 4),
-                    "blended_rv": round(blended_rv, 4),
-                    "iv_rv_spread": round(iv_rv_spread, 4),
-                    "adjusted_spread": round(adjusted_spread, 4),
-                    "iv_rank": round(metrics.iv_rank, 1),
-                    "vol_regime": metrics.vol_regime,
-                },
-            ))
+            scores.append(
+                AlphaScore(
+                    symbol=symbol,
+                    score=raw_score,
+                    raw_score=adjusted_spread,
+                    confidence=confidence,
+                    direction=direction,
+                    metadata={
+                        "strategy_type": "vol_arb",
+                        "trade_type": trade_type,
+                        "iv_estimate": round(estimated_iv, 4),
+                        "rv_21d": round(rv_21d, 4),
+                        "garch_forecast": round(garch_forecast, 4),
+                        "blended_rv": round(blended_rv, 4),
+                        "iv_rv_spread": round(iv_rv_spread, 4),
+                        "adjusted_spread": round(adjusted_spread, 4),
+                        "iv_rank": round(metrics.iv_rank, 1),
+                        "vol_regime": metrics.vol_regime,
+                    },
+                )
+            )
 
         scores.sort(key=lambda s: abs(s.score), reverse=True)
         sells = [s for s in scores if s.direction == SignalDirection.SHORT]
@@ -136,7 +141,10 @@ class VolatilityArbitrage(BaseStrategy):
 
         logger.info(
             "%s: %d signals (%d sell_vol, %d buy_vol)",
-            self.name, len(scores), len(sells), len(buys),
+            self.name,
+            len(scores),
+            len(sells),
+            len(buys),
         )
 
         return StrategyOutput(

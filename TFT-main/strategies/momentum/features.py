@@ -218,7 +218,8 @@ def compute_all_factors(
 
     logger.info(
         "Computing factors for %d symbols, %d rows",
-        prices["symbol"].nunique(), len(prices),
+        prices["symbol"].nunique(),
+        len(prices),
     )
 
     # Compute each factor independently
@@ -239,7 +240,11 @@ def compute_all_factors(
 
     logger.info(
         "Factor computation complete. Columns: %s",
-        [c for c in result.columns if c not in ("symbol", "timestamp", "close", "volume")],
+        [
+            c
+            for c in result.columns
+            if c not in ("symbol", "timestamp", "close", "volume")
+        ],
     )
 
     return result
@@ -248,6 +253,7 @@ def compute_all_factors(
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _cross_sectional_zscore(df: pd.DataFrame, col: str) -> pd.Series:
     """
@@ -292,9 +298,7 @@ def _blend_fundamental_quality(
 
     # Blend: where fundamental data exists, use 60/40; otherwise 100% price
     has_roe = df["fund_roe"].notna()
-    df.loc[has_roe, "quality_raw"] = (
-        df.loc[has_roe, "quality_raw"] * 0.6 + roe_z * 0.4
-    )
+    df.loc[has_roe, "quality_raw"] = df.loc[has_roe, "quality_raw"] * 0.6 + roe_z * 0.4
 
     df = df.drop(columns=["fund_roe"])
     return df

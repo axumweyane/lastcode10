@@ -19,7 +19,9 @@ import pandas as pd
 
 from strategies.base import StrategyPerformance
 from strategies.options.infrastructure.greeks import (
-    GreeksCalculator, PortfolioGreeks, PositionGreeks,
+    GreeksCalculator,
+    PortfolioGreeks,
+    PositionGreeks,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,13 +30,14 @@ logger = logging.getLogger(__name__)
 @dataclass
 class OptionsRiskLimits:
     """Configurable risk limits for the options portfolio."""
-    max_net_delta_pct: float = 0.30       # net delta < 30% of portfolio value
-    max_gross_delta_pct: float = 1.50     # gross delta < 150% of portfolio
-    max_net_vega_pct: float = 0.05        # vega < 5% of portfolio per 1% vol move
-    max_net_theta_daily_pct: float = 0.005 # daily theta < 0.5% of portfolio
-    max_total_premium_pct: float = 0.10   # max 10% of portfolio in option premium
-    max_single_position_pct: float = 0.03 # max 3% per single option position
-    max_loss_pct: float = 0.20            # max theoretical loss < 20%
+
+    max_net_delta_pct: float = 0.30  # net delta < 30% of portfolio value
+    max_gross_delta_pct: float = 1.50  # gross delta < 150% of portfolio
+    max_net_vega_pct: float = 0.05  # vega < 5% of portfolio per 1% vol move
+    max_net_theta_daily_pct: float = 0.005  # daily theta < 0.5% of portfolio
+    max_total_premium_pct: float = 0.10  # max 10% of portfolio in option premium
+    max_single_position_pct: float = 0.03  # max 3% per single option position
+    max_loss_pct: float = 0.20  # max theoretical loss < 20%
     max_positions: int = 30
 
 
@@ -49,23 +52,24 @@ class OptionsKillEvent:
 @dataclass
 class VIXTermStructure:
     """VIX contango/backwardation analysis for regime timing."""
+
     vix_spot: float
     vix_1m: float
     vix_3m: float
-    is_contango: bool             # normal: longer-dated > spot
-    is_backwardation: bool        # fear: spot > longer-dated
-    contango_ratio: float         # vix_3m / vix_spot (>1 = contango)
-    term_slope: float             # annualized slope
+    is_contango: bool  # normal: longer-dated > spot
+    is_backwardation: bool  # fear: spot > longer-dated
+    contango_ratio: float  # vix_3m / vix_spot (>1 = contango)
+    term_slope: float  # annualized slope
 
     @property
     def regime_signal(self) -> str:
         """Map term structure to options regime signal."""
         if self.is_backwardation and self.vix_spot > 25:
-            return "crisis"       # buy puts, don't sell premium
+            return "crisis"  # buy puts, don't sell premium
         elif self.is_backwardation:
-            return "fear"         # reduce premium selling, widen condor wings
+            return "fear"  # reduce premium selling, widen condor wings
         elif self.contango_ratio > 1.10:
-            return "complacent"   # sell premium aggressively
+            return "complacent"  # sell premium aggressively
         else:
             return "normal"
 
@@ -108,7 +112,9 @@ class OptionsRiskManager:
         self._positions = positions
 
     def update_strategy_performance(
-        self, name: str, perf: StrategyPerformance,
+        self,
+        name: str,
+        perf: StrategyPerformance,
     ) -> None:
         self._strategy_performances[name] = perf
 
@@ -149,20 +155,25 @@ class OptionsRiskManager:
 
         if breaches:
             logger.warning(
-                "OPTIONS RISK BREACHES: %s", "; ".join(breaches),
+                "OPTIONS RISK BREACHES: %s",
+                "; ".join(breaches),
             )
 
         return report
 
     def _check_limits(
-        self, greeks: PortfolioGreeks, portfolio_value: float,
+        self,
+        greeks: PortfolioGreeks,
+        portfolio_value: float,
     ) -> List[str]:
         breaches = []
         if portfolio_value <= 0:
             return breaches
 
         # Net delta check
-        net_delta_pct = abs(greeks.net_delta * 100) / portfolio_value  # rough conversion
+        net_delta_pct = (
+            abs(greeks.net_delta * 100) / portfolio_value
+        )  # rough conversion
         if net_delta_pct > self.limits.max_net_delta_pct:
             breaches.append(
                 f"Net delta {net_delta_pct:.1%} exceeds limit {self.limits.max_net_delta_pct:.1%}"
@@ -238,7 +249,9 @@ class OptionsRiskManager:
         return False
 
     def _estimate_margin(
-        self, greeks: PortfolioGreeks, portfolio_value: float,
+        self,
+        greeks: PortfolioGreeks,
+        portfolio_value: float,
     ) -> float:
         """Rough margin estimate: max_loss + 20% buffer."""
         if portfolio_value <= 0:

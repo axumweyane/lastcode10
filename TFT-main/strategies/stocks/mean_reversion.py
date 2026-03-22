@@ -91,7 +91,9 @@ class MeanReversionStrategy(BaseStrategy):
                 continue
 
             # Filter: half-life must be in tradeable range
-            if not (self.config.min_half_life <= half_life <= self.config.max_half_life):
+            if not (
+                self.config.min_half_life <= half_life <= self.config.max_half_life
+            ):
                 continue
 
             # Filter: deviation must be significant
@@ -118,23 +120,26 @@ class MeanReversionStrategy(BaseStrategy):
             if micro:
                 # If volume confirms (abnormal volume in reversion direction), boost confidence
                 buying_pressure = micro.get("buying_pressure", 0.0)
-                if (direction == SignalDirection.LONG and buying_pressure > 0.3) or \
-                   (direction == SignalDirection.SHORT and buying_pressure < -0.3):
+                if (direction == SignalDirection.LONG and buying_pressure > 0.3) or (
+                    direction == SignalDirection.SHORT and buying_pressure < -0.3
+                ):
                     confidence = min(confidence + 0.1, 1.0)
 
-            scores.append(AlphaScore(
-                symbol=symbol,
-                score=raw_score,
-                raw_score=float(deviation_zscore),
-                confidence=confidence,
-                direction=direction,
-                metadata={
-                    "hurst_exponent": hurst,
-                    "half_life": half_life,
-                    "deviation_zscore": deviation_zscore,
-                    "strategy_type": "mean_reversion",
-                },
-            ))
+            scores.append(
+                AlphaScore(
+                    symbol=symbol,
+                    score=raw_score,
+                    raw_score=float(deviation_zscore),
+                    confidence=confidence,
+                    direction=direction,
+                    metadata={
+                        "hurst_exponent": hurst,
+                        "half_life": half_life,
+                        "deviation_zscore": deviation_zscore,
+                        "strategy_type": "mean_reversion",
+                    },
+                )
+            )
 
         # Z-score normalize
         if scores:
@@ -151,8 +156,13 @@ class MeanReversionStrategy(BaseStrategy):
         shorts = [s for s in scores if s.direction == SignalDirection.SHORT][:max_pos]
         scores = longs + shorts
 
-        logger.info("%s: %d signals (%d long, %d short)",
-                    self.name, len(scores), len(longs), len(shorts))
+        logger.info(
+            "%s: %d signals (%d long, %d short)",
+            self.name,
+            len(scores),
+            len(longs),
+            len(shorts),
+        )
 
         return StrategyOutput(
             strategy_name=self.name,
@@ -180,16 +190,24 @@ class MeanReversionStrategy(BaseStrategy):
 
             current_log_price = np.log(prices[-1])
             deviation = current_log_price - ou["mu"]
-            price_std = np.std(np.log(prices[-63:])) if len(prices) >= 63 else np.std(np.log(prices))
+            price_std = (
+                np.std(np.log(prices[-63:]))
+                if len(prices) >= 63
+                else np.std(np.log(prices))
+            )
             deviation_zscore = deviation / price_std if price_std > 1e-10 else 0.0
 
-            result[symbol] = type("Pred", (), {
-                "metadata": {
-                    "hurst_exponent": hurst,
-                    "half_life": ou["half_life"],
-                    "deviation_zscore": deviation_zscore,
+            result[symbol] = type(
+                "Pred",
+                (),
+                {
+                    "metadata": {
+                        "hurst_exponent": hurst,
+                        "half_life": ou["half_life"],
+                        "deviation_zscore": deviation_zscore,
+                    },
                 },
-            })()
+            )()
 
         return result
 

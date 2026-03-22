@@ -47,7 +47,10 @@ class MicrostructureModel(BaseTFTModel):
         return raw_data.copy()
 
     def train(self, data: pd.DataFrame, **kwargs) -> Dict[str, float]:
-        return {"status": "no_training_needed", "note": "statistical microstructure model"}
+        return {
+            "status": "no_training_needed",
+            "note": "statistical microstructure model",
+        }
 
     def predict(self, data: pd.DataFrame) -> List[ModelPrediction]:
         if data.empty:
@@ -72,7 +75,7 @@ class MicrostructureModel(BaseTFTModel):
             volume = sym_data["volume"].values.astype(float)
 
             # 1. Relative volume (current vs 20-day average)
-            avg_volume = np.mean(volume[-self._volume_lookback:])
+            avg_volume = np.mean(volume[-self._volume_lookback :])
             current_volume = volume[-1]
             relative_volume = current_volume / avg_volume if avg_volume > 0 else 1.0
 
@@ -88,7 +91,9 @@ class MicrostructureModel(BaseTFTModel):
                 # Close Location Value: where close falls in the day's range
                 day_range = high[-1] - low[-1]
                 if day_range > 0:
-                    clv = (close[-1] - low[-1]) / day_range  # 0 = closed at low, 1 = closed at high
+                    clv = (
+                        close[-1] - low[-1]
+                    ) / day_range  # 0 = closed at low, 1 = closed at high
                 else:
                     clv = 0.5
             else:
@@ -109,7 +114,11 @@ class MicrostructureModel(BaseTFTModel):
                 close_arr = close[-10:]
                 vol_arr = volume[-10:]
                 ranges = high_arr - low_arr
-                mfm = np.where(ranges > 0, ((close_arr - low_arr) - (high_arr - close_arr)) / ranges, 0.0)
+                mfm = np.where(
+                    ranges > 0,
+                    ((close_arr - low_arr) - (high_arr - close_arr)) / ranges,
+                    0.0,
+                )
                 ad_line = np.cumsum(mfm * vol_arr)
                 ad_trend = (ad_line[-1] - ad_line[0]) / (abs(ad_line[0]) + 1e-10)
             else:
@@ -118,32 +127,34 @@ class MicrostructureModel(BaseTFTModel):
             # Composite microstructure signal
             # Abnormal volume + buying pressure + positive AD = bullish
             signal = (
-                0.3 * np.clip(buying_pressure, -1, 1) +
-                0.2 * np.clip(vwap_deviation * 100, -1, 1) +
-                0.2 * np.clip((relative_volume - 1.0) * buying_pressure, -1, 1) +
-                0.3 * np.clip(ad_trend, -1, 1)
+                0.3 * np.clip(buying_pressure, -1, 1)
+                + 0.2 * np.clip(vwap_deviation * 100, -1, 1)
+                + 0.2 * np.clip((relative_volume - 1.0) * buying_pressure, -1, 1)
+                + 0.3 * np.clip(ad_trend, -1, 1)
             )
 
             confidence = min(0.3 + 0.2 * min(relative_volume, 3.0) / 3.0 + 0.3, 0.9)
 
-            predictions.append(ModelPrediction(
-                symbol=symbol,
-                predicted_value=float(signal),
-                lower_bound=float(signal - 0.3),
-                upper_bound=float(signal + 0.3),
-                confidence=confidence,
-                horizon_days=1,
-                model_name=self.name,
-                metadata={
-                    "relative_volume": round(relative_volume, 4),
-                    "vwap_deviation": round(vwap_deviation, 6),
-                    "buying_pressure": round(buying_pressure, 4),
-                    "close_location_value": round(clv, 4),
-                    "volume_trend": round(volume_trend, 4),
-                    "ad_trend": round(ad_trend, 4),
-                    "is_abnormal_volume": relative_volume > 2.0,
-                },
-            ))
+            predictions.append(
+                ModelPrediction(
+                    symbol=symbol,
+                    predicted_value=float(signal),
+                    lower_bound=float(signal - 0.3),
+                    upper_bound=float(signal + 0.3),
+                    confidence=confidence,
+                    horizon_days=1,
+                    model_name=self.name,
+                    metadata={
+                        "relative_volume": round(relative_volume, 4),
+                        "vwap_deviation": round(vwap_deviation, 6),
+                        "buying_pressure": round(buying_pressure, 4),
+                        "close_location_value": round(clv, 4),
+                        "volume_trend": round(volume_trend, 4),
+                        "ad_trend": round(ad_trend, 4),
+                        "is_abnormal_volume": relative_volume > 2.0,
+                    },
+                )
+            )
 
         return predictions
 

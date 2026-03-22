@@ -10,115 +10,126 @@ import json
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 
+
 class PolygonAPITester:
     """Test Polygon.io API integration"""
-    
+
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.getenv('POLYGON_API_KEY', '')
+        self.api_key = api_key or os.getenv("POLYGON_API_KEY", "")
         self.base_url = "https://api.polygon.io"
         self.headers = {
-            'Authorization': f'Bearer {self.api_key}' if self.api_key else ''
+            "Authorization": f"Bearer {self.api_key}" if self.api_key else ""
         }
-    
+
     def test_endpoint_availability(self) -> Dict[str, Any]:
         """Test if Polygon.io endpoints are accessible"""
         results = {
-            'timestamp': datetime.now().isoformat(),
-            'api_key_provided': bool(self.api_key),
-            'endpoints': {}
+            "timestamp": datetime.now().isoformat(),
+            "api_key_provided": bool(self.api_key),
+            "endpoints": {},
         }
-        
+
         # Test endpoints (these will fail without API key but show if service is up)
         test_endpoints = [
             {
-                'name': 'Market Status',
-                'url': f'{self.base_url}/v1/marketstatus/now',
-                'description': 'Check if markets are open'
+                "name": "Market Status",
+                "url": f"{self.base_url}/v1/marketstatus/now",
+                "description": "Check if markets are open",
             },
             {
-                'name': 'Stock Ticker Details',
-                'url': f'{self.base_url}/v3/reference/tickers/AAPL',
-                'description': 'Get ticker information'
+                "name": "Stock Ticker Details",
+                "url": f"{self.base_url}/v3/reference/tickers/AAPL",
+                "description": "Get ticker information",
             },
             {
-                'name': 'Aggregates (Daily)',
-                'url': f'{self.base_url}/v2/aggs/ticker/AAPL/range/1/day/2023-01-01/2023-01-02',
-                'description': 'Get daily aggregates'
+                "name": "Aggregates (Daily)",
+                "url": f"{self.base_url}/v2/aggs/ticker/AAPL/range/1/day/2023-01-01/2023-01-02",
+                "description": "Get daily aggregates",
             },
             {
-                'name': 'Real-time Quote',
-                'url': f'{self.base_url}/v2/last/nbbo/AAPL',
-                'description': 'Get real-time quote'
-            }
+                "name": "Real-time Quote",
+                "url": f"{self.base_url}/v2/last/nbbo/AAPL",
+                "description": "Get real-time quote",
+            },
         ]
-        
+
         for endpoint in test_endpoints:
             try:
                 # Test with minimal timeout to check connectivity
                 response = requests.get(
-                    endpoint['url'],
+                    endpoint["url"],
                     headers=self.headers,
                     timeout=5,
-                    params={'apikey': self.api_key} if self.api_key else {}
+                    params={"apikey": self.api_key} if self.api_key else {},
                 )
-                
-                results['endpoints'][endpoint['name']] = {
-                    'url': endpoint['url'],
-                    'description': endpoint['description'],
-                    'status_code': response.status_code,
-                    'accessible': True,
-                    'response_time_ms': response.elapsed.total_seconds() * 1000,
-                    'error': None
+
+                results["endpoints"][endpoint["name"]] = {
+                    "url": endpoint["url"],
+                    "description": endpoint["description"],
+                    "status_code": response.status_code,
+                    "accessible": True,
+                    "response_time_ms": response.elapsed.total_seconds() * 1000,
+                    "error": None,
                 }
-                
+
                 # Try to parse response
                 try:
                     response_data = response.json()
                     if response.status_code == 401:
-                        results['endpoints'][endpoint['name']]['auth_required'] = True
-                        results['endpoints'][endpoint['name']]['message'] = 'API key required'
+                        results["endpoints"][endpoint["name"]]["auth_required"] = True
+                        results["endpoints"][endpoint["name"]][
+                            "message"
+                        ] = "API key required"
                     elif response.status_code == 200:
-                        results['endpoints'][endpoint['name']]['working'] = True
-                        results['endpoints'][endpoint['name']]['sample_data'] = str(response_data)[:200] + "..."
+                        results["endpoints"][endpoint["name"]]["working"] = True
+                        results["endpoints"][endpoint["name"]]["sample_data"] = (
+                            str(response_data)[:200] + "..."
+                        )
                     else:
-                        results['endpoints'][endpoint['name']]['message'] = response_data.get('error', 'Unknown error')
+                        results["endpoints"][endpoint["name"]]["message"] = (
+                            response_data.get("error", "Unknown error")
+                        )
                 except:
-                    results['endpoints'][endpoint['name']]['raw_response'] = response.text[:200] + "..."
-                    
+                    results["endpoints"][endpoint["name"]]["raw_response"] = (
+                        response.text[:200] + "..."
+                    )
+
             except requests.exceptions.RequestException as e:
-                results['endpoints'][endpoint['name']] = {
-                    'url': endpoint['url'],
-                    'description': endpoint['description'],
-                    'accessible': False,
-                    'error': str(e),
-                    'status_code': None
+                results["endpoints"][endpoint["name"]] = {
+                    "url": endpoint["url"],
+                    "description": endpoint["description"],
+                    "accessible": False,
+                    "error": str(e),
+                    "status_code": None,
                 }
-        
+
         return results
-    
+
     def test_websocket_connectivity(self) -> Dict[str, Any]:
         """Test WebSocket endpoint connectivity (without subscribing)"""
         import socket
-        
+
         try:
             # Test if WebSocket server is reachable
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(5)
-            result = sock.connect_ex(('socket.polygon.io', 443))
+            result = sock.connect_ex(("socket.polygon.io", 443))
             sock.close()
-            
+
             return {
-                'websocket_server': 'socket.polygon.io:443',
-                'reachable': result == 0,
-                'error': None if result == 0 else f'Connection failed with code {result}'
+                "websocket_server": "socket.polygon.io:443",
+                "reachable": result == 0,
+                "error": (
+                    None if result == 0 else f"Connection failed with code {result}"
+                ),
             }
         except Exception as e:
             return {
-                'websocket_server': 'socket.polygon.io:443',
-                'reachable': False,
-                'error': str(e)
+                "websocket_server": "socket.polygon.io:443",
+                "reachable": False,
+                "error": str(e),
             }
-    
+
     def generate_integration_code(self) -> str:
         """Generate sample integration code for Polygon.io"""
         return '''
@@ -198,55 +209,61 @@ if __name__ == "__main__":
     quote = provider.get_real_time_quote("AAPL")
     print("AAPL Quote:", quote)
 '''
-    
+
     def run_comprehensive_test(self) -> Dict[str, Any]:
         """Run comprehensive Polygon.io integration test"""
         print("🔍 POLYGON.IO INTEGRATION TEST")
         print("=" * 50)
-        
+
         # Test API endpoints
         print("\n📡 Testing API Endpoints...")
         api_results = self.test_endpoint_availability()
-        
+
         # Test WebSocket connectivity
         print("\n🌐 Testing WebSocket Connectivity...")
         ws_results = self.test_websocket_connectivity()
-        
+
         # Combine results
         results = {
-            'test_timestamp': datetime.now().isoformat(),
-            'api_key_configured': bool(self.api_key),
-            'api_tests': api_results,
-            'websocket_test': ws_results,
-            'overall_status': 'Ready for integration' if api_results and ws_results else 'Configuration needed'
+            "test_timestamp": datetime.now().isoformat(),
+            "api_key_configured": bool(self.api_key),
+            "api_tests": api_results,
+            "websocket_test": ws_results,
+            "overall_status": (
+                "Ready for integration"
+                if api_results and ws_results
+                else "Configuration needed"
+            ),
         }
-        
+
         # Print summary
         self.print_test_summary(results)
-        
+
         return results
-    
+
     def print_test_summary(self, results: Dict[str, Any]):
         """Print formatted test summary"""
         print(f"\n📊 TEST SUMMARY")
         print("=" * 30)
-        print(f"API Key Configured: {'✅ YES' if results['api_key_configured'] else '❌ NO'}")
-        
+        print(
+            f"API Key Configured: {'✅ YES' if results['api_key_configured'] else '❌ NO'}"
+        )
+
         print(f"\n🔗 API Endpoints:")
-        for name, endpoint in results['api_tests']['endpoints'].items():
-            status = "✅" if endpoint.get('accessible', False) else "❌"
-            auth = "🔐" if endpoint.get('auth_required', False) else ""
+        for name, endpoint in results["api_tests"]["endpoints"].items():
+            status = "✅" if endpoint.get("accessible", False) else "❌"
+            auth = "🔐" if endpoint.get("auth_required", False) else ""
             print(f"  {status} {name} {auth}")
-            if endpoint.get('response_time_ms'):
+            if endpoint.get("response_time_ms"):
                 print(f"     Response time: {endpoint['response_time_ms']:.0f}ms")
-        
+
         print(f"\n🌐 WebSocket:")
-        ws_status = "✅" if results['websocket_test']['reachable'] else "❌"
+        ws_status = "✅" if results["websocket_test"]["reachable"] else "❌"
         print(f"  {ws_status} {results['websocket_test']['websocket_server']}")
-        
+
         print(f"\n🎯 Overall Status: {results['overall_status']}")
-        
-        if not results['api_key_configured']:
+
+        if not results["api_key_configured"]:
             print(f"\n💡 Next Steps:")
             print(f"1. Get your free API key: https://polygon.io/dashboard")
             print(f"2. Add to your .env file: POLYGON_API_KEY=your_key_here")
@@ -254,10 +271,11 @@ if __name__ == "__main__":
         else:
             print(f"\n🚀 Ready to use Polygon.io for real-time market data!")
 
+
 if __name__ == "__main__":
     tester = PolygonAPITester()
     results = tester.run_comprehensive_test()
-    
+
     # Generate integration code
     print(f"\n📝 INTEGRATION CODE SAMPLE:")
     print("=" * 40)

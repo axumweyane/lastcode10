@@ -37,8 +37,8 @@ class AlertSender(ABC):
 
 class DiscordWebhookSender(AlertSender):
     SEVERITY_COLORS = {
-        "info": 0x3498DB,      # blue
-        "warning": 0xF39C12,   # orange
+        "info": 0x3498DB,  # blue
+        "warning": 0xF39C12,  # orange
         "critical": 0xE74C3C,  # red
     }
 
@@ -68,7 +68,11 @@ class DiscordWebhookSender(AlertSender):
                 ) as resp:
                     if resp.status in (200, 204):
                         return True
-                    logger.error("Discord webhook returned %s: %s", resp.status, await resp.text())
+                    logger.error(
+                        "Discord webhook returned %s: %s",
+                        resp.status,
+                        await resp.text(),
+                    )
                     return False
         except Exception as e:
             logger.error("Discord webhook failed: %s", e)
@@ -82,8 +86,14 @@ class EmailSender(AlertSender):
         "critical": "[CRITICAL]",
     }
 
-    def __init__(self, smtp_user: str, smtp_password: str, recipient: str,
-                 smtp_host: str = "smtp.gmail.com", smtp_port: int = 587):
+    def __init__(
+        self,
+        smtp_user: str,
+        smtp_password: str,
+        recipient: str,
+        smtp_host: str = "smtp.gmail.com",
+        smtp_port: int = 587,
+    ):
         self.smtp_user = smtp_user
         self.smtp_password = smtp_password
         self.recipient = recipient
@@ -140,8 +150,13 @@ class NotificationManager:
         email_user = os.getenv("EMAIL_USER", "")
         email_pass = os.getenv("EMAIL_PASSWORD", "")
         email_to = os.getenv("EMAIL_TO", "")
-        if (email_user and email_pass and email_to
-                and "your_" not in email_user and "your_" not in email_pass):
+        if (
+            email_user
+            and email_pass
+            and email_to
+            and "your_" not in email_user
+            and "your_" not in email_pass
+        ):
             senders.append(EmailSender(email_user, email_pass, email_to))
             logger.info("Email notifications enabled")
 
@@ -156,7 +171,9 @@ class NotificationManager:
             try:
                 await sender.send(message)
             except Exception as e:
-                logger.error("Notification sender %s failed: %s", type(sender).__name__, e)
+                logger.error(
+                    "Notification sender %s failed: %s", type(sender).__name__, e
+                )
 
     async def notify_circuit_breaker_trip(
         self,
@@ -165,20 +182,22 @@ class NotificationManager:
         portfolio_value: float,
         positions_closed: int,
     ) -> None:
-        await self.send(AlertMessage(
-            title="CIRCUIT BREAKER TRIPPED",
-            body=(
-                f"Trading has been halted.\n"
-                f"Reason: {reason}\n"
-                f"All {positions_closed} position(s) have been closed."
-            ),
-            severity="critical",
-            metadata={
-                "Drawdown": f"{drawdown_percent:.2f}%",
-                "Portfolio Value": f"${portfolio_value:,.2f}",
-                "Positions Closed": str(positions_closed),
-            },
-        ))
+        await self.send(
+            AlertMessage(
+                title="CIRCUIT BREAKER TRIPPED",
+                body=(
+                    f"Trading has been halted.\n"
+                    f"Reason: {reason}\n"
+                    f"All {positions_closed} position(s) have been closed."
+                ),
+                severity="critical",
+                metadata={
+                    "Drawdown": f"{drawdown_percent:.2f}%",
+                    "Portfolio Value": f"${portfolio_value:,.2f}",
+                    "Positions Closed": str(positions_closed),
+                },
+            )
+        )
 
     async def notify_circuit_breaker_reset(
         self,
@@ -186,16 +205,18 @@ class NotificationManager:
         reason: str,
         portfolio_value: float,
     ) -> None:
-        await self.send(AlertMessage(
-            title="Circuit Breaker Reset",
-            body=(
-                f"Trading has been re-enabled.\n"
-                f"Operator: {operator}\n"
-                f"Reason: {reason}"
-            ),
-            severity="warning",
-            metadata={
-                "Portfolio Value": f"${portfolio_value:,.2f}",
-                "Reset By": operator,
-            },
-        ))
+        await self.send(
+            AlertMessage(
+                title="Circuit Breaker Reset",
+                body=(
+                    f"Trading has been re-enabled.\n"
+                    f"Operator: {operator}\n"
+                    f"Reason: {reason}"
+                ),
+                severity="warning",
+                metadata={
+                    "Portfolio Value": f"${portfolio_value:,.2f}",
+                    "Reset By": operator,
+                },
+            )
+        )

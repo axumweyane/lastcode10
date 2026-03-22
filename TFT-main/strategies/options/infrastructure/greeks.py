@@ -12,7 +12,9 @@ from typing import Dict, List, Optional
 import numpy as np
 
 from strategies.options.infrastructure.pricing import (
-    OptionContract, PricingEngine, PricingResult,
+    OptionContract,
+    PricingEngine,
+    PricingResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -21,16 +23,17 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PositionGreeks:
     """Greeks for a single options position."""
+
     contract: OptionContract
-    quantity: int              # positive = long, negative = short
+    quantity: int  # positive = long, negative = short
     delta: float
     gamma: float
-    theta: float               # daily
-    vega: float                # per 1% vol move
+    theta: float  # daily
+    vega: float  # per 1% vol move
     rho: float
-    notional: float            # |quantity| * multiplier * spot
-    market_value: float        # quantity * mid_price * multiplier
-    max_loss: float            # worst-case loss for this position
+    notional: float  # |quantity| * multiplier * spot
+    market_value: float  # quantity * mid_price * multiplier
+    max_loss: float  # worst-case loss for this position
 
     @property
     def dollar_delta(self) -> float:
@@ -52,12 +55,13 @@ class PositionGreeks:
 @dataclass
 class PortfolioGreeks:
     """Aggregated Greeks across all options positions."""
-    net_delta: float = 0.0           # net directional exposure in shares
-    net_gamma: float = 0.0           # rate of delta change
-    net_theta: float = 0.0           # daily time decay ($)
-    net_vega: float = 0.0            # volatility exposure ($)
+
+    net_delta: float = 0.0  # net directional exposure in shares
+    net_gamma: float = 0.0  # rate of delta change
+    net_theta: float = 0.0  # daily time decay ($)
+    net_vega: float = 0.0  # volatility exposure ($)
     net_rho: float = 0.0
-    gross_delta: float = 0.0         # total |delta|
+    gross_delta: float = 0.0  # total |delta|
     total_notional: float = 0.0
     total_market_value: float = 0.0
     total_max_loss: float = 0.0
@@ -169,15 +173,15 @@ class GreeksCalculator:
 
         # Spot up
         spot_up_pnl = sum(
-            p.dollar_delta * spot_shock_pct * 100 +
-            0.5 * p.dollar_gamma * (spot_shock_pct * 100) ** 2
+            p.dollar_delta * spot_shock_pct * 100
+            + 0.5 * p.dollar_gamma * (spot_shock_pct * 100) ** 2
             for p in positions
         )
 
         # Spot down
         spot_dn_pnl = sum(
-            -p.dollar_delta * spot_shock_pct * 100 +
-            0.5 * p.dollar_gamma * (spot_shock_pct * 100) ** 2
+            -p.dollar_delta * spot_shock_pct * 100
+            + 0.5 * p.dollar_gamma * (spot_shock_pct * 100) ** 2
             for p in positions
         )
 

@@ -26,10 +26,10 @@ logger = logging.getLogger(__name__)
 
 # Lookback periods and weights (shorter = more weight)
 DEFAULT_LOOKBACKS = {
-    21: 0.4,    # 1 month
-    63: 0.3,    # 3 months
-    126: 0.2,   # 6 months
-    252: 0.1,   # 12 months
+    21: 0.4,  # 1 month
+    63: 0.3,  # 3 months
+    126: 0.2,  # 6 months
+    252: 0.1,  # 12 months
 }
 
 
@@ -91,7 +91,9 @@ class FXMomentumStrategy(BaseStrategy):
                 returns = close.pct_change().dropna().tail(21)
                 positive_days = (returns > 0).sum()
                 directional_ratio = float(positive_days) / len(returns)
-                trend_consistency = abs(directional_ratio - 0.5) * 2.0  # 0 = no trend, 1 = all same direction
+                trend_consistency = (
+                    abs(directional_ratio - 0.5) * 2.0
+                )  # 0 = no trend, 1 = all same direction
             else:
                 trend_consistency = 0.5
 
@@ -128,18 +130,20 @@ class FXMomentumStrategy(BaseStrategy):
                 0.95,
             )
 
-            scores.append(AlphaScore(
-                symbol=symbol,
-                score=z_score,
-                raw_score=info["composite"],
-                confidence=confidence,
-                direction=direction,
-                metadata={
-                    "strategy_type": "fx_momentum",
-                    "trend_consistency": round(info["trend_consistency"], 4),
-                    **info["lookbacks"],
-                },
-            ))
+            scores.append(
+                AlphaScore(
+                    symbol=symbol,
+                    score=z_score,
+                    raw_score=info["composite"],
+                    confidence=confidence,
+                    direction=direction,
+                    metadata={
+                        "strategy_type": "fx_momentum",
+                        "trend_consistency": round(info["trend_consistency"], 4),
+                        **info["lookbacks"],
+                    },
+                )
+            )
 
         scores.sort(key=lambda s: abs(s.score), reverse=True)
         max_long = self.config.max_pairs_long
@@ -148,8 +152,13 @@ class FXMomentumStrategy(BaseStrategy):
         shorts = [s for s in scores if s.direction == SignalDirection.SHORT][:max_short]
         scores = longs + shorts
 
-        logger.info("%s: %d signals (%d long, %d short)",
-                    self.name, len(scores), len(longs), len(shorts))
+        logger.info(
+            "%s: %d signals (%d long, %d short)",
+            self.name,
+            len(scores),
+            len(longs),
+            len(shorts),
+        )
 
         return StrategyOutput(
             strategy_name=self.name,

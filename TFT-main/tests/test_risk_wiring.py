@@ -9,14 +9,17 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from strategies.risk.portfolio_risk import (
-    PortfolioRiskManager, RiskReport, VaRResult, CorrelationAlert,
+    PortfolioRiskManager,
+    RiskReport,
+    VaRResult,
+    CorrelationAlert,
     KillSwitchEvent,
 )
 from strategies.base import StrategyPerformance
 import pandas as pd
 
-
 # ── 1. assess() returns meaningful results after feeding 30 days ─────────────
+
 
 class TestAssessWithData:
     """Verify assess() produces real metrics after being fed historical data."""
@@ -84,6 +87,7 @@ class TestAssessWithData:
 
 # ── 2. kill_switch_triggered blocks trades ───────────────────────────────────
 
+
 class TestKillSwitchBlocksTrades:
     """Verify kill_switch_triggered=True when portfolio drawdown is breached."""
 
@@ -119,7 +123,8 @@ class TestKillSwitchBlocksTrades:
         """Verify the paper-trader source uses risk_manager.assess() and checks kill_switch_triggered."""
         main_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "paper-trader", "main.py",
+            "paper-trader",
+            "main.py",
         )
         with open(main_path) as f:
             source = f.read()
@@ -130,6 +135,7 @@ class TestKillSwitchBlocksTrades:
 
 
 # ── 3. killed_strategies are excluded from the pipeline ──────────────────────
+
 
 class TestKilledStrategiesExcluded:
     """Verify per-strategy kill switches exclude strategies."""
@@ -174,7 +180,8 @@ class TestKilledStrategiesExcluded:
         """Verify the paper-trader source filters killed strategies from combined signals."""
         main_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "paper-trader", "main.py",
+            "paper-trader",
+            "main.py",
         )
         with open(main_path) as f:
             source = f.read()
@@ -196,6 +203,7 @@ class TestKilledStrategiesExcluded:
 
 
 # ── 4. Correlation alert fires when two strategies are highly correlated ─────
+
 
 class TestCorrelationAlerts:
     """Verify correlation monitoring between strategy return vectors."""
@@ -225,7 +233,9 @@ class TestCorrelationAlerts:
 
         report = mgr.assess()
         # With independent RNG draws, correlation should be low
-        high_corr_alerts = [a for a in report.correlation_alerts if a.correlation > 0.85]
+        high_corr_alerts = [
+            a for a in report.correlation_alerts if a.correlation > 0.85
+        ]
         assert len(high_corr_alerts) == 0
 
     def test_correlation_alert_message(self):
@@ -244,7 +254,8 @@ class TestCorrelationAlerts:
         """Verify correlation-based weight reduction exists in the pipeline."""
         main_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "paper-trader", "main.py",
+            "paper-trader",
+            "main.py",
         )
         with open(main_path) as f:
             source = f.read()
@@ -254,13 +265,15 @@ class TestCorrelationAlerts:
 
 # ── 5. Paper-trader structural tests ────────────────────────────────────────
 
+
 class TestPaperTraderRiskWiring:
     """Structural tests: verify risk_manager is a persistent global, fed at startup."""
 
     def _read_source(self):
         main_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "paper-trader", "main.py",
+            "paper-trader",
+            "main.py",
         )
         with open(main_path) as f:
             return f.read()

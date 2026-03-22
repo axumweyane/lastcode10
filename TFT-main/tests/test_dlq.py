@@ -29,6 +29,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
+
 def _mock_conn():
     """Create a mock psycopg2 connection with cursor context manager."""
     conn = MagicMock()
@@ -40,6 +41,7 @@ def _mock_conn():
 
 
 # ── 1. Exponential backoff computation ───────────────────────────────────────
+
 
 class TestComputeBackoff:
     """Test the exponential backoff formula."""
@@ -68,16 +70,16 @@ class TestComputeBackoff:
     def test_jitter_within_range(self):
         """Jitter should be between 0 and 25% of the base delay."""
         for retry in range(5):
-            base = BASE_DELAY_S * (2 ** retry)
+            base = BASE_DELAY_S * (2**retry)
             if base >= MAX_DELAY_S:
                 continue
             delays = [compute_backoff(retry) for _ in range(200)]
             min_expected = base
             max_expected = min(base * (1 + JITTER_FRACTION), MAX_DELAY_S)
             for d in delays:
-                assert min_expected <= d <= max_expected, (
-                    f"retry={retry}: delay {d} outside [{min_expected}, {max_expected}]"
-                )
+                assert (
+                    min_expected <= d <= max_expected
+                ), f"retry={retry}: delay {d} outside [{min_expected}, {max_expected}]"
 
     def test_jitter_has_variance(self):
         """Jitter should add actual randomness — not all values identical."""
@@ -87,6 +89,7 @@ class TestComputeBackoff:
 
 
 # ── 2. DLQ Status enum ──────────────────────────────────────────────────────
+
 
 class TestDLQStatus:
     def test_all_statuses(self):
@@ -101,6 +104,7 @@ class TestDLQStatus:
 
 
 # ── 3. Message persistence ──────────────────────────────────────────────────
+
 
 class TestDLQPersist:
     """Test that persist() saves messages correctly."""
@@ -164,6 +168,7 @@ class TestDLQPersist:
 
 # ── 4. Retry logic and status transitions ────────────────────────────────────
 
+
 class TestDLQRetry:
     """Test the retry() method and status transitions."""
 
@@ -188,8 +193,14 @@ class TestDLQRetry:
 
             # Return one due message
             cursor.fetchall.return_value = [
-                {"id": 1, "topic": "t", "message_key": "k",
-                 "message_value": {"x": 1}, "retry_count": 0, "max_retries": 5}
+                {
+                    "id": 1,
+                    "topic": "t",
+                    "message_key": "k",
+                    "message_value": {"x": 1},
+                    "retry_count": 0,
+                    "max_retries": 5,
+                }
             ]
 
             processor = MagicMock()
@@ -199,8 +210,11 @@ class TestDLQRetry:
             processor.assert_called_once_with("t", "k", {"x": 1})
 
             # Check RESOLVED status was written
-            update_calls = [c for c in cursor.execute.call_args_list
-                           if c[0][0].strip().startswith("UPDATE")]
+            update_calls = [
+                c
+                for c in cursor.execute.call_args_list
+                if c[0][0].strip().startswith("UPDATE")
+            ]
             assert len(update_calls) == 1
             assert DLQStatus.RESOLVED.value in update_calls[0][0][1]
 
@@ -210,8 +224,14 @@ class TestDLQRetry:
             dlq, conn, cursor = self._make_dlq(mock_pg)
 
             cursor.fetchall.return_value = [
-                {"id": 1, "topic": "t", "message_key": "k",
-                 "message_value": {}, "retry_count": 1, "max_retries": 5}
+                {
+                    "id": 1,
+                    "topic": "t",
+                    "message_key": "k",
+                    "message_value": {},
+                    "retry_count": 1,
+                    "max_retries": 5,
+                }
             ]
 
             processor = MagicMock(side_effect=ValueError("processing failed"))
@@ -219,8 +239,11 @@ class TestDLQRetry:
 
             assert count == 0  # No success
 
-            update_calls = [c for c in cursor.execute.call_args_list
-                           if c[0][0].strip().startswith("UPDATE")]
+            update_calls = [
+                c
+                for c in cursor.execute.call_args_list
+                if c[0][0].strip().startswith("UPDATE")
+            ]
             assert len(update_calls) == 1
             assert DLQStatus.RETRYING.value in update_calls[0][0][1]
 
@@ -230,8 +253,14 @@ class TestDLQRetry:
             dlq, conn, cursor = self._make_dlq(mock_pg)
 
             cursor.fetchall.return_value = [
-                {"id": 1, "topic": "t", "message_key": "k",
-                 "message_value": {}, "retry_count": 4, "max_retries": 5}
+                {
+                    "id": 1,
+                    "topic": "t",
+                    "message_key": "k",
+                    "message_value": {},
+                    "retry_count": 4,
+                    "max_retries": 5,
+                }
             ]
 
             processor = MagicMock(side_effect=ValueError("still failing"))
@@ -239,8 +268,11 @@ class TestDLQRetry:
 
             assert count == 0
 
-            update_calls = [c for c in cursor.execute.call_args_list
-                           if c[0][0].strip().startswith("UPDATE")]
+            update_calls = [
+                c
+                for c in cursor.execute.call_args_list
+                if c[0][0].strip().startswith("UPDATE")
+            ]
             assert len(update_calls) == 1
             assert DLQStatus.EXHAUSTED.value in update_calls[0][0][1]
 
@@ -251,8 +283,14 @@ class TestDLQRetry:
             callback = MagicMock()
             dlq._on_exhausted = callback
 
-            row = {"id": 1, "topic": "t", "message_key": "k",
-                   "message_value": {}, "retry_count": 4, "max_retries": 5}
+            row = {
+                "id": 1,
+                "topic": "t",
+                "message_key": "k",
+                "message_value": {},
+                "retry_count": 4,
+                "max_retries": 5,
+            }
             cursor.fetchall.return_value = [row]
 
             processor = MagicMock(side_effect=ValueError("fail"))
@@ -273,8 +311,14 @@ class TestDLQRetry:
                     raise ValueError("fail")
 
             cursor.fetchall.return_value = [
-                {"id": i, "topic": "t", "message_key": "k",
-                 "message_value": {}, "retry_count": 0, "max_retries": 5}
+                {
+                    "id": i,
+                    "topic": "t",
+                    "message_key": "k",
+                    "message_value": {},
+                    "retry_count": 0,
+                    "max_retries": 5,
+                }
                 for i in range(4)
             ]
 
@@ -292,6 +336,7 @@ class TestDLQRetry:
 
 
 # ── 5. Status transitions ───────────────────────────────────────────────────
+
 
 class TestDLQStatusTransitions:
     """Verify the complete lifecycle: PENDING -> RETRYING -> RESOLVED/EXHAUSTED."""
@@ -312,14 +357,23 @@ class TestDLQStatusTransitions:
             dlq._ensure_table = MagicMock()
 
             cursor.fetchall.return_value = [
-                {"id": 1, "topic": "t", "message_key": None,
-                 "message_value": {}, "retry_count": 0, "max_retries": 5}
+                {
+                    "id": 1,
+                    "topic": "t",
+                    "message_key": None,
+                    "message_value": {},
+                    "retry_count": 0,
+                    "max_retries": 5,
+                }
             ]
 
             dlq.retry(MagicMock(side_effect=Exception("fail")))
 
-            update_calls = [c for c in cursor.execute.call_args_list
-                           if c[0][0].strip().startswith("UPDATE")]
+            update_calls = [
+                c
+                for c in cursor.execute.call_args_list
+                if c[0][0].strip().startswith("UPDATE")
+            ]
             params = update_calls[0][0][1]
             assert params[0] == DLQStatus.RETRYING.value
             assert params[1] == 1  # retry_count incremented
@@ -340,14 +394,23 @@ class TestDLQStatusTransitions:
             dlq._ensure_table = MagicMock()
 
             cursor.fetchall.return_value = [
-                {"id": 1, "topic": "t", "message_key": None,
-                 "message_value": {}, "retry_count": 2, "max_retries": 5}
+                {
+                    "id": 1,
+                    "topic": "t",
+                    "message_key": None,
+                    "message_value": {},
+                    "retry_count": 2,
+                    "max_retries": 5,
+                }
             ]
 
             dlq.retry(MagicMock())  # Succeeds
 
-            update_calls = [c for c in cursor.execute.call_args_list
-                           if c[0][0].strip().startswith("UPDATE")]
+            update_calls = [
+                c
+                for c in cursor.execute.call_args_list
+                if c[0][0].strip().startswith("UPDATE")
+            ]
             params = update_calls[0][0][1]
             assert params[0] == DLQStatus.RESOLVED.value
 
@@ -367,19 +430,29 @@ class TestDLQStatusTransitions:
             dlq._ensure_table = MagicMock()
 
             cursor.fetchall.return_value = [
-                {"id": 1, "topic": "t", "message_key": None,
-                 "message_value": {}, "retry_count": 2, "max_retries": 3}
+                {
+                    "id": 1,
+                    "topic": "t",
+                    "message_key": None,
+                    "message_value": {},
+                    "retry_count": 2,
+                    "max_retries": 3,
+                }
             ]
 
             dlq.retry(MagicMock(side_effect=Exception("fail")))
 
-            update_calls = [c for c in cursor.execute.call_args_list
-                           if c[0][0].strip().startswith("UPDATE")]
+            update_calls = [
+                c
+                for c in cursor.execute.call_args_list
+                if c[0][0].strip().startswith("UPDATE")
+            ]
             params = update_calls[0][0][1]
             assert params[0] == DLQStatus.EXHAUSTED.value
 
 
 # ── 6. Background retry worker ──────────────────────────────────────────────
+
 
 class TestRetryWorker:
     """Test the background retry worker thread."""
@@ -416,21 +489,33 @@ class TestRetryWorker:
 
 # ── 7. DLQ table in schema ──────────────────────────────────────────────────
 
+
 class TestDLQSchema:
     """Verify DLQ table exists in postgres_schema.py."""
 
     @pytest.fixture(autouse=True)
     def load_schema(self):
         from postgres_schema import CREATE_SCHEMA_SQL
+
         self.sql = CREATE_SCHEMA_SQL
 
     def test_dlq_table_exists(self):
         assert "dead_letter_queue" in self.sql
 
     def test_dlq_has_required_columns(self):
-        for col in ["service_name", "topic", "message_key", "message_value",
-                     "error", "retry_count", "max_retries", "next_retry_at",
-                     "created_at", "updated_at", "status"]:
+        for col in [
+            "service_name",
+            "topic",
+            "message_key",
+            "message_value",
+            "error",
+            "retry_count",
+            "max_retries",
+            "next_retry_at",
+            "created_at",
+            "updated_at",
+            "status",
+        ]:
             assert col in self.sql
 
     def test_dlq_indexes_exist(self):
@@ -443,6 +528,7 @@ class TestDLQSchema:
 
 
 # ── 8. DLQ integration in microservices ──────────────────────────────────────
+
 
 class TestDLQIntegration:
     """Verify DLQ is wired into each microservice."""
@@ -490,6 +576,7 @@ class TestDLQIntegration:
 
 # ── 9. DLQ dashboard endpoint ───────────────────────────────────────────────
 
+
 class TestDLQDashboard:
     """Verify /dlq endpoint exists in paper-trader."""
 
@@ -508,13 +595,24 @@ class TestDLQDashboard:
 
 # ── 10. CREATE_DLQ_TABLE_SQL consistency ─────────────────────────────────────
 
+
 class TestCreateDLQTableSQL:
     """Verify the embedded CREATE TABLE SQL in dlq.py is valid."""
 
     def test_has_all_columns(self):
-        for col in ["service_name", "topic", "message_key", "message_value",
-                     "error", "retry_count", "max_retries", "next_retry_at",
-                     "created_at", "updated_at", "status"]:
+        for col in [
+            "service_name",
+            "topic",
+            "message_key",
+            "message_value",
+            "error",
+            "retry_count",
+            "max_retries",
+            "next_retry_at",
+            "created_at",
+            "updated_at",
+            "status",
+        ]:
             assert col in CREATE_DLQ_TABLE_SQL
 
     def test_has_indexes(self):

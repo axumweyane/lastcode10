@@ -2,6 +2,7 @@
 
 import sys
 import os
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import pandas as pd
@@ -20,15 +21,17 @@ def model():
 
 @pytest.fixture
 def sample_data():
-    return pd.DataFrame({
-        "symbol": ["AAPL", "AAPL", "MSFT", "MSFT"],
-        "text": [
-            "Apple reports record quarterly revenue beating all estimates",
-            "Apple stock soars on strong earnings guidance",
-            "Microsoft cloud growth slows as enterprise spending cuts deepen",
-            "MSFT faces regulatory headwinds in EU markets",
-        ],
-    })
+    return pd.DataFrame(
+        {
+            "symbol": ["AAPL", "AAPL", "MSFT", "MSFT"],
+            "text": [
+                "Apple reports record quarterly revenue beating all estimates",
+                "Apple stock soars on strong earnings guidance",
+                "Microsoft cloud growth slows as enterprise spending cuts deepen",
+                "MSFT faces regulatory headwinds in EU markets",
+            ],
+        }
+    )
 
 
 def test_returns_model_prediction_type(model, sample_data):

@@ -12,8 +12,15 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Directories and file patterns to exclude from scanning
 EXCLUDE_DIRS = {
-    ".git", "__pycache__", "venv", ".venv", "node_modules",
-    "lightning_logs", ".pytest_cache", ".cache", ".eggs",
+    ".git",
+    "__pycache__",
+    "venv",
+    ".venv",
+    "node_modules",
+    "lightning_logs",
+    ".pytest_cache",
+    ".cache",
+    ".eggs",
 }
 EXCLUDE_FILES = {
     "test_security_hardening.py",  # this file
@@ -49,6 +56,7 @@ def _iter_all_text_files():
 
 # ── 1. No hardcoded /home/kironix paths ─────────────────────────────────────
 
+
 class TestNoHardcodedPaths:
     """No file should reference /home/kironix."""
 
@@ -62,12 +70,11 @@ class TestNoHardcodedPaths:
                             violations.append(f"{rel}:{i}")
             except Exception:
                 pass
-        assert violations == [], (
-            f"Found /home/kironix in: {violations}"
-        )
+        assert violations == [], f"Found /home/kironix in: {violations}"
 
 
 # ── 2. No hardcoded password defaults ───────────────────────────────────────
+
 
 class TestNoHardcodedPasswords:
     """No Python file should have password defaults in getenv calls."""
@@ -98,9 +105,7 @@ class TestNoHardcodedPasswords:
                             violations.append(f"{rel}:{i} — default={m.group(1)!r}")
             except Exception:
                 pass
-        assert violations == [], (
-            f"Hardcoded password defaults in getenv: {violations}"
-        )
+        assert violations == [], f"Hardcoded password defaults in getenv: {violations}"
 
     def test_no_hardcoded_password_literals(self):
         """No password='some_literal' (except empty string or env var lookups)."""
@@ -116,17 +121,15 @@ class TestNoHardcodedPasswords:
                                 violations.append(f"{rel}:{i} — value={val!r}")
             except Exception:
                 pass
-        assert violations == [], (
-            f"Hardcoded password literals: {violations}"
-        )
+        assert violations == [], f"Hardcoded password literals: {violations}"
 
     def test_no_tft_password_in_compose(self):
         compose_path = os.path.join(BASE_DIR, "docker-compose.yml")
         with open(compose_path) as f:
             content = f.read()
-        assert "tft_password" not in content, (
-            "docker-compose.yml still contains hardcoded tft_password"
-        )
+        assert (
+            "tft_password" not in content
+        ), "docker-compose.yml still contains hardcoded tft_password"
 
     def test_no_admin_password_in_compose(self):
         compose_path = os.path.join(BASE_DIR, "docker-compose.yml")
@@ -137,6 +140,7 @@ class TestNoHardcodedPasswords:
 
 
 # ── 3. No real credentials in tracked files ──────────────────────────────────
+
 
 class TestNoLeakedSecrets:
     """Scan for patterns that look like real API keys or tokens."""
@@ -162,12 +166,11 @@ class TestNoLeakedSecrets:
                             violations.append(f"{rel}: contains {label}")
             except Exception:
                 pass
-        assert violations == [], (
-            f"Real secrets found in codebase: {violations}"
-        )
+        assert violations == [], f"Real secrets found in codebase: {violations}"
 
 
 # ── 4. .env is gitignored ───────────────────────────────────────────────────
+
 
 class TestGitignore:
     """Verify .env and secrets are properly gitignored."""
@@ -193,6 +196,7 @@ class TestGitignore:
 
 # ── 5. .env.example has only placeholders ────────────────────────────────────
 
+
 class TestEnvExample:
     """Verify .env.example has only placeholder values, never real creds."""
 
@@ -213,7 +217,8 @@ class TestEnvExample:
             key = key.strip().upper()
             if "PASSWORD" in key or "SECRET" in key:
                 assert value in (
-                    "", "your_secure_password_here",
+                    "",
+                    "your_secure_password_here",
                     "your_alpaca_secret_key_here",
                     "your_reddit_client_secret_here",
                     "your_grafana_password_here",
@@ -228,6 +233,7 @@ class TestEnvExample:
 
 
 # ── 6. env_validator module ──────────────────────────────────────────────────
+
 
 class TestEnvValidator:
     """Test the startup environment validator."""
@@ -334,12 +340,14 @@ class TestEnvValidator:
 
 # ── 7. Docker compose uses env var interpolation ─────────────────────────────
 
+
 class TestDockerComposeSecure:
     """Verify docker-compose.yml uses env var references for secrets."""
 
     @pytest.fixture(autouse=True)
     def load_compose(self):
         import yaml
+
         with open(os.path.join(BASE_DIR, "docker-compose.yml")) as f:
             self.raw = f.read()
             f.seek(0)
@@ -356,6 +364,6 @@ class TestDockerComposeSecure:
         # All DATABASE_URL values should use ${} interpolation
         for line in self.raw.split("\n"):
             if "DATABASE_URL=" in line and "postgresql://" in line:
-                assert "${POSTGRES_PASSWORD" in line, (
-                    f"DATABASE_URL has hardcoded password: {line.strip()}"
-                )
+                assert (
+                    "${POSTGRES_PASSWORD" in line
+                ), f"DATABASE_URL has hardcoded password: {line.strip()}"

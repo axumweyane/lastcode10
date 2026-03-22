@@ -10,8 +10,8 @@ import pytest
 
 from trading.persistence.audit import AuditLogger, CIRCUIT_BREAKER_SCHEMA_SQL
 
-
 # ---------- Mock helpers ----------
+
 
 def _make_mock_cursor(fetchone_val=None, fetchall_val=None, description=None):
     cur = MagicMock()
@@ -33,18 +33,21 @@ def _make_mock_conn(cursor):
 
 @pytest.fixture
 def audit():
-    return AuditLogger(db_config={
-        "host": "localhost",
-        "port": 5432,
-        "database": "test_db",
-        "user": "test_user",
-        "password": "test_pass",
-    })
+    return AuditLogger(
+        db_config={
+            "host": "localhost",
+            "port": 5432,
+            "database": "test_db",
+            "user": "test_user",
+            "password": "test_pass",
+        }
+    )
 
 
 @pytest.fixture
 def mock_conn_factory():
     """Returns a function that patches _get_connection with a mock."""
+
     def factory(audit_logger, cursor):
         conn = _make_mock_conn(cursor)
 
@@ -60,6 +63,7 @@ def mock_conn_factory():
 
 # ---------- Constructor ----------
 
+
 class TestConstructor:
     def test_explicit_config(self):
         cfg = {"host": "h", "port": 1234, "database": "d", "user": "u", "password": "p"}
@@ -67,16 +71,23 @@ class TestConstructor:
         assert a.db_config == cfg
 
     def test_env_defaults(self):
-        with patch.dict("os.environ", {
-            "DB_HOST": "envhost", "DB_PORT": "9999",
-            "DB_NAME": "envdb", "DB_USER": "envuser", "DB_PASSWORD": "envpass",
-        }):
+        with patch.dict(
+            "os.environ",
+            {
+                "DB_HOST": "envhost",
+                "DB_PORT": "9999",
+                "DB_NAME": "envdb",
+                "DB_USER": "envuser",
+                "DB_PASSWORD": "envpass",
+            },
+        ):
             a = AuditLogger()
             assert a.db_config["host"] == "envhost"
             assert a.db_config["port"] == 9999
 
 
 # ---------- create_schema ----------
+
 
 class TestCreateSchema:
     def test_create_schema(self, audit, mock_conn_factory):
@@ -89,6 +100,7 @@ class TestCreateSchema:
 
 
 # ---------- log_trip_event ----------
+
 
 class TestLogTripEvent:
     def test_returns_event_id(self, audit, mock_conn_factory):
@@ -131,9 +143,14 @@ class TestLogTripEvent:
         patcher, conn = mock_conn_factory(audit, cur)
         with patcher:
             audit.log_trip_event(
-                reason="r", drawdown_method="m", drawdown_percent=1.0,
-                portfolio_value=99000, hwm=100000, sod_value=0,
-                initial_capital=100000, positions_closed=0,
+                reason="r",
+                drawdown_method="m",
+                drawdown_percent=1.0,
+                portfolio_value=99000,
+                hwm=100000,
+                sod_value=0,
+                initial_capital=100000,
+                positions_closed=0,
                 triggered_by="operator_john",
             )
         # Verify the triggered_by param was passed
@@ -142,6 +159,7 @@ class TestLogTripEvent:
 
 
 # ---------- log_closure ----------
+
 
 class TestLogClosure:
     def test_log_closure(self, audit, mock_conn_factory):
@@ -166,8 +184,12 @@ class TestLogClosure:
         patcher, conn = mock_conn_factory(audit, cur)
         with patcher:
             audit.log_closure(
-                event_id=1, ticker="X", quantity=10,
-                side="short", market_value=500, unrealized_pnl=0,
+                event_id=1,
+                ticker="X",
+                quantity=10,
+                side="short",
+                market_value=500,
+                unrealized_pnl=0,
             )
         args = cur.execute.call_args[0][1]
         assert args[6] is None  # close_order_id
@@ -175,6 +197,7 @@ class TestLogClosure:
 
 
 # ---------- log_reset_event ----------
+
 
 class TestLogResetEvent:
     def test_returns_event_id(self, audit, mock_conn_factory):
@@ -193,13 +216,16 @@ class TestLogResetEvent:
         patcher, conn = mock_conn_factory(audit, cur)
         with patcher:
             event_id = audit.log_reset_event(
-                operator="bot", reason="auto", portfolio_value=50000,
+                operator="bot",
+                reason="auto",
+                portfolio_value=50000,
                 metadata={"source": "auto_recovery"},
             )
         assert event_id == 10
 
 
 # ---------- log_portfolio_snapshot ----------
+
 
 class TestLogPortfolioSnapshot:
     def test_log_snapshot(self, audit, mock_conn_factory):
@@ -222,16 +248,40 @@ class TestLogPortfolioSnapshot:
 
 # ---------- get_recent_events ----------
 
+
 class TestGetRecentEvents:
     def test_returns_events(self, audit, mock_conn_factory):
         desc = [
-            ("id",), ("event_type",), ("triggered_by",), ("reason",),
-            ("drawdown_method",), ("drawdown_percent",), ("portfolio_value",),
-            ("hwm",), ("sod_value",), ("initial_capital",),
-            ("positions_closed",), ("metadata",), ("created_at",),
+            ("id",),
+            ("event_type",),
+            ("triggered_by",),
+            ("reason",),
+            ("drawdown_method",),
+            ("drawdown_percent",),
+            ("portfolio_value",),
+            ("hwm",),
+            ("sod_value",),
+            ("initial_capital",),
+            ("positions_closed",),
+            ("metadata",),
+            ("created_at",),
         ]
         rows = [
-            (1, "trip", "system", "drawdown", "hwm", 5.0, 95000, 100000, 0, 100000, 2, {}, "2026-03-21"),
+            (
+                1,
+                "trip",
+                "system",
+                "drawdown",
+                "hwm",
+                5.0,
+                95000,
+                100000,
+                0,
+                100000,
+                2,
+                {},
+                "2026-03-21",
+            ),
         ]
         cur = _make_mock_cursor(fetchall_val=rows, description=desc)
         patcher, _ = mock_conn_factory(audit, cur)
@@ -251,12 +301,20 @@ class TestGetRecentEvents:
 
 # ---------- get_closures_for_event ----------
 
+
 class TestGetClosuresForEvent:
     def test_returns_closures(self, audit, mock_conn_factory):
         desc = [
-            ("id",), ("event_id",), ("ticker",), ("quantity",), ("side",),
-            ("market_value",), ("unrealized_pnl",), ("close_order_id",),
-            ("close_status",), ("created_at",),
+            ("id",),
+            ("event_id",),
+            ("ticker",),
+            ("quantity",),
+            ("side",),
+            ("market_value",),
+            ("unrealized_pnl",),
+            ("close_order_id",),
+            ("close_status",),
+            ("created_at",),
         ]
         rows = [
             (1, 42, "AAPL", 100, "long", 15000, -500, "o1", "filled", "2026-03-21"),
@@ -272,9 +330,15 @@ class TestGetClosuresForEvent:
 
 # ---------- get_latest_snapshot ----------
 
+
 class TestGetLatestSnapshot:
     def test_returns_snapshot(self, audit, mock_conn_factory):
-        desc = [("portfolio_value",), ("high_water_mark",), ("snapshot_type",), ("created_at",)]
+        desc = [
+            ("portfolio_value",),
+            ("high_water_mark",),
+            ("snapshot_type",),
+            ("created_at",),
+        ]
         cur = _make_mock_cursor(
             fetchone_val=(100000, 105000, "periodic", "2026-03-21"),
             description=desc,
@@ -286,7 +350,12 @@ class TestGetLatestSnapshot:
         assert snap["high_water_mark"] == 105000
 
     def test_returns_none_when_empty(self, audit, mock_conn_factory):
-        desc = [("portfolio_value",), ("high_water_mark",), ("snapshot_type",), ("created_at",)]
+        desc = [
+            ("portfolio_value",),
+            ("high_water_mark",),
+            ("snapshot_type",),
+            ("created_at",),
+        ]
         cur = _make_mock_cursor(fetchone_val=None, description=desc)
         patcher, _ = mock_conn_factory(audit, cur)
         with patcher:
@@ -296,15 +365,39 @@ class TestGetLatestSnapshot:
 
 # ---------- get_latest_trip_event ----------
 
+
 class TestGetLatestTripEvent:
     def test_returns_event(self, audit, mock_conn_factory):
         desc = [
-            ("id",), ("event_type",), ("triggered_by",), ("reason",),
-            ("drawdown_method",), ("drawdown_percent",), ("portfolio_value",),
-            ("hwm",), ("sod_value",), ("initial_capital",),
-            ("positions_closed",), ("metadata",), ("created_at",),
+            ("id",),
+            ("event_type",),
+            ("triggered_by",),
+            ("reason",),
+            ("drawdown_method",),
+            ("drawdown_percent",),
+            ("portfolio_value",),
+            ("hwm",),
+            ("sod_value",),
+            ("initial_capital",),
+            ("positions_closed",),
+            ("metadata",),
+            ("created_at",),
         ]
-        row = (1, "trip", "system", "drawdown", "hwm", 5.0, 95000, 100000, 0, 100000, 2, {}, "2026-03-21")
+        row = (
+            1,
+            "trip",
+            "system",
+            "drawdown",
+            "hwm",
+            5.0,
+            95000,
+            100000,
+            0,
+            100000,
+            2,
+            {},
+            "2026-03-21",
+        )
         cur = _make_mock_cursor(fetchone_val=row, description=desc)
         patcher, _ = mock_conn_factory(audit, cur)
         with patcher:
@@ -322,9 +415,13 @@ class TestGetLatestTripEvent:
 
 # ---------- _get_connection error handling ----------
 
+
 class TestGetConnectionErrors:
     def test_connection_error_propagates(self, audit):
-        with patch("trading.persistence.audit.psycopg2.connect", side_effect=Exception("conn fail")):
+        with patch(
+            "trading.persistence.audit.psycopg2.connect",
+            side_effect=Exception("conn fail"),
+        ):
             with pytest.raises(Exception, match="conn fail"):
                 with audit._get_connection() as conn:
                     pass
@@ -334,7 +431,9 @@ class TestGetConnectionErrors:
         mock_conn.cursor.return_value.__enter__ = MagicMock()
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
 
-        with patch("trading.persistence.audit.psycopg2.connect", return_value=mock_conn):
+        with patch(
+            "trading.persistence.audit.psycopg2.connect", return_value=mock_conn
+        ):
             with pytest.raises(ValueError):
                 with audit._get_connection() as conn:
                     raise ValueError("query failed")

@@ -132,9 +132,7 @@ class PrometheusMetrics:
         """Update strategy weight gauges."""
         self.strategy_weight._metrics.clear()
         for name, w in fixed_weights.items():
-            self.strategy_weight.labels(
-                strategy_name=name, weight_type="fixed"
-            ).set(w)
+            self.strategy_weight.labels(strategy_name=name, weight_type="fixed").set(w)
         if bayesian_weights:
             for name, w in bayesian_weights.items():
                 self.strategy_weight.labels(
@@ -148,11 +146,13 @@ class PrometheusMetrics:
         is_trending: bool = False,
     ) -> None:
         """Update regime info metric."""
-        self.regime_state.info({
-            "regime": regime,
-            "volatility": "volatile" if is_volatile else "calm",
-            "trend": "trending" if is_trending else "choppy",
-        })
+        self.regime_state.info(
+            {
+                "regime": regime,
+                "volatility": "volatile" if is_volatile else "calm",
+                "trend": "trending" if is_trending else "choppy",
+            }
+        )
 
     def update_risk(
         self,

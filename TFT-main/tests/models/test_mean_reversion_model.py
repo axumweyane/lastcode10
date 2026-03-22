@@ -2,12 +2,17 @@
 
 import sys
 import os
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import numpy as np
 import pandas as pd
 import pytest
-from models.mean_reversion_model import MeanReversionModel, _compute_hurst, _fit_ou_params
+from models.mean_reversion_model import (
+    MeanReversionModel,
+    _compute_hurst,
+    _fit_ou_params,
+)
 from models.base import ModelPrediction
 
 
@@ -25,17 +30,21 @@ def sample_data():
     # Mean-reverting process
     prices = [100.0]
     for _ in range(n - 1):
-        prices.append(prices[-1] + 0.1 * (100.0 - prices[-1]) + np.random.normal(0, 0.5))
+        prices.append(
+            prices[-1] + 0.1 * (100.0 - prices[-1]) + np.random.normal(0, 0.5)
+        )
     prices = np.array(prices)
     prices = np.maximum(prices, 1.0)
 
     dates = pd.date_range("2023-01-01", periods=n)
-    return pd.DataFrame({
-        "symbol": ["AAPL"] * n,
-        "timestamp": dates,
-        "close": prices,
-        "volume": np.random.randint(1000000, 5000000, n),
-    })
+    return pd.DataFrame(
+        {
+            "symbol": ["AAPL"] * n,
+            "timestamp": dates,
+            "close": prices,
+            "volume": np.random.randint(1000000, 5000000, n),
+        }
+    )
 
 
 def test_returns_model_prediction_type(model, sample_data):
@@ -81,7 +90,9 @@ def test_mean_reverting_process_hurst():
     np.random.seed(42)
     prices = [100.0]
     for _ in range(500):
-        prices.append(prices[-1] + 0.2 * (100.0 - prices[-1]) + np.random.normal(0, 0.3))
+        prices.append(
+            prices[-1] + 0.2 * (100.0 - prices[-1]) + np.random.normal(0, 0.3)
+        )
     hurst = _compute_hurst(np.array(prices))
     assert hurst < 0.55  # should be well below 0.5 for strong MR
 
@@ -91,18 +102,22 @@ def test_ou_params_positive_theta():
     np.random.seed(42)
     prices = [100.0]
     for _ in range(500):
-        prices.append(prices[-1] + 0.1 * (100.0 - prices[-1]) + np.random.normal(0, 0.3))
+        prices.append(
+            prices[-1] + 0.1 * (100.0 - prices[-1]) + np.random.normal(0, 0.3)
+        )
     params = _fit_ou_params(np.array(prices))
     assert params["theta"] >= 0
     assert params["half_life"] < 100
 
 
 def test_too_short_data(model):
-    data = pd.DataFrame({
-        "symbol": ["AAPL"] * 10,
-        "timestamp": pd.date_range("2023-01-01", periods=10),
-        "close": np.linspace(100, 110, 10),
-    })
+    data = pd.DataFrame(
+        {
+            "symbol": ["AAPL"] * 10,
+            "timestamp": pd.date_range("2023-01-01", periods=10),
+            "close": np.linspace(100, 110, 10),
+        }
+    )
     preds = model.predict(data)
     assert preds == []
 

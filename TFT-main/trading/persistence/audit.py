@@ -128,9 +128,15 @@ class AuditLogger:
                     RETURNING id
                     """,
                     (
-                        triggered_by, reason, drawdown_method,
-                        drawdown_percent, portfolio_value, hwm, sod_value,
-                        initial_capital, positions_closed,
+                        triggered_by,
+                        reason,
+                        drawdown_method,
+                        drawdown_percent,
+                        portfolio_value,
+                        hwm,
+                        sod_value,
+                        initial_capital,
+                        positions_closed,
                         Json(metadata or {}),
                     ),
                 )
@@ -159,8 +165,16 @@ class AuditLogger:
                          unrealized_pnl, close_order_id, close_status)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (event_id, ticker, quantity, side, market_value,
-                     unrealized_pnl, close_order_id, close_status),
+                    (
+                        event_id,
+                        ticker,
+                        quantity,
+                        side,
+                        market_value,
+                        unrealized_pnl,
+                        close_order_id,
+                        close_status,
+                    ),
                 )
             conn.commit()
 
@@ -241,14 +255,12 @@ class AuditLogger:
     def get_latest_snapshot(self) -> Optional[Dict[str, Any]]:
         with self._get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """
+                cur.execute("""
                     SELECT portfolio_value, high_water_mark, snapshot_type, created_at
                     FROM portfolio_snapshots
                     ORDER BY created_at DESC
                     LIMIT 1
-                    """
-                )
+                    """)
                 row = cur.fetchone()
                 if row:
                     cols = [desc[0] for desc in cur.description]
@@ -258,8 +270,7 @@ class AuditLogger:
     def get_latest_trip_event(self) -> Optional[Dict[str, Any]]:
         with self._get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """
+                cur.execute("""
                     SELECT id, event_type, triggered_by, reason, drawdown_method,
                            drawdown_percent, portfolio_value, hwm, sod_value,
                            initial_capital, positions_closed, metadata, created_at
@@ -267,8 +278,7 @@ class AuditLogger:
                     WHERE event_type = 'trip'
                     ORDER BY created_at DESC
                     LIMIT 1
-                    """
-                )
+                    """)
                 row = cur.fetchone()
                 if row:
                     cols = [desc[0] for desc in cur.description]

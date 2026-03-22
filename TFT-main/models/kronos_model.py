@@ -83,16 +83,12 @@ class KronosModel(BaseTFTModel):
             return []
 
         predictions = []
-        symbols = (
-            data["symbol"].unique() if "symbol" in data.columns else ["UNKNOWN"]
-        )
+        symbols = data["symbol"].unique() if "symbol" in data.columns else ["UNKNOWN"]
 
         for symbol in symbols:
             try:
                 sym_data = (
-                    data[data["symbol"] == symbol]
-                    if "symbol" in data.columns
-                    else data
+                    data[data["symbol"] == symbol] if "symbol" in data.columns else data
                 )
                 pred = self._predict_symbol(symbol, sym_data)
                 if pred is not None:
@@ -114,7 +110,9 @@ class KronosModel(BaseTFTModel):
             df = df.tail(self._max_context)
 
         if len(df) < 10:
-            logger.warning("Kronos: insufficient data for %s (%d rows)", symbol, len(df))
+            logger.warning(
+                "Kronos: insufficient data for %s (%d rows)", symbol, len(df)
+            )
             return None
 
         # Build OHLCV input

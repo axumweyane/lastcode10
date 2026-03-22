@@ -33,23 +33,25 @@ logger = logging.getLogger(__name__)
 @dataclass
 class BacktestConfig:
     """Backtest parameters."""
+
     initial_capital: float = 100_000.0
-    transaction_cost_bps: float = 5.0     # 5 bps round trip (retail via Alpaca)
-    slippage_bps: float = 2.0             # 2 bps slippage estimate
-    rebalance_frequency: str = "daily"    # "daily" or "weekly"
-    max_position_weight: float = 0.10     # 10% max per position
+    transaction_cost_bps: float = 5.0  # 5 bps round trip (retail via Alpaca)
+    slippage_bps: float = 2.0  # 2 bps slippage estimate
+    rebalance_frequency: str = "daily"  # "daily" or "weekly"
+    max_position_weight: float = 0.10  # 10% max per position
     max_gross_leverage: float = 2.0
-    warmup_days: int = 280                # days of data before first trade
+    warmup_days: int = 280  # days of data before first trade
     benchmark_symbol: Optional[str] = None  # e.g. "SPY" for comparison
 
 
 @dataclass
 class TradeRecord:
     """Single trade for the audit trail."""
+
     date: datetime
     symbol: str
-    direction: str       # "long" or "short"
-    weight: float        # portfolio weight
+    direction: str  # "long" or "short"
+    weight: float  # portfolio weight
     entry_price: float
     daily_return: float
     pnl_dollar: float
@@ -59,6 +61,7 @@ class TradeRecord:
 @dataclass
 class BacktestResult:
     """Complete backtest output."""
+
     strategy_name: str
     config: BacktestConfig
     start_date: datetime
@@ -66,8 +69,8 @@ class BacktestResult:
     trading_days: int
 
     # Equity
-    equity_curve: pd.Series          # daily portfolio value
-    daily_returns: pd.Series         # daily portfolio returns
+    equity_curve: pd.Series  # daily portfolio value
+    daily_returns: pd.Series  # daily portfolio returns
     benchmark_returns: Optional[pd.Series] = None
 
     # Performance metrics
@@ -78,9 +81,9 @@ class BacktestResult:
     sortino_ratio: float = 0.0
     max_drawdown: float = 0.0
     max_drawdown_duration_days: int = 0
-    calmar_ratio: float = 0.0        # ann return / max drawdown
+    calmar_ratio: float = 0.0  # ann return / max drawdown
     win_rate: float = 0.0
-    profit_factor: float = 0.0       # gross profit / gross loss
+    profit_factor: float = 0.0  # gross profit / gross loss
     avg_daily_return: float = 0.0
     best_day: float = 0.0
     worst_day: float = 0.0
@@ -88,7 +91,7 @@ class BacktestResult:
     total_costs: float = 0.0
 
     # Comparison
-    alpha: float = 0.0               # vs benchmark
+    alpha: float = 0.0  # vs benchmark
     beta: float = 0.0
     information_ratio: float = 0.0
 
@@ -128,13 +131,15 @@ class BacktestResult:
         ]
 
         if self.benchmark_returns is not None:
-            lines.extend([
-                f"",
-                f"  --- vs Benchmark ---",
-                f"  Alpha:             {self.alpha:+.2%}",
-                f"  Beta:              {self.beta:.3f}",
-                f"  Info Ratio:        {self.information_ratio:.3f}",
-            ])
+            lines.extend(
+                [
+                    f"",
+                    f"  --- vs Benchmark ---",
+                    f"  Alpha:             {self.alpha:+.2%}",
+                    f"  Beta:              {self.beta:.3f}",
+                    f"  Info Ratio:        {self.information_ratio:.3f}",
+                ]
+            )
 
         lines.append(f"{'=' * 60}")
         report = "\n".join(lines)
@@ -180,7 +185,8 @@ class BacktestEngine:
         """
         logger.info(
             "Starting backtest for '%s' with $%,.0f capital",
-            strategy.name, self.config.initial_capital,
+            strategy.name,
+            self.config.initial_capital,
         )
 
         # Sort and get unique dates
@@ -194,18 +200,22 @@ class BacktestEngine:
             )
 
         # Rebalance dates (skip warmup)
-        trade_dates = all_dates[self.config.warmup_days:]
+        trade_dates = all_dates[self.config.warmup_days :]
         if self.config.rebalance_frequency == "weekly":
             # Keep only Mondays (or first day of each week)
             trade_dates_dt = pd.DatetimeIndex(trade_dates)
-            week_groups = trade_dates_dt.to_series().groupby(
-                trade_dates_dt.isocalendar().week
-            ).first()
+            week_groups = (
+                trade_dates_dt.to_series()
+                .groupby(trade_dates_dt.isocalendar().week)
+                .first()
+            )
             trade_dates = sorted(week_groups.values)
 
         logger.info(
             "Backtest: %d total dates, %d warmup, %d rebalance dates",
-            len(all_dates), self.config.warmup_days, len(trade_dates),
+            len(all_dates),
+            self.config.warmup_days,
+            len(trade_dates),
         )
 
         # Initialize strategy with warmup data
@@ -233,9 +243,7 @@ class BacktestEngine:
         # Run through each rebalance date
         for i, date in enumerate(trade_dates):
             # Data up to this date (no look-ahead)
-            data_slice = historical_data[
-                historical_data["timestamp"] <= date
-            ]
+            data_slice = historical_data[historical_data["timestamp"] <= date]
 
             # Generate signals
             try:
@@ -258,25 +266,41 @@ class BacktestEngine:
                     continue
 
                 # Get today's return for this symbol
-                prev_date = trade_dates[i - 1] if i > 0 else all_dates[self.config.warmup_days - 1]
+                prev_date = (
+                    trade_dates[i - 1]
+                    if i > 0
+                    else all_dates[self.config.warmup_days - 1]
+                )
                 price_today = price_lookup.get((sym, date))
                 price_prev = price_lookup.get((sym, prev_date))
 
-                if price_today is not None and price_prev is not None and price_prev > 0:
+                if (
+                    price_today is not None
+                    and price_prev is not None
+                    and price_prev > 0
+                ):
                     sym_return = (price_today - price_prev) / price_prev
                     position_pnl = weight * capital * sym_return
                     daily_pnl += position_pnl
 
-                    trade_log.append(TradeRecord(
-                        date=date, symbol=sym, direction="long" if weight > 0 else "short",
-                        weight=weight, entry_price=price_prev,
-                        daily_return=sym_return, pnl_dollar=position_pnl,
-                        cost_bps=0.0,
-                    ))
+                    trade_log.append(
+                        TradeRecord(
+                            date=date,
+                            symbol=sym,
+                            direction="long" if weight > 0 else "short",
+                            weight=weight,
+                            entry_price=price_prev,
+                            daily_return=sym_return,
+                            pnl_dollar=position_pnl,
+                            cost_bps=0.0,
+                        )
+                    )
 
             # Transaction costs on weight changes (turnover)
             turnover_cost = self._compute_turnover_cost(
-                current_weights, target_weights, capital,
+                current_weights,
+                target_weights,
+                capital,
             )
             total_costs += turnover_cost
             daily_pnl -= turnover_cost
@@ -288,7 +312,9 @@ class BacktestEngine:
             equity_dates.append(date)
 
             # Update strategy performance for kill switch tracking
-            daily_ret = daily_pnl / (capital - daily_pnl) if (capital - daily_pnl) > 0 else 0
+            daily_ret = (
+                daily_pnl / (capital - daily_pnl) if (capital - daily_pnl) > 0 else 0
+            )
             strategy.get_performance().update(daily_ret)
 
         # Build equity curve
@@ -359,7 +385,9 @@ class BacktestEngine:
             new_w = new_weights.get(sym, 0.0)
             turnover += abs(new_w - old_w)
 
-        cost_rate = (self.config.transaction_cost_bps + self.config.slippage_bps) / 10_000
+        cost_rate = (
+            self.config.transaction_cost_bps + self.config.slippage_bps
+        ) / 10_000
         return turnover * capital * cost_rate
 
     # ------------------------------------------------------------------
@@ -389,7 +417,9 @@ class BacktestEngine:
 
         # Sortino (downside deviation only)
         downside = daily_returns[daily_returns < 0]
-        downside_vol = float(downside.std() * np.sqrt(252)) if len(downside) > 0 else ann_vol
+        downside_vol = (
+            float(downside.std() * np.sqrt(252)) if len(downside) > 0 else ann_vol
+        )
         sortino = ann_return / downside_vol if downside_vol > 0 else 0.0
 
         # Drawdown
@@ -414,17 +444,19 @@ class BacktestEngine:
         profit_factor = gross_profit / gross_loss if gross_loss > 0 else float("inf")
 
         # Monthly returns
-        monthly = daily_returns.resample("ME").apply(
-            lambda x: (1 + x).prod() - 1
-        ) if hasattr(daily_returns.index, "freq") or isinstance(
-            daily_returns.index, pd.DatetimeIndex
-        ) else None
+        monthly = (
+            daily_returns.resample("ME").apply(lambda x: (1 + x).prod() - 1)
+            if hasattr(daily_returns.index, "freq")
+            or isinstance(daily_returns.index, pd.DatetimeIndex)
+            else None
+        )
 
         # Benchmark comparison
         alpha, beta, info_ratio = 0.0, 0.0, 0.0
         if benchmark_returns is not None and len(benchmark_returns) > 10:
             alpha, beta, info_ratio = self._benchmark_stats(
-                daily_returns, benchmark_returns,
+                daily_returns,
+                benchmark_returns,
             )
 
         result = BacktestResult(
@@ -473,7 +505,8 @@ class BacktestEngine:
 
     @staticmethod
     def _benchmark_stats(
-        returns: pd.Series, benchmark: pd.Series,
+        returns: pd.Series,
+        benchmark: pd.Series,
     ) -> Tuple[float, float, float]:
         """Compute alpha, beta, information ratio vs benchmark."""
         # Align
@@ -496,7 +529,11 @@ class BacktestEngine:
 
         # Information ratio = mean(excess) / std(excess)
         excess = r - b
-        ir = float(np.mean(excess) / np.std(excess) * np.sqrt(252)) if np.std(excess) > 0 else 0.0
+        ir = (
+            float(np.mean(excess) / np.std(excess) * np.sqrt(252))
+            if np.std(excess) > 0
+            else 0.0
+        )
 
         return alpha, beta, ir
 
@@ -528,20 +565,22 @@ def compare_strategies(results: List[BacktestResult]) -> pd.DataFrame:
     """
     rows = []
     for r in results:
-        rows.append({
-            "Strategy": r.strategy_name,
-            "Total Return": f"{r.total_return:+.1%}",
-            "Ann. Return": f"{r.annualized_return:+.1%}",
-            "Ann. Vol": f"{r.annualized_volatility:.1%}",
-            "Sharpe": f"{r.sharpe_ratio:.3f}",
-            "Sortino": f"{r.sortino_ratio:.3f}",
-            "Max DD": f"{r.max_drawdown:.1%}",
-            "Calmar": f"{r.calmar_ratio:.3f}",
-            "Win Rate": f"{r.win_rate:.1%}",
-            "Profit Factor": f"{r.profit_factor:.2f}",
-            "Trades": r.total_trades,
-            "Costs": f"${r.total_costs:,.0f}",
-        })
+        rows.append(
+            {
+                "Strategy": r.strategy_name,
+                "Total Return": f"{r.total_return:+.1%}",
+                "Ann. Return": f"{r.annualized_return:+.1%}",
+                "Ann. Vol": f"{r.annualized_volatility:.1%}",
+                "Sharpe": f"{r.sharpe_ratio:.3f}",
+                "Sortino": f"{r.sortino_ratio:.3f}",
+                "Max DD": f"{r.max_drawdown:.1%}",
+                "Calmar": f"{r.calmar_ratio:.3f}",
+                "Win Rate": f"{r.win_rate:.1%}",
+                "Profit Factor": f"{r.profit_factor:.2f}",
+                "Trades": r.total_trades,
+                "Costs": f"${r.total_costs:,.0f}",
+            }
+        )
 
     df = pd.DataFrame(rows).set_index("Strategy")
     return df

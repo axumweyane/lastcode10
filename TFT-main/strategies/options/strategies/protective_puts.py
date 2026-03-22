@@ -20,8 +20,11 @@ import numpy as np
 import pandas as pd
 
 from strategies.base import (
-    AlphaScore, BaseStrategy, SignalDirection,
-    StrategyOutput, StrategyPerformance,
+    AlphaScore,
+    BaseStrategy,
+    SignalDirection,
+    StrategyOutput,
+    StrategyPerformance,
 )
 from strategies.options.config import ProtectivePutConfig
 from strategies.options.infrastructure.vol_monitor import VolMonitor
@@ -67,7 +70,9 @@ class ProtectivePuts(BaseStrategy):
                 sym = spy_data["symbol"].iloc[0]
                 sym_data = spy_data[spy_data["symbol"] == sym].sort_values("timestamp")
                 if len(sym_data) >= 21:
-                    rv = float(sym_data["close"].pct_change().tail(21).std() * np.sqrt(252))
+                    rv = float(
+                        sym_data["close"].pct_change().tail(21).std() * np.sqrt(252)
+                    )
                     self._is_volatile_regime = rv > 0.20  # >20% annualized vol
 
             if not self._is_volatile_regime:
@@ -104,25 +109,32 @@ class ProtectivePuts(BaseStrategy):
             urgency = rv_21d / 0.20 - 1.0  # 0 at 20% vol, positive above
             confidence = min(rv_21d / 0.30, 0.90)
 
-            scores.append(AlphaScore(
-                symbol=symbol,
-                score=max(urgency, 0.01),
-                raw_score=urgency,
-                confidence=confidence,
-                direction=SignalDirection.LONG,  # buying puts = long puts
-                metadata={
-                    "strategy_type": "protective_put",
-                    "put_strike": round(put_strike, 2),
-                    "spot": round(spot, 2),
-                    "rv_21d": round(rv_21d, 4),
-                    "premium_estimate_pct": round(premium_pct, 2),
-                    "hedge_ratio": self.config.hedge_ratio,
-                    "target_dte": dte,
-                },
-            ))
+            scores.append(
+                AlphaScore(
+                    symbol=symbol,
+                    score=max(urgency, 0.01),
+                    raw_score=urgency,
+                    confidence=confidence,
+                    direction=SignalDirection.LONG,  # buying puts = long puts
+                    metadata={
+                        "strategy_type": "protective_put",
+                        "put_strike": round(put_strike, 2),
+                        "spot": round(spot, 2),
+                        "rv_21d": round(rv_21d, 4),
+                        "premium_estimate_pct": round(premium_pct, 2),
+                        "hedge_ratio": self.config.hedge_ratio,
+                        "target_dte": dte,
+                    },
+                )
+            )
 
         scores.sort(key=lambda s: s.score, reverse=True)
-        logger.info("%s: %d signals (volatile_regime=%s)", self.name, len(scores), self._is_volatile_regime)
+        logger.info(
+            "%s: %d signals (volatile_regime=%s)",
+            self.name,
+            len(scores),
+            self._is_volatile_regime,
+        )
 
         return StrategyOutput(
             strategy_name=self.name,

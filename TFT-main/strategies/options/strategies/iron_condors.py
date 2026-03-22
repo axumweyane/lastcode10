@@ -18,8 +18,11 @@ import numpy as np
 import pandas as pd
 
 from strategies.base import (
-    AlphaScore, BaseStrategy, SignalDirection,
-    StrategyOutput, StrategyPerformance,
+    AlphaScore,
+    BaseStrategy,
+    SignalDirection,
+    StrategyOutput,
+    StrategyPerformance,
 )
 from strategies.options.config import IronCondorConfig
 from strategies.options.infrastructure.vol_monitor import VolMonitor
@@ -81,7 +84,7 @@ class IronCondors(BaseStrategy):
             long_call = spot + one_sd * (wing_width + 0.5)
 
             # Estimate credit received (rough: ~30% of wing width)
-            wing_dollar = (short_put - long_put)
+            wing_dollar = short_put - long_put
             credit_estimate = wing_dollar * 0.30
             max_loss = wing_dollar - credit_estimate
 
@@ -89,27 +92,29 @@ class IronCondors(BaseStrategy):
             raw_score = (metrics.iv_rank - self.config.min_iv_rank) / 50.0
             confidence = min(metrics.iv_rank / 100.0, 0.90)
 
-            scores.append(AlphaScore(
-                symbol=underlying,
-                score=max(raw_score, 0.01),
-                raw_score=raw_score,
-                confidence=confidence,
-                direction=SignalDirection.NEUTRAL,  # market-neutral structure
-                metadata={
-                    "strategy_type": "iron_condor",
-                    "iv_rank": round(metrics.iv_rank, 1),
-                    "iv_rv_spread": round(metrics.iv_rv_spread, 4),
-                    "spot": round(spot, 2),
-                    "short_put": round(short_put, 2),
-                    "long_put": round(long_put, 2),
-                    "short_call": round(short_call, 2),
-                    "long_call": round(long_call, 2),
-                    "credit_estimate": round(credit_estimate, 2),
-                    "max_loss": round(max_loss, 2),
-                    "target_dte": dte,
-                    "vol_regime": metrics.vol_regime,
-                },
-            ))
+            scores.append(
+                AlphaScore(
+                    symbol=underlying,
+                    score=max(raw_score, 0.01),
+                    raw_score=raw_score,
+                    confidence=confidence,
+                    direction=SignalDirection.NEUTRAL,  # market-neutral structure
+                    metadata={
+                        "strategy_type": "iron_condor",
+                        "iv_rank": round(metrics.iv_rank, 1),
+                        "iv_rv_spread": round(metrics.iv_rv_spread, 4),
+                        "spot": round(spot, 2),
+                        "short_put": round(short_put, 2),
+                        "long_put": round(long_put, 2),
+                        "short_call": round(short_call, 2),
+                        "long_call": round(long_call, 2),
+                        "credit_estimate": round(credit_estimate, 2),
+                        "max_loss": round(max_loss, 2),
+                        "target_dte": dte,
+                        "vol_regime": metrics.vol_regime,
+                    },
+                )
+            )
 
         logger.info("%s: %d signals", self.name, len(scores))
 

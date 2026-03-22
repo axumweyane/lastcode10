@@ -32,6 +32,7 @@ def db_cursor(db_conn):
 
 # ---------- 1. Connection works ----------
 
+
 class TestConnection:
     def test_connection_succeeds(self):
         conn = psycopg2.connect(**DB_CONFIG)
@@ -85,9 +86,7 @@ EXPECTED_TABLES = [
 
 class TestTablesExist:
     def test_all_expected_tables_exist(self, db_cursor):
-        db_cursor.execute(
-            "SELECT tablename FROM pg_tables WHERE schemaname='public'"
-        )
+        db_cursor.execute("SELECT tablename FROM pg_tables WHERE schemaname='public'")
         actual = {row[0] for row in db_cursor.fetchall()}
         missing = [t for t in EXPECTED_TABLES if t not in actual]
         assert missing == [], f"Missing tables: {missing}"
@@ -103,6 +102,7 @@ class TestTablesExist:
 
 
 # ---------- 3. paper_trades has required columns ----------
+
 
 class TestPaperTradesSchema:
     REQUIRED_COLUMNS = ["symbol", "side", "quantity", "price"]
@@ -128,15 +128,16 @@ class TestPaperTradesSchema:
 
 # ---------- 4. portfolio_snapshots has high_water_mark (SCRUM-23) ----------
 
+
 class TestPortfolioSnapshotsSchema:
     def test_has_high_water_mark(self, db_cursor):
         db_cursor.execute(
             "SELECT column_name FROM information_schema.columns "
             "WHERE table_name='portfolio_snapshots' AND column_name='high_water_mark'"
         )
-        assert db_cursor.fetchone() is not None, (
-            "portfolio_snapshots missing high_water_mark column (SCRUM-23 fix)"
-        )
+        assert (
+            db_cursor.fetchone() is not None
+        ), "portfolio_snapshots missing high_water_mark column (SCRUM-23 fix)"
 
     def test_has_portfolio_value(self, db_cursor):
         db_cursor.execute(
@@ -155,6 +156,7 @@ class TestPortfolioSnapshotsSchema:
 
 # ---------- 5. dead_letter_queue has required columns ----------
 
+
 class TestDeadLetterQueueSchema:
     REQUIRED_COLUMNS = ["id", "source_service", "status", "payload", "retry_count"]
 
@@ -171,6 +173,7 @@ class TestDeadLetterQueueSchema:
 
 # ---------- 6. SELECT COUNT(*) works on every table ----------
 
+
 class TestTableReadable:
     @pytest.mark.parametrize("table", EXPECTED_TABLES)
     def test_select_count(self, db_cursor, table):
@@ -180,6 +183,7 @@ class TestTableReadable:
 
 
 # ---------- 7. TimescaleDB extension is installed ----------
+
 
 class TestTimescaleDB:
     def test_extension_installed(self, db_cursor):

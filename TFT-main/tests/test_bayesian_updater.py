@@ -20,10 +20,15 @@ def _make_strategy_output(name: str, symbols_scores: dict, sharpe: float = 0.5):
     scores = []
     for sym, score in symbols_scores.items():
         direction = SignalDirection.LONG if score > 0 else SignalDirection.SHORT
-        scores.append(AlphaScore(
-            symbol=sym, score=score, raw_score=score,
-            confidence=0.8, direction=direction,
-        ))
+        scores.append(
+            AlphaScore(
+                symbol=sym,
+                score=score,
+                raw_score=score,
+                confidence=0.8,
+                direction=direction,
+            )
+        )
     return StrategyOutput(
         strategy_name=name,
         timestamp=datetime.now(timezone.utc),
@@ -35,16 +40,19 @@ def _make_strategy_output(name: str, symbols_scores: dict, sharpe: float = 0.5):
 
 # ── 1. Weights converge toward better-performing strategies ──────────────────
 
+
 class TestConvergence:
     """Test that weights converge toward better-performing strategies over 100 updates."""
 
     def test_good_strategy_gets_higher_weight(self):
         updater = BayesianWeightUpdater(decay_factor=0.995)
         for _ in range(100):
-            updater.update({
-                "good": True,   # always profitable
-                "bad": False,   # always unprofitable
-            })
+            updater.update(
+                {
+                    "good": True,  # always profitable
+                    "bad": False,  # always unprofitable
+                }
+            )
 
         weights = updater.get_weights()
         assert weights["good"] > weights["bad"]
@@ -55,11 +63,13 @@ class TestConvergence:
         updater = BayesianWeightUpdater(decay_factor=0.995)
         rng = np.random.RandomState(42)
         for _ in range(100):
-            updater.update({
-                "great": True,
-                "coin_flip": bool(rng.random() > 0.5),
-                "terrible": False,
-            })
+            updater.update(
+                {
+                    "great": True,
+                    "coin_flip": bool(rng.random() > 0.5),
+                    "terrible": False,
+                }
+            )
 
         weights = updater.get_weights()
         assert weights["great"] > weights["coin_flip"]
@@ -70,10 +80,12 @@ class TestConvergence:
         updater = BayesianWeightUpdater()
         rng = np.random.RandomState(42)
         for _ in range(100):
-            updater.update({
-                "seventy_pct": bool(rng.random() < 0.7),
-                "thirty_pct": bool(rng.random() < 0.3),
-            })
+            updater.update(
+                {
+                    "seventy_pct": bool(rng.random() < 0.7),
+                    "thirty_pct": bool(rng.random() < 0.3),
+                }
+            )
 
         weights = updater.get_weights()
         assert weights["seventy_pct"] > 0.55
@@ -83,10 +95,12 @@ class TestConvergence:
         rng = np.random.RandomState(42)
         for _ in range(100):
             outcome = bool(rng.random() > 0.5)
-            updater.update({
-                "strat_a": outcome,
-                "strat_b": outcome,  # same outcomes
-            })
+            updater.update(
+                {
+                    "strat_a": outcome,
+                    "strat_b": outcome,  # same outcomes
+                }
+            )
 
         weights = updater.get_weights()
         # Should be roughly equal
@@ -94,6 +108,7 @@ class TestConvergence:
 
 
 # ── 2. Exponential decay reduces influence of old observations ───────────────
+
 
 class TestExponentialDecay:
     """Test exponential forgetting factor."""
@@ -151,6 +166,7 @@ class TestExponentialDecay:
 
 # ── 3. Persistence: save and reload produces same weights ────────────────────
 
+
 class TestPersistence:
     """Test save/load roundtrip."""
 
@@ -205,6 +221,7 @@ class TestPersistence:
 
 # ── 4. Integration with combiner produces different weights ──────────────────
 
+
 class TestCombinerIntegration:
     """Test that Bayesian updater changes combiner weights when enabled."""
 
@@ -222,7 +239,8 @@ class TestCombinerIntegration:
 
         # Combiner WITH updater
         config_on = EnsembleConfig(
-            enabled=True, use_bayesian_updater=True,
+            enabled=True,
+            use_bayesian_updater=True,
             max_total_positions=10,
         )
         combiner_on = EnsembleCombiner(config=config_on, bayesian_updater=updater)
@@ -230,7 +248,8 @@ class TestCombinerIntegration:
 
         # Combiner WITHOUT updater (same Sharpe → equal performance weights)
         config_off = EnsembleConfig(
-            enabled=True, use_bayesian_updater=False,
+            enabled=True,
+            use_bayesian_updater=False,
             max_total_positions=10,
         )
         combiner_off = EnsembleCombiner(config=config_off)
@@ -259,6 +278,7 @@ class TestCombinerIntegration:
 
 # ── 5. Backward compatibility ────────────────────────────────────────────────
 
+
 class TestBackwardCompatibility:
     """Test that disabling Bayesian updater leaves fixed weights unchanged."""
 
@@ -273,7 +293,8 @@ class TestBackwardCompatibility:
 
         # Even though updater is provided, use_bayesian_updater=False
         config = EnsembleConfig(
-            enabled=True, use_bayesian_updater=False,
+            enabled=True,
+            use_bayesian_updater=False,
             max_total_positions=10,
         )
         combiner = EnsembleCombiner(config=config, bayesian_updater=updater)
@@ -290,7 +311,8 @@ class TestBackwardCompatibility:
     def test_no_updater_passed(self):
         """Combiner works fine when no updater is provided at all."""
         config = EnsembleConfig(
-            enabled=True, use_bayesian_updater=True,
+            enabled=True,
+            use_bayesian_updater=True,
             max_total_positions=10,
         )
         combiner = EnsembleCombiner(config=config, bayesian_updater=None)
@@ -303,7 +325,8 @@ class TestBackwardCompatibility:
     def test_fixed_sharpe_weights_unchanged(self):
         """Without Bayesian updater, Sharpe-based weights work as before."""
         config = EnsembleConfig(
-            enabled=True, weighting_method="sharpe",
+            enabled=True,
+            weighting_method="sharpe",
             max_total_positions=10,
         )
         combiner = EnsembleCombiner(config=config)
@@ -318,20 +341,25 @@ class TestBackwardCompatibility:
 
 # ── 6. Paper-trader structural tests ────────────────────────────────────────
 
+
 class TestPaperTraderWiring:
     """Verify Bayesian updater is wired into paper-trader."""
 
     def _read_source(self):
         main_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "paper-trader", "main.py",
+            "paper-trader",
+            "main.py",
         )
         with open(main_path) as f:
             return f.read()
 
     def test_bayesian_updater_import(self):
         source = self._read_source()
-        assert "from strategies.ensemble.bayesian_updater import BayesianWeightUpdater" in source
+        assert (
+            "from strategies.ensemble.bayesian_updater import BayesianWeightUpdater"
+            in source
+        )
 
     def test_bayesian_updater_global(self):
         source = self._read_source()
@@ -372,6 +400,7 @@ class TestPaperTraderWiring:
 
 
 # ── 7. StrategyBeta unit tests ───────────────────────────────────────────────
+
 
 class TestStrategyBeta:
     """Unit tests for the StrategyBeta dataclass."""

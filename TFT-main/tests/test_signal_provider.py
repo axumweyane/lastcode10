@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 
 from api.signal_provider import create_signal_api, SignalCache, RateLimiter
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 TEST_API_KEY = "test-key-12345"
@@ -21,21 +20,44 @@ def _make_cache() -> SignalCache:
     cache = SignalCache()
     cache.refresh(
         signals=[
-            {"symbol": "AAPL", "combined_score": 1.2, "confidence": 0.85,
-             "direction": "long", "contributing_strategies": {"momentum": 0.5, "tft": 0.7}},
-            {"symbol": "MSFT", "combined_score": 0.8, "confidence": 0.72,
-             "direction": "long", "contributing_strategies": {"momentum": 0.3, "pairs": 0.5}},
-            {"symbol": "TSLA", "combined_score": -0.9, "confidence": 0.65,
-             "direction": "short", "contributing_strategies": {"mean_reversion": -0.9}},
+            {
+                "symbol": "AAPL",
+                "combined_score": 1.2,
+                "confidence": 0.85,
+                "direction": "long",
+                "contributing_strategies": {"momentum": 0.5, "tft": 0.7},
+            },
+            {
+                "symbol": "MSFT",
+                "combined_score": 0.8,
+                "confidence": 0.72,
+                "direction": "long",
+                "contributing_strategies": {"momentum": 0.3, "pairs": 0.5},
+            },
+            {
+                "symbol": "TSLA",
+                "combined_score": -0.9,
+                "confidence": 0.65,
+                "direction": "short",
+                "contributing_strategies": {"mean_reversion": -0.9},
+            },
         ],
         weights={"momentum": 0.35, "tft": 0.3, "pairs": 0.2, "mean_reversion": 0.15},
         regime="calm_trending",
         regime_detail={
-            "regime": "calm_trending", "vix_level": 15.2,
-            "is_volatile": False, "is_trending": True,
-            "confidence": 0.82, "exposure_scalar": 1.0,
+            "regime": "calm_trending",
+            "vix_level": 15.2,
+            "is_volatile": False,
+            "is_trending": True,
+            "confidence": 0.82,
+            "exposure_scalar": 1.0,
         },
-        bayesian_weights={"momentum": 0.38, "tft": 0.32, "pairs": 0.18, "mean_reversion": 0.12},
+        bayesian_weights={
+            "momentum": 0.38,
+            "tft": 0.32,
+            "pairs": 0.18,
+            "mean_reversion": 0.12,
+        },
         bayesian_state=[
             {"strategy_name": "momentum", "alpha": 30.0, "beta": 20.0, "weight": 0.6},
         ],
@@ -46,7 +68,16 @@ def _make_cache() -> SignalCache:
 def _fake_db_query(query: str, params: tuple) -> list:
     """Fake DB query returning canned signal history."""
     return [
-        ("2026-03-20", "momentum", "AAPL", 1.1, 0.8, "long", {}, "2026-03-20T10:00:00Z"),
+        (
+            "2026-03-20",
+            "momentum",
+            "AAPL",
+            1.1,
+            0.8,
+            "long",
+            {},
+            "2026-03-20T10:00:00Z",
+        ),
         ("2026-03-19", "tft", "AAPL", 0.9, 0.75, "long", {}, "2026-03-19T10:00:00Z"),
         ("2026-03-18", "pairs", "AAPL", -0.3, 0.6, "short", {}, "2026-03-18T10:00:00Z"),
     ]
@@ -69,6 +100,7 @@ def _headers(key=TEST_API_KEY):
 
 # ── 1. GET /signals ──────────────────────────────────────────────────────────
 
+
 class TestGetSignals:
     """Test the /signals endpoint."""
 
@@ -86,8 +118,16 @@ class TestGetSignals:
         data = resp.json()
         sig = data["signals"][0]
         # All required fields present
-        for field in ("timestamp", "symbol", "direction", "score", "confidence",
-                      "regime", "strategies", "metadata"):
+        for field in (
+            "timestamp",
+            "symbol",
+            "direction",
+            "score",
+            "confidence",
+            "regime",
+            "strategies",
+            "metadata",
+        ):
             assert field in sig, f"Missing field: {field}"
 
     def test_includes_timestamp_and_regime(self):
@@ -120,6 +160,7 @@ class TestGetSignals:
 
 
 # ── 2. GET /signals/{symbol} ─────────────────────────────────────────────────
+
 
 class TestGetSignalBySymbol:
     """Test the /signals/{symbol} endpoint."""
@@ -159,6 +200,7 @@ class TestGetSignalBySymbol:
 
 # ── 3. GET /signals/history/{symbol} ─────────────────────────────────────────
 
+
 class TestSignalHistory:
     """Test the history endpoint."""
 
@@ -193,7 +235,9 @@ class TestSignalHistory:
 
     def test_no_db_returns_503(self):
         api = create_signal_api(
-            api_key=TEST_API_KEY, cache=_make_cache(), db_query_fn=None,
+            api_key=TEST_API_KEY,
+            cache=_make_cache(),
+            db_query_fn=None,
         )
         client = TestClient(api)
         resp = client.get("/signals/history/AAPL", headers=_headers())
@@ -202,12 +246,14 @@ class TestSignalHistory:
     def test_db_error_returns_500(self):
         def broken_db(q, p):
             raise RuntimeError("DB down")
+
         client = _make_client(db_fn=broken_db)
         resp = client.get("/signals/history/AAPL", headers=_headers())
         assert resp.status_code == 500
 
 
 # ── 4. GET /signals/regime ───────────────────────────────────────────────────
+
 
 class TestRegime:
     """Test the regime endpoint."""
@@ -234,6 +280,7 @@ class TestRegime:
 
 
 # ── 5. GET /signals/weights ──────────────────────────────────────────────────
+
 
 class TestWeights:
     """Test the weights endpoint."""
@@ -274,6 +321,7 @@ class TestWeights:
 
 # ── 6. Authentication ────────────────────────────────────────────────────────
 
+
 class TestAuthentication:
     """Test API key authentication."""
 
@@ -301,14 +349,20 @@ class TestAuthentication:
 
     def test_auth_required_on_all_endpoints(self):
         client = _make_client()
-        endpoints = ["/signals", "/signals/AAPL", "/signals/history/AAPL",
-                     "/signals/regime", "/signals/weights"]
+        endpoints = [
+            "/signals",
+            "/signals/AAPL",
+            "/signals/history/AAPL",
+            "/signals/regime",
+            "/signals/weights",
+        ]
         for ep in endpoints:
             resp = client.get(ep)
             assert resp.status_code == 401, f"{ep} should require auth"
 
 
 # ── 7. Rate limiting ────────────────────────────────────────────────────────
+
 
 class TestRateLimiting:
     """Test rate limiting."""
@@ -337,6 +391,7 @@ class TestRateLimiting:
         assert limiter.check("k") is True
         # Window is 0s, so it resets immediately
         import time
+
         time.sleep(0.01)
         assert limiter.check("k") is True
 
@@ -363,6 +418,7 @@ class TestRateLimiting:
 
 
 # ── 8. SignalCache ───────────────────────────────────────────────────────────
+
 
 class TestSignalCache:
     """Test the SignalCache data structure."""
@@ -392,6 +448,7 @@ class TestSignalCache:
         cache.refresh(signals=[], weights={}, regime="calm")
         etag1 = cache.etag
         import time
+
         time.sleep(0.01)
         cache.refresh(signals=[{"symbol": "X"}], weights={}, regime="volatile")
         etag2 = cache.etag
@@ -400,13 +457,15 @@ class TestSignalCache:
 
 # ── 9. Paper-trader structural tests ─────────────────────────────────────────
 
+
 class TestPaperTraderWiring:
     """Verify signal provider is wired into paper-trader."""
 
     def _read_source(self):
         main_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "paper-trader", "main.py",
+            "paper-trader",
+            "main.py",
         )
         with open(main_path) as f:
             return f.read()

@@ -174,37 +174,43 @@ class CrossSectionalMomentum(BaseStrategy):
             # Confidence: higher absolute z-score = higher confidence, capped at 1.0
             confidence = min(abs(composite) / 3.0, 1.0)
 
-            scores.append(AlphaScore(
-                symbol=row["symbol"],
-                score=composite,
-                raw_score=composite,
-                confidence=confidence,
-                direction=direction,
-                metadata={
-                    "momentum_z": _safe_float(row.get("momentum_zscore")),
-                    "meanrev_z": _safe_float(row.get("meanrev_zscore")),
-                    "quality_z": _safe_float(row.get("quality_zscore")),
-                    "realized_vol": _safe_float(row.get("realized_vol")),
-                    "avg_dollar_volume": _safe_float(row.get("avg_dollar_volume")),
-                },
-            ))
+            scores.append(
+                AlphaScore(
+                    symbol=row["symbol"],
+                    score=composite,
+                    raw_score=composite,
+                    confidence=confidence,
+                    direction=direction,
+                    metadata={
+                        "momentum_z": _safe_float(row.get("momentum_zscore")),
+                        "meanrev_z": _safe_float(row.get("meanrev_zscore")),
+                        "quality_z": _safe_float(row.get("quality_zscore")),
+                        "realized_vol": _safe_float(row.get("realized_vol")),
+                        "avg_dollar_volume": _safe_float(row.get("avg_dollar_volume")),
+                    },
+                )
+            )
 
         # Sort by absolute score descending, keep top N per side
         longs = sorted(
             [s for s in scores if s.direction == SignalDirection.LONG],
-            key=lambda x: x.score, reverse=True,
-        )[:self.config.max_positions_per_side]
+            key=lambda x: x.score,
+            reverse=True,
+        )[: self.config.max_positions_per_side]
 
         shorts = sorted(
             [s for s in scores if s.direction == SignalDirection.SHORT],
             key=lambda x: x.score,
-        )[:self.config.max_positions_per_side]
+        )[: self.config.max_positions_per_side]
 
         final_scores = longs + shorts
 
         logger.info(
             "%s generated %d signals (%d long, %d short) for %s",
-            self.name, len(final_scores), len(longs), len(shorts),
+            self.name,
+            len(final_scores),
+            len(longs),
+            len(shorts),
             latest_date.date() if hasattr(latest_date, "date") else latest_date,
         )
 
@@ -250,7 +256,9 @@ class CrossSectionalMomentum(BaseStrategy):
 
         logger.info(
             "Regime weights updated: mom=%.2f, mr=%.2f, qual=%.2f",
-            self._momentum_weight, self._meanrev_weight, self._quality_weight,
+            self._momentum_weight,
+            self._meanrev_weight,
+            self._quality_weight,
         )
 
     def _compute_composite_score(self, df: pd.DataFrame) -> pd.DataFrame:

@@ -45,10 +45,11 @@ logger = logging.getLogger(__name__)
 @dataclass
 class StrategyWeight:
     """Weight for one strategy in the ensemble."""
+
     strategy_name: str
-    raw_weight: float      # from Sharpe-based calculation
-    regime_weight: float   # from regime detector
-    final_weight: float    # blended and clamped
+    raw_weight: float  # from Sharpe-based calculation
+    regime_weight: float  # from regime detector
+    final_weight: float  # blended and clamped
     sharpe_63d: float
     sharpe_21d: float
 
@@ -56,6 +57,7 @@ class StrategyWeight:
 @dataclass
 class CombinedSignal:
     """Final per-symbol signal after combining all strategies."""
+
     symbol: str
     combined_score: float
     confidence: float
@@ -112,7 +114,10 @@ class EnsembleCombiner:
         for name, w in weights.items():
             logger.info(
                 "Strategy weight: %s = %.3f (sharpe_63d=%.2f, regime=%.3f)",
-                name, w.final_weight, w.sharpe_63d, w.regime_weight,
+                name,
+                w.final_weight,
+                w.sharpe_63d,
+                w.regime_weight,
             )
 
         # 2. Collect all symbols across all strategies
@@ -173,28 +178,37 @@ class EnsembleCombiner:
 
             combined_confidence = min(abs(final_score) / 2.0, 1.0)
 
-            combined.append(CombinedSignal(
-                symbol=symbol,
-                combined_score=final_score,
-                confidence=combined_confidence,
-                direction=direction,
-                contributing_strategies=contributions,
-            ))
+            combined.append(
+                CombinedSignal(
+                    symbol=symbol,
+                    combined_score=final_score,
+                    confidence=combined_confidence,
+                    direction=direction,
+                    contributing_strategies=contributions,
+                )
+            )
 
         # Sort by absolute score descending
         combined.sort(key=lambda s: abs(s.combined_score), reverse=True)
 
         # Cap at max positions
         max_pos = self.config.max_total_positions
-        longs = [s for s in combined if s.direction == SignalDirection.LONG][:max_pos // 2]
-        shorts = [s for s in combined if s.direction == SignalDirection.SHORT][:max_pos // 2]
+        longs = [s for s in combined if s.direction == SignalDirection.LONG][
+            : max_pos // 2
+        ]
+        shorts = [s for s in combined if s.direction == SignalDirection.SHORT][
+            : max_pos // 2
+        ]
 
         result = longs + shorts
         result.sort(key=lambda s: abs(s.combined_score), reverse=True)
 
         logger.info(
             "Ensemble: %d symbols evaluated, %d signals (%d long, %d short)",
-            len(all_symbols), len(result), len(longs), len(shorts),
+            len(all_symbols),
+            len(result),
+            len(longs),
+            len(shorts),
         )
 
         return result
@@ -281,7 +295,7 @@ class EnsembleCombiner:
             return {}
 
         prior = 1.0 / n  # uninformative equal prior
-        alpha = 1.0       # update strength
+        alpha = 1.0  # update strength
 
         raw_weights = {}
         for name, output in strategies.items():
@@ -309,8 +323,7 @@ class EnsembleCombiner:
 
         # If Bayesian updater is active, use its weights for the performance component
         use_updater = (
-            self.config.use_bayesian_updater
-            and self.bayesian_updater is not None
+            self.config.use_bayesian_updater and self.bayesian_updater is not None
         )
         bayesian_weights = self.bayesian_updater.get_weights() if use_updater else {}
 
@@ -350,7 +363,9 @@ class EnsembleCombiner:
         return result
 
     def _get_regime_weight(
-        self, strategy_name: str, regime_state: Optional[RegimeState],
+        self,
+        strategy_name: str,
+        regime_state: Optional[RegimeState],
     ) -> float:
         """Look up regime-recommended weight for a strategy."""
         if regime_state is None:
@@ -368,21 +383,17 @@ class EnsembleCombiner:
             "pairs": "pairs",
             "mean_reversion": "mean_reversion",
             "sector_rotation": "momentum",  # macro-driven, correlates with trend
-
             # Forex
             "fx_carry_trend": "tft",  # value-like strategy
             "fx_momentum": "momentum",  # trend-following
             "fx_vol_breakout": "pairs",  # event-driven, market-neutral-like
-
             # Options
             "deep_surrogates": "pairs",  # market-neutral
             "tdgf": "pairs",  # options pricing, market-neutral
             "vol_arb": "pairs",  # market-neutral
-
             # Cross-asset
             "kronos": "tft",  # forecasting model, weight like TFT
             "sentiment": "tft",  # sentiment-driven, weight like TFT
-
             # Adapters
             "tft": "tft",
             "tft_adapter": "tft",
@@ -447,18 +458,20 @@ class TFTAdapter:
 
             # Z-score the predicted return across the cross-section
             # (done below after collecting all)
-            scores.append(AlphaScore(
-                symbol=symbol,
-                score=predicted_return,  # will be z-scored below
-                raw_score=predicted_return,
-                confidence=min(max(raw_confidence, 0.0), 1.0),
-                direction=SignalDirection.NEUTRAL,  # set below
-                metadata={
-                    "prediction_type": prediction_type,
-                    "lower_bound": float(row.get("lower_bound", 0)),
-                    "upper_bound": float(row.get("upper_bound", 0)),
-                },
-            ))
+            scores.append(
+                AlphaScore(
+                    symbol=symbol,
+                    score=predicted_return,  # will be z-scored below
+                    raw_score=predicted_return,
+                    confidence=min(max(raw_confidence, 0.0), 1.0),
+                    direction=SignalDirection.NEUTRAL,  # set below
+                    metadata={
+                        "prediction_type": prediction_type,
+                        "lower_bound": float(row.get("lower_bound", 0)),
+                        "upper_bound": float(row.get("upper_bound", 0)),
+                    },
+                )
+            )
 
         # Z-score the raw predictions cross-sectionally
         if scores:

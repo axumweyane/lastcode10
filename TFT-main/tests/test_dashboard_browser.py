@@ -41,9 +41,9 @@ class TestDashboardContent:
     def test_page_has_meaningful_content(self, page):
         """Page body is not empty or trivially short."""
         body_text = page.text_content("body") or ""
-        assert len(body_text.strip()) > 50, (
-            f"Dashboard body too short ({len(body_text)} chars)"
-        )
+        assert (
+            len(body_text.strip()) > 50
+        ), f"Dashboard body too short ({len(body_text)} chars)"
 
     def test_page_has_html_elements(self, page):
         """Page contains real HTML structure, not a blank page."""

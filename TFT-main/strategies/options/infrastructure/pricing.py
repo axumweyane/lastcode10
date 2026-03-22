@@ -37,6 +37,7 @@ class OptionRight(str, Enum):
 @dataclass
 class OptionContract:
     """Standardized option contract representation."""
+
     underlying: str
     strike: float
     expiry: date
@@ -65,12 +66,13 @@ class OptionContract:
 @dataclass
 class PricingResult:
     """Output from the pricing engine."""
+
     theoretical_price: float
     delta: float
     gamma: float
-    theta: float       # per day
-    vega: float        # per 1% vol move
-    rho: float         # per 1% rate move
+    theta: float  # per day
+    vega: float  # per 1% vol move
+    rho: float  # per 1% rate move
     implied_vol: Optional[float] = None
     model_used: str = ""
 
@@ -101,7 +103,9 @@ class PricingEngine:
 
         Uses Bjerksund-Stensland for American, analytic BSM for European.
         """
-        div_yield = dividend_yield if dividend_yield is not None else self.dividend_yield
+        div_yield = (
+            dividend_yield if dividend_yield is not None else self.dividend_yield
+        )
 
         try:
             return self._price_quantlib(contract, spot, vol, div_yield)
@@ -121,7 +125,9 @@ class PricingEngine:
 
         More robust than Newton-Raphson for deep OTM/ITM options.
         """
-        div_yield = dividend_yield if dividend_yield is not None else self.dividend_yield
+        div_yield = (
+            dividend_yield if dividend_yield is not None else self.dividend_yield
+        )
         T = contract.time_to_expiry
         r = self.risk_free_rate
 
@@ -163,7 +169,9 @@ class PricingEngine:
         today = ql.Date.todaysDate()
         ql.Settings.instance().evaluationDate = today
 
-        expiry_date = ql.Date(contract.expiry.day, contract.expiry.month, contract.expiry.year)
+        expiry_date = ql.Date(
+            contract.expiry.day, contract.expiry.month, contract.expiry.year
+        )
         payoff = ql.PlainVanillaPayoff(
             ql.Option.Call if contract.right == OptionRight.CALL else ql.Option.Put,
             contract.strike,
@@ -188,7 +196,9 @@ class PricingEngine:
             ql.BlackConstantVol(today, ql.NullCalendar(), vol, ql.Actual365Fixed())
         )
 
-        process = ql.BlackScholesMertonProcess(spot_handle, div_handle, rate_handle, vol_handle)
+        process = ql.BlackScholesMertonProcess(
+            spot_handle, div_handle, rate_handle, vol_handle
+        )
 
         # Choose engine
         if contract.style == OptionStyle.AMERICAN:
@@ -226,8 +236,16 @@ class PricingEngine:
 
         return PricingResult(
             theoretical_price=price,
-            delta=delta, gamma=gamma, theta=theta, vega=vega, rho=rho,
-            model_used="QuantLib_BaroneAdesi" if contract.style == OptionStyle.AMERICAN else "QuantLib_BSM",
+            delta=delta,
+            gamma=gamma,
+            theta=theta,
+            vega=vega,
+            rho=rho,
+            model_used=(
+                "QuantLib_BaroneAdesi"
+                if contract.style == OptionStyle.AMERICAN
+                else "QuantLib_BSM"
+            ),
         )
 
     def _price_analytical(
@@ -245,7 +263,7 @@ class PricingEngine:
             return PricingResult(0, 0, 0, 0, 0, 0, model_used="analytical_edge_case")
 
         sqrt_T = np.sqrt(T)
-        d1 = (np.log(S / K) + (r - q + 0.5 * vol ** 2) * T) / (vol * sqrt_T)
+        d1 = (np.log(S / K) + (r - q + 0.5 * vol**2) * T) / (vol * sqrt_T)
         d2 = d1 - vol * sqrt_T
 
         nd1 = norm.cdf(d1)
@@ -277,7 +295,11 @@ class PricingEngine:
 
         return PricingResult(
             theoretical_price=max(price, 0),
-            delta=delta, gamma=gamma, theta=theta, vega=vega, rho=rho,
+            delta=delta,
+            gamma=gamma,
+            theta=theta,
+            vega=vega,
+            rho=rho,
             model_used="analytical_BSM",
         )
 

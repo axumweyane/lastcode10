@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 # ── 1. Signal Variance Guard ────────────────────────────────────────────────
 
+
 @dataclass
 class SignalVarianceResult:
     passed: bool
@@ -39,14 +40,18 @@ class SignalVarianceGuard:
     """Halt trading when ensemble signal scores collapse to near-identical values."""
 
     def __init__(self, min_std: Optional[float] = None):
-        self.min_std = min_std if min_std is not None else float(
-            os.getenv("GUARDRAIL_SIGNAL_MIN_STD", "0.01")
+        self.min_std = (
+            min_std
+            if min_std is not None
+            else float(os.getenv("GUARDRAIL_SIGNAL_MIN_STD", "0.01"))
         )
 
     def check(self, scores: List[float]) -> SignalVarianceResult:
         if len(scores) < 2:
             return SignalVarianceResult(
-                passed=True, std_dev=0.0, num_signals=len(scores),
+                passed=True,
+                std_dev=0.0,
+                num_signals=len(scores),
                 message="Too few signals to check variance",
             )
 
@@ -64,11 +69,15 @@ class SignalVarianceGuard:
             logger.info(msg)
 
         return SignalVarianceResult(
-            passed=passed, std_dev=std, num_signals=len(scores), message=msg,
+            passed=passed,
+            std_dev=std,
+            num_signals=len(scores),
+            message=msg,
         )
 
 
 # ── 2. Leverage Gate ────────────────────────────────────────────────────────
+
 
 @dataclass
 class LeverageCheckResult:
@@ -82,8 +91,10 @@ class LeverageGate:
     """Hard-limit leverage check before every order batch."""
 
     def __init__(self, max_leverage: Optional[float] = None):
-        self.max_leverage = max_leverage if max_leverage is not None else float(
-            os.getenv("GUARDRAIL_MAX_LEVERAGE", "1.5")
+        self.max_leverage = (
+            max_leverage
+            if max_leverage is not None
+            else float(os.getenv("GUARDRAIL_MAX_LEVERAGE", "1.5"))
         )
 
     def check(self, gross_leverage: float) -> LeverageCheckResult:
@@ -100,12 +111,15 @@ class LeverageGate:
             logger.info(msg)
 
         return LeverageCheckResult(
-            passed=passed, current_leverage=gross_leverage,
-            max_leverage=self.max_leverage, message=msg,
+            passed=passed,
+            current_leverage=gross_leverage,
+            max_leverage=self.max_leverage,
+            message=msg,
         )
 
 
 # ── 3. Calibration Health Check ─────────────────────────────────────────────
+
 
 @dataclass
 class CalibrationCheckResult:
@@ -133,7 +147,10 @@ class CalibrationHealthCheck:
             msg = "CALIBRATION ERROR: Platt scaler not fitted (params are None). Skipping calibration."
             logger.error(msg)
             return CalibrationCheckResult(
-                passed=False, is_fitted=False, is_identity=False, message=msg,
+                passed=False,
+                is_fitted=False,
+                is_identity=False,
+                message=msg,
             )
 
         tol = CalibrationHealthCheck.TOLERANCE
@@ -146,14 +163,20 @@ class CalibrationHealthCheck:
             )
             logger.error(msg)
             return CalibrationCheckResult(
-                passed=False, is_fitted=True, is_identity=True, message=msg,
+                passed=False,
+                is_fitted=True,
+                is_identity=True,
+                message=msg,
                 details={"A": a, "B": b},
             )
 
         msg = f"Calibration OK: Platt A={a:.4f}, B={b:.4f}"
         logger.info(msg)
         return CalibrationCheckResult(
-            passed=True, is_fitted=True, is_identity=False, message=msg,
+            passed=True,
+            is_fitted=True,
+            is_identity=False,
+            message=msg,
             details={"A": a, "B": b},
         )
 
@@ -164,7 +187,10 @@ class CalibrationHealthCheck:
             msg = "CALIBRATION ERROR: Calibrator is None. Skipping calibration."
             logger.error(msg)
             return CalibrationCheckResult(
-                passed=False, is_fitted=False, is_identity=False, message=msg,
+                passed=False,
+                is_fitted=False,
+                is_identity=False,
+                message=msg,
             )
 
         # sklearn convention: fitted estimators have attributes ending in _
@@ -173,24 +199,34 @@ class CalibrationHealthCheck:
             or hasattr(calibrator, "calibrators_")
             or hasattr(calibrator, "a_")
             or hasattr(calibrator, "b_")
-            or hasattr(calibrator, "is_fitted") and calibrator.is_fitted
+            or hasattr(calibrator, "is_fitted")
+            and calibrator.is_fitted
         )
 
         if not is_fitted:
-            msg = "CALIBRATION ERROR: Calibrator appears unfitted. Skipping calibration."
+            msg = (
+                "CALIBRATION ERROR: Calibrator appears unfitted. Skipping calibration."
+            )
             logger.error(msg)
             return CalibrationCheckResult(
-                passed=False, is_fitted=False, is_identity=False, message=msg,
+                passed=False,
+                is_fitted=False,
+                is_identity=False,
+                message=msg,
             )
 
         msg = "Calibration OK: calibrator appears fitted"
         logger.info(msg)
         return CalibrationCheckResult(
-            passed=True, is_fitted=True, is_identity=False, message=msg,
+            passed=True,
+            is_fitted=True,
+            is_identity=False,
+            message=msg,
         )
 
 
 # ── 4. Model Promotion Sharpe Gate ──────────────────────────────────────────
+
 
 @dataclass
 class ModelPromotionResult:
@@ -205,8 +241,10 @@ class ModelPromotionGate:
     """Reject models whose validation Sharpe is below the promotion threshold."""
 
     def __init__(self, min_sharpe: Optional[float] = None):
-        self.min_sharpe = min_sharpe if min_sharpe is not None else float(
-            os.getenv("GUARDRAIL_MIN_PROMOTION_SHARPE", "0.5")
+        self.min_sharpe = (
+            min_sharpe
+            if min_sharpe is not None
+            else float(os.getenv("GUARDRAIL_MIN_PROMOTION_SHARPE", "0.5"))
         )
 
     def check(self, model_name: str, val_sharpe: float) -> ModelPromotionResult:
@@ -226,12 +264,16 @@ class ModelPromotionGate:
             logger.info(msg)
 
         return ModelPromotionResult(
-            passed=passed, val_sharpe=val_sharpe, min_sharpe=self.min_sharpe,
-            model_name=model_name, message=msg,
+            passed=passed,
+            val_sharpe=val_sharpe,
+            min_sharpe=self.min_sharpe,
+            model_name=model_name,
+            message=msg,
         )
 
 
 # ── 5. Execution Failure Rate Monitor ───────────────────────────────────────
+
 
 @dataclass
 class ExecutionHealthResult:
@@ -252,11 +294,15 @@ class ExecutionFailureMonitor:
         max_failure_rate: Optional[float] = None,
         window_seconds: Optional[int] = None,
     ):
-        self.max_failure_rate = max_failure_rate if max_failure_rate is not None else float(
-            os.getenv("GUARDRAIL_MAX_EXEC_FAILURE_RATE", "0.25")
+        self.max_failure_rate = (
+            max_failure_rate
+            if max_failure_rate is not None
+            else float(os.getenv("GUARDRAIL_MAX_EXEC_FAILURE_RATE", "0.25"))
         )
-        self.window_seconds = window_seconds if window_seconds is not None else int(
-            os.getenv("GUARDRAIL_EXEC_WINDOW_SECONDS", "3600")
+        self.window_seconds = (
+            window_seconds
+            if window_seconds is not None
+            else int(os.getenv("GUARDRAIL_EXEC_WINDOW_SECONDS", "3600"))
         )
         # Deque of (timestamp, success_bool)
         self._events: Deque[Tuple[float, bool]] = deque()
@@ -279,9 +325,11 @@ class ExecutionFailureMonitor:
         total = len(self._events)
         if total == 0:
             return ExecutionHealthResult(
-                passed=True, failure_rate=0.0,
+                passed=True,
+                failure_rate=0.0,
                 max_failure_rate=self.max_failure_rate,
-                total_orders=0, failed_orders=0,
+                total_orders=0,
+                failed_orders=0,
                 message="No orders in window",
             )
 
@@ -305,9 +353,12 @@ class ExecutionFailureMonitor:
             logger.info(msg)
 
         return ExecutionHealthResult(
-            passed=passed, failure_rate=rate,
+            passed=passed,
+            failure_rate=rate,
             max_failure_rate=self.max_failure_rate,
-            total_orders=total, failed_orders=failed, message=msg,
+            total_orders=total,
+            failed_orders=failed,
+            message=msg,
         )
 
     def reset(self) -> None:

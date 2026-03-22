@@ -22,16 +22,19 @@ import numpy as np
 
 app = FastAPI(title="TFT Stock Prediction API - Copilot Enhanced")
 
+
 # Pydantic models for API requests
 class PredictionRequest(BaseModel):
     symbols: List[str]
     prediction_horizon: int = 5
     include_portfolio: bool = True
 
+
 class OptionsRequest(BaseModel):
     symbol: str  # Polygon options format: O:SPY230818C00325000
     underlying_data: Optional[Dict] = None
     volatility_adjustment: bool = True
+
 
 class OptionsResponse(BaseModel):
     symbol: str
@@ -40,6 +43,7 @@ class OptionsResponse(BaseModel):
     implied_volatility: float
     greeks: Dict
     confidence: float
+
 
 @app.get("/")
 async def root():
@@ -50,19 +54,22 @@ async def root():
             "Options trading predictions",
             "Real-time market data",
             "Volatility-adjusted signals",
-            "Market-neutral portfolios"
-        ]
+            "Market-neutral portfolios",
+        ],
     }
+
 
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
 
 # ====================================================================
 # 🚀 ENHANCED COPILOT DEMONSTRATIONS
 # ====================================================================
 
 # Try typing these functions - your Copilot will complete them!
+
 
 @app.post("/predict/options")
 async def predict_options_signals(request: OptionsRequest):
@@ -77,6 +84,7 @@ async def predict_options_signals(request: OptionsRequest):
     # Let Copilot complete this implementation!
     pass
 
+
 def calculate_implied_volatility(option_data: Dict) -> float:
     """
     # Enhanced Copilot should generate:
@@ -85,6 +93,7 @@ def calculate_implied_volatility(option_data: Dict) -> float:
     # - Account for dividends and early exercise
     """
     pass
+
 
 def build_market_neutral_portfolio(signals: List[Dict]) -> Dict:
     """
@@ -96,6 +105,7 @@ def build_market_neutral_portfolio(signals: List[Dict]) -> Dict:
     """
     pass
 
+
 def process_polygon_news_sentiment() -> Dict:
     """
     # Enhanced Copilot should implement:
@@ -105,6 +115,7 @@ def process_polygon_news_sentiment() -> Dict:
     # - PostgreSQL caching
     """
     pass
+
 
 def setup_polygon_websocket():
     """
@@ -116,14 +127,16 @@ def setup_polygon_websocket():
     """
     pass
 
+
 # ====================================================================
 # 🌟 WORKING DEMO ENDPOINTS
 # ====================================================================
 
+
 @app.post("/predict")
 async def predict_stocks(request: PredictionRequest):
     """Demo prediction endpoint that showcases Copilot-generated patterns"""
-    
+
     # Simulate enhanced predictions
     predictions = {}
     for symbol in request.symbols:
@@ -134,25 +147,26 @@ async def predict_stocks(request: PredictionRequest):
             "quantiles": {
                 "q10": np.random.uniform(-0.08, -0.02),
                 "q50": np.random.uniform(-0.02, 0.02),
-                "q90": np.random.uniform(0.02, 0.08)
-            }
+                "q90": np.random.uniform(0.02, 0.08),
+            },
         }
-    
+
     portfolio = None
     if request.include_portfolio:
         portfolio = {
-            "long_positions": request.symbols[:len(request.symbols)//2],
-            "short_positions": request.symbols[len(request.symbols)//2:],
+            "long_positions": request.symbols[: len(request.symbols) // 2],
+            "short_positions": request.symbols[len(request.symbols) // 2 :],
             "market_neutral": True,
-            "beta_exposure": 0.02
+            "beta_exposure": 0.02,
         }
-    
+
     return {
         "predictions": predictions,
         "portfolio": portfolio,
         "timestamp": datetime.now().isoformat(),
-        "horizon_days": request.prediction_horizon
+        "horizon_days": request.prediction_horizon,
     }
+
 
 @app.get("/metrics")
 async def prometheus_metrics():
@@ -162,9 +176,11 @@ async def prometheus_metrics():
         "api_requests_total": 1247,
         "model_confidence_avg": 0.87,
         "polygon_api_calls_remaining": 4850,
-        "websocket_connections": 12
+        "websocket_connections": 12,
     }
+
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -38,29 +38,30 @@ def _env_list(key: str, default: str = "") -> List[str]:
 # Momentum / Mean-Reversion Factor Strategy
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class MomentumConfig:
     enabled: bool = False
 
     # Momentum parameters
-    momentum_lookback_days: int = 252      # 12-month lookback
-    momentum_skip_days: int = 21           # skip last month (avoid reversal)
-    momentum_weight: float = 0.5           # weight in combo score
+    momentum_lookback_days: int = 252  # 12-month lookback
+    momentum_skip_days: int = 21  # skip last month (avoid reversal)
+    momentum_weight: float = 0.5  # weight in combo score
 
     # Mean-reversion parameters
     mean_reversion_lookback_days: int = 5  # 5-day reversal
-    mean_reversion_weight: float = 0.3     # weight in combo score
+    mean_reversion_weight: float = 0.3  # weight in combo score
 
     # Quality factor (profitability)
     quality_weight: float = 0.2
 
     # Signal thresholds
-    long_threshold_zscore: float = 1.0     # go long above this z-score
-    short_threshold_zscore: float = -1.0   # go short below this z-score
+    long_threshold_zscore: float = 1.0  # go long above this z-score
+    short_threshold_zscore: float = -1.0  # go short below this z-score
     max_positions_per_side: int = 10
 
     # Minimum data requirements
-    min_history_days: int = 280            # need 252+21 days minimum
+    min_history_days: int = 280  # need 252+21 days minimum
     min_avg_dollar_volume: float = 1_000_000  # $1M avg daily dollar volume
 
     # Risk
@@ -91,31 +92,32 @@ class MomentumConfig:
 # Statistical Arbitrage (Pairs Trading)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class StatArbConfig:
     enabled: bool = False
 
     # Pair selection
-    cointegration_pvalue: float = 0.05     # Engle-Granger threshold
-    max_half_life_days: int = 30           # reject slow mean-reverting pairs
-    min_half_life_days: int = 2            # reject too-fast pairs (noise)
-    max_pairs: int = 20                    # max simultaneous pairs
-    rescan_interval_days: int = 7          # re-run cointegration weekly
+    cointegration_pvalue: float = 0.05  # Engle-Granger threshold
+    max_half_life_days: int = 30  # reject slow mean-reverting pairs
+    min_half_life_days: int = 2  # reject too-fast pairs (noise)
+    max_pairs: int = 20  # max simultaneous pairs
+    rescan_interval_days: int = 7  # re-run cointegration weekly
 
     # Trading thresholds
-    entry_zscore: float = 2.0              # enter when spread |z| > 2.0
-    exit_zscore: float = 0.5              # exit when spread |z| < 0.5
-    stop_loss_zscore: float = 4.0         # stop-loss at |z| > 4.0
-    lookback_window: int = 63             # spread z-score lookback
+    entry_zscore: float = 2.0  # enter when spread |z| > 2.0
+    exit_zscore: float = 0.5  # exit when spread |z| < 0.5
+    stop_loss_zscore: float = 4.0  # stop-loss at |z| > 4.0
+    lookback_window: int = 63  # spread z-score lookback
 
     # Sector constraints
     same_sector_only: bool = True
-    sector_pairs_limit: int = 3            # max pairs from one sector
+    sector_pairs_limit: int = 3  # max pairs from one sector
 
     # Risk
     strategy_max_drawdown: float = 0.20
     strategy_kill_sharpe: float = -1.0
-    max_position_per_pair: float = 0.05   # 5% of portfolio per pair
+    max_position_per_pair: float = 0.05  # 5% of portfolio per pair
 
     @classmethod
     def from_env(cls) -> "StatArbConfig":
@@ -142,30 +144,31 @@ class StatArbConfig:
 # Ensemble / Signal Combiner
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class EnsembleConfig:
     enabled: bool = False
 
     # Weighting method
-    weighting_method: str = "bayesian"     # "equal", "sharpe", "bayesian"
-    sharpe_lookback_days: int = 63         # rolling window for weight calc
-    min_weight: float = 0.05              # floor weight (no strategy drops to 0)
-    max_weight: float = 0.50              # cap weight (no strategy dominates)
+    weighting_method: str = "bayesian"  # "equal", "sharpe", "bayesian"
+    sharpe_lookback_days: int = 63  # rolling window for weight calc
+    min_weight: float = 0.05  # floor weight (no strategy drops to 0)
+    max_weight: float = 0.50  # cap weight (no strategy dominates)
 
     # Portfolio constraints
     max_total_positions: int = 30
-    max_gross_leverage: float = 2.0       # long + short exposure
-    max_net_leverage: float = 0.5         # |long - short| exposure
-    target_volatility: float = 0.15       # 15% annualized target vol
+    max_gross_leverage: float = 2.0  # long + short exposure
+    max_net_leverage: float = 0.5  # |long - short| exposure
+    target_volatility: float = 0.15  # 15% annualized target vol
 
     # Risk
     portfolio_max_drawdown: float = 0.20
-    var_confidence: float = 0.99          # 99% VaR
+    var_confidence: float = 0.99  # 99% VaR
     correlation_alert_threshold: float = 0.6  # alert if strategies correlate
 
     # Bayesian weight updater (Beta-Binomial adaptive weights)
-    use_bayesian_updater: bool = False     # ENSEMBLE_USE_BAYESIAN_WEIGHTS=true to enable
-    bayesian_decay: float = 0.995          # exponential forgetting factor
+    use_bayesian_updater: bool = False  # ENSEMBLE_USE_BAYESIAN_WEIGHTS=true to enable
+    bayesian_decay: float = 0.995  # exponential forgetting factor
 
     @classmethod
     def from_env(cls) -> "EnsembleConfig":
@@ -191,6 +194,7 @@ class EnsembleConfig:
 # Regime Detection
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class RegimeConfig:
     enabled: bool = False
@@ -200,7 +204,7 @@ class RegimeConfig:
     vix_high_threshold: float = 30.0
 
     # Market breadth
-    breadth_lookback_days: int = 50       # % stocks above 50-day MA
+    breadth_lookback_days: int = 50  # % stocks above 50-day MA
     breadth_trending_threshold: float = 0.6
     breadth_choppy_threshold: float = 0.4
 
@@ -242,15 +246,16 @@ class RegimeConfig:
 # Mean Reversion (OU-based)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class MeanReversionConfig:
     enabled: bool = False
 
-    hurst_threshold: float = 0.45          # only trade when Hurst < this
-    min_half_life: int = 2                 # reject too-fast reversion
-    max_half_life: int = 30                # reject too-slow reversion
-    entry_zscore: float = 1.5              # enter when |deviation_z| > this
-    exit_zscore: float = 0.5               # exit when |deviation_z| < this
+    hurst_threshold: float = 0.45  # only trade when Hurst < this
+    min_half_life: int = 2  # reject too-fast reversion
+    max_half_life: int = 30  # reject too-slow reversion
+    entry_zscore: float = 1.5  # enter when |deviation_z| > this
+    exit_zscore: float = 0.5  # exit when |deviation_z| < this
     max_positions_per_side: int = 8
 
     # Risk
@@ -276,13 +281,14 @@ class MeanReversionConfig:
 # Sector Rotation (macro regime driven)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class SectorRotationConfig:
     enabled: bool = False
 
-    min_tilt_threshold: float = 0.1        # ignore sector tilts below this
+    min_tilt_threshold: float = 0.1  # ignore sector tilts below this
     max_positions_per_side: int = 8
-    rebalance_interval_days: int = 21      # re-evaluate monthly
+    rebalance_interval_days: int = 21  # re-evaluate monthly
 
     # Risk
     strategy_max_drawdown: float = 0.20
@@ -304,12 +310,13 @@ class SectorRotationConfig:
 # FX Momentum (time-series momentum on currency pairs)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class FXMomentumConfig:
     enabled: bool = False
 
-    min_lookback_days: int = 63            # need at least 3 months of data
-    signal_threshold: float = 0.5          # minimum z-score to generate signal
+    min_lookback_days: int = 63  # need at least 3 months of data
+    signal_threshold: float = 0.5  # minimum z-score to generate signal
     max_pairs_long: int = 3
     max_pairs_short: int = 3
 
@@ -334,15 +341,16 @@ class FXMomentumConfig:
 # FX Volatility Breakout (Bollinger squeeze to expansion)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class FXVolBreakoutConfig:
     enabled: bool = False
 
-    bb_window: int = 20                    # Bollinger Band window
-    lookback_days: int = 126               # need 6 months for bandwidth history
-    squeeze_lookback: int = 126            # lookback for bandwidth percentile
-    squeeze_percentile: float = 0.10       # squeeze = bandwidth in bottom 10%
-    momentum_window: int = 10              # momentum during squeeze for direction
+    bb_window: int = 20  # Bollinger Band window
+    lookback_days: int = 126  # need 6 months for bandwidth history
+    squeeze_lookback: int = 126  # lookback for bandwidth percentile
+    squeeze_percentile: float = 0.10  # squeeze = bandwidth in bottom 10%
+    momentum_window: int = 10  # momentum during squeeze for direction
 
     # Risk
     strategy_max_drawdown: float = 0.20
@@ -366,12 +374,19 @@ class FXVolBreakoutConfig:
 # FX Carry + Trend (placeholder for Phase 2)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class FXConfig:
     enabled: bool = False
     pairs: List[str] = field(
-        default_factory=lambda: ["EURUSD", "GBPUSD", "USDJPY",
-                                 "AUDUSD", "USDCAD", "USDCHF"]
+        default_factory=lambda: [
+            "EURUSD",
+            "GBPUSD",
+            "USDJPY",
+            "AUDUSD",
+            "USDCAD",
+            "USDCHF",
+        ]
     )
     carry_weight: float = 0.5
     trend_weight: float = 0.5
@@ -384,8 +399,9 @@ class FXConfig:
     def from_env(cls) -> "FXConfig":
         return cls(
             enabled=_env_bool("STRATEGY_FX_ENABLED", False),
-            pairs=_env_list("STRATEGY_FX_PAIRS",
-                            "EURUSD,GBPUSD,USDJPY,AUDUSD,USDCAD,USDCHF"),
+            pairs=_env_list(
+                "STRATEGY_FX_PAIRS", "EURUSD,GBPUSD,USDJPY,AUDUSD,USDCAD,USDCHF"
+            ),
             carry_weight=_env_float("STRATEGY_FX_CARRY_WEIGHT", 0.5),
             trend_weight=_env_float("STRATEGY_FX_TREND_WEIGHT", 0.5),
             trend_lookback_days=_env_int("STRATEGY_FX_TREND_LOOKBACK", 63),
@@ -396,6 +412,7 @@ class FXConfig:
 # ---------------------------------------------------------------------------
 # Kronos — Pre-trained Foundation Model (Strategy #12)
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class KronosConfig:
@@ -434,6 +451,7 @@ class KronosConfig:
 # Deep Surrogates — Neural Option Pricing (Strategy #13)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class DeepSurrogateConfig:
     enabled: bool = False
@@ -455,16 +473,10 @@ class DeepSurrogateConfig:
             enabled=_env_bool("STRATEGY_DEEP_SURROGATES_ENABLED", False),
             repo_path=_env_str("DEEP_SURROGATE_REPO_PATH", "/opt/deep_surrogate"),
             model_type=_env_str("DEEP_SURROGATE_MODEL_TYPE", "heston"),
-            initial_weight=_env_float(
-                "STRATEGY_DEEP_SURROGATES_INITIAL_WEIGHT", 0.10
-            ),
+            initial_weight=_env_float("STRATEGY_DEEP_SURROGATES_INITIAL_WEIGHT", 0.10),
             tail_risk_enabled=_env_bool("DEEP_SURROGATE_TAIL_RISK_ENABLED", True),
-            tail_risk_alert_threshold=_env_float(
-                "DEEP_SURROGATE_TAIL_RISK_ALERT", 0.7
-            ),
-            strategy_max_drawdown=_env_float(
-                "STRATEGY_DEEP_SURROGATES_MAX_DD", 0.20
-            ),
+            tail_risk_alert_threshold=_env_float("DEEP_SURROGATE_TAIL_RISK_ALERT", 0.7),
+            strategy_max_drawdown=_env_float("STRATEGY_DEEP_SURROGATES_MAX_DD", 0.20),
             strategy_kill_sharpe=_env_float(
                 "STRATEGY_DEEP_SURROGATES_KILL_SHARPE", -1.0
             ),
@@ -474,6 +486,7 @@ class DeepSurrogateConfig:
 # ---------------------------------------------------------------------------
 # TDGF — American Options Pricing (Strategy #14)
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class TDGFConfig:
@@ -510,12 +523,13 @@ class TDGFConfig:
 # Sentiment (contrarian / momentum confirmation)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class SentimentConfig:
     enabled: bool = False
 
     max_positions_per_side: int = 10
-    initial_weight: float = 0.10   # 10% default ensemble weight
+    initial_weight: float = 0.10  # 10% default ensemble weight
 
     # Risk
     strategy_max_drawdown: float = 0.20
@@ -536,16 +550,20 @@ class SentimentConfig:
 # Walk-Forward Validation
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class WalkForwardConfig:
     """Walk-forward cross-validation configuration."""
-    is_window: int = 252          # in-sample window (trading days)
-    oos_window: int = 63          # out-of-sample window (trading days)
-    embargo_bars: int = 5         # embargo gap between IS and OOS
-    min_sharpe: float = 0.0       # minimum Sharpe to consider a fold viable
-    frequency: str = "daily"      # "daily" or "minute"
+
+    is_window: int = 252  # in-sample window (trading days)
+    oos_window: int = 63  # out-of-sample window (trading days)
+    embargo_bars: int = 5  # embargo gap between IS and OOS
+    min_sharpe: float = 0.0  # minimum Sharpe to consider a fold viable
+    frequency: str = "daily"  # "daily" or "minute"
     norm_stats_dir: str = "models/norm_stats"  # where to save normalization sidecars
-    sharpe_warning_threshold: float = 0.5  # warn if latest fold Sharpe is this much below best
+    sharpe_warning_threshold: float = (
+        0.5  # warn if latest fold Sharpe is this much below best
+    )
 
     @classmethod
     def from_env(cls) -> "WalkForwardConfig":
@@ -564,9 +582,11 @@ class WalkForwardConfig:
 # Master config loader
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class StrategyMasterConfig:
     """Loads all strategy configs from environment."""
+
     momentum: MomentumConfig = field(default_factory=MomentumConfig)
     statarb: StatArbConfig = field(default_factory=StatArbConfig)
     ensemble: EnsembleConfig = field(default_factory=EnsembleConfig)
@@ -629,6 +649,8 @@ class StrategyMasterConfig:
         if enabled:
             logger.info("Enabled strategies: %s", ", ".join(enabled))
         else:
-            logger.info("No strategies enabled. Set STRATEGY_*_ENABLED=true to activate.")
+            logger.info(
+                "No strategies enabled. Set STRATEGY_*_ENABLED=true to activate."
+            )
 
         return cfg

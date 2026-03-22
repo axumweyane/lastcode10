@@ -44,14 +44,16 @@ logger = logging.getLogger(__name__)
 
 class PairState:
     """Tracks the live state of a single pair position."""
+
     FLAT = "flat"
-    LONG_SPREAD = "long_spread"    # long A, short B (entered on z < -entry)
+    LONG_SPREAD = "long_spread"  # long A, short B (entered on z < -entry)
     SHORT_SPREAD = "short_spread"  # short A, long B (entered on z > +entry)
 
 
 @dataclass
 class ActivePair:
     """Runtime state for a pair that may or may not have an open position."""
+
     pair: TradingPair
     state: str = PairState.FLAT
     entry_zscore: float = 0.0
@@ -106,15 +108,11 @@ class PairsTrading(BaseStrategy):
         logger.info("Initializing %s", self.name)
 
         pairs = self._scanner.scan(historical_data, sector_mapping)
-        self._active_pairs = {
-            p.pair_id: ActivePair(pair=p) for p in pairs
-        }
+        self._active_pairs = {p.pair_id: ActivePair(pair=p) for p in pairs}
         self._last_scan_date = datetime.now(timezone.utc)
         self._initialized = True
 
-        logger.info(
-            "%s initialized with %d pairs", self.name, len(self._active_pairs)
-        )
+        logger.info("%s initialized with %d pairs", self.name, len(self._active_pairs))
 
     def generate_signals(self, data: pd.DataFrame) -> StrategyOutput:
         """
@@ -175,10 +173,22 @@ class PairsTrading(BaseStrategy):
 
             if action == "enter_short_spread":
                 # z > +entry: spread too wide → short A, long B
-                self._accumulate(symbol_scores, pair.symbol_a,
-                                 -score_magnitude, zscore, pair_id, "short_leg")
-                self._accumulate(symbol_scores, pair.symbol_b,
-                                 +score_magnitude, zscore, pair_id, "long_leg")
+                self._accumulate(
+                    symbol_scores,
+                    pair.symbol_a,
+                    -score_magnitude,
+                    zscore,
+                    pair_id,
+                    "short_leg",
+                )
+                self._accumulate(
+                    symbol_scores,
+                    pair.symbol_b,
+                    +score_magnitude,
+                    zscore,
+                    pair_id,
+                    "long_leg",
+                )
                 active.state = PairState.SHORT_SPREAD
                 active.entry_zscore = zscore
                 active.entry_spread = current_spread
@@ -186,10 +196,22 @@ class PairsTrading(BaseStrategy):
 
             elif action == "enter_long_spread":
                 # z < -entry: spread too narrow → long A, short B
-                self._accumulate(symbol_scores, pair.symbol_a,
-                                 +score_magnitude, zscore, pair_id, "long_leg")
-                self._accumulate(symbol_scores, pair.symbol_b,
-                                 -score_magnitude, zscore, pair_id, "short_leg")
+                self._accumulate(
+                    symbol_scores,
+                    pair.symbol_a,
+                    +score_magnitude,
+                    zscore,
+                    pair_id,
+                    "long_leg",
+                )
+                self._accumulate(
+                    symbol_scores,
+                    pair.symbol_b,
+                    -score_magnitude,
+                    zscore,
+                    pair_id,
+                    "short_leg",
+                )
                 active.state = PairState.LONG_SPREAD
                 active.entry_zscore = zscore
                 active.entry_spread = current_spread
@@ -199,15 +221,29 @@ class PairsTrading(BaseStrategy):
                 # Close: produce scores that offset the position
                 if active.state == PairState.SHORT_SPREAD:
                     # Was short A, long B → now close (buy A, sell B)
-                    self._accumulate(symbol_scores, pair.symbol_a,
-                                     +0.1, zscore, pair_id, "exit_cover")
-                    self._accumulate(symbol_scores, pair.symbol_b,
-                                     -0.1, zscore, pair_id, "exit_sell")
+                    self._accumulate(
+                        symbol_scores,
+                        pair.symbol_a,
+                        +0.1,
+                        zscore,
+                        pair_id,
+                        "exit_cover",
+                    )
+                    self._accumulate(
+                        symbol_scores, pair.symbol_b, -0.1, zscore, pair_id, "exit_sell"
+                    )
                 elif active.state == PairState.LONG_SPREAD:
-                    self._accumulate(symbol_scores, pair.symbol_a,
-                                     -0.1, zscore, pair_id, "exit_sell")
-                    self._accumulate(symbol_scores, pair.symbol_b,
-                                     +0.1, zscore, pair_id, "exit_cover")
+                    self._accumulate(
+                        symbol_scores, pair.symbol_a, -0.1, zscore, pair_id, "exit_sell"
+                    )
+                    self._accumulate(
+                        symbol_scores,
+                        pair.symbol_b,
+                        +0.1,
+                        zscore,
+                        pair_id,
+                        "exit_cover",
+                    )
 
                 # Track P&L
                 spread_pnl = self._estimate_pair_pnl(active, current_spread)
@@ -221,18 +257,34 @@ class PairsTrading(BaseStrategy):
                 # Emergency exit — same as exit but logged differently
                 logger.warning(
                     "STOP LOSS on pair %s: z=%.2f exceeded %.1f",
-                    pair_id, zscore, self.config.stop_loss_zscore,
+                    pair_id,
+                    zscore,
+                    self.config.stop_loss_zscore,
                 )
                 if active.state == PairState.SHORT_SPREAD:
-                    self._accumulate(symbol_scores, pair.symbol_a,
-                                     +0.1, zscore, pair_id, "stop_cover")
-                    self._accumulate(symbol_scores, pair.symbol_b,
-                                     -0.1, zscore, pair_id, "stop_sell")
+                    self._accumulate(
+                        symbol_scores,
+                        pair.symbol_a,
+                        +0.1,
+                        zscore,
+                        pair_id,
+                        "stop_cover",
+                    )
+                    self._accumulate(
+                        symbol_scores, pair.symbol_b, -0.1, zscore, pair_id, "stop_sell"
+                    )
                 elif active.state == PairState.LONG_SPREAD:
-                    self._accumulate(symbol_scores, pair.symbol_a,
-                                     -0.1, zscore, pair_id, "stop_sell")
-                    self._accumulate(symbol_scores, pair.symbol_b,
-                                     +0.1, zscore, pair_id, "stop_cover")
+                    self._accumulate(
+                        symbol_scores, pair.symbol_a, -0.1, zscore, pair_id, "stop_sell"
+                    )
+                    self._accumulate(
+                        symbol_scores,
+                        pair.symbol_b,
+                        +0.1,
+                        zscore,
+                        pair_id,
+                        "stop_cover",
+                    )
 
                 spread_pnl = self._estimate_pair_pnl(active, current_spread)
                 active.cumulative_pnl += spread_pnl
@@ -253,8 +305,12 @@ class PairsTrading(BaseStrategy):
 
         logger.info(
             "%s: %d signals (%d long, %d short), %d active pair positions, %d total pairs",
-            self.name, len(alpha_scores), len(longs), len(shorts),
-            active_positions, len(self._active_pairs),
+            self.name,
+            len(alpha_scores),
+            len(longs),
+            len(shorts),
+            active_positions,
+            len(self._active_pairs),
         )
 
         return StrategyOutput(
@@ -279,17 +335,19 @@ class PairsTrading(BaseStrategy):
         """Return summary of all active pairs for monitoring."""
         summary = []
         for pair_id, active in self._active_pairs.items():
-            summary.append({
-                "pair_id": pair_id,
-                "symbol_a": active.pair.symbol_a,
-                "symbol_b": active.pair.symbol_b,
-                "state": active.state,
-                "last_zscore": round(active.last_zscore, 3),
-                "hedge_ratio": round(active.pair.hedge_ratio, 4),
-                "half_life": round(active.pair.half_life, 1),
-                "coint_pvalue": round(active.pair.coint_pvalue, 4),
-                "cumulative_pnl": round(active.cumulative_pnl, 2),
-            })
+            summary.append(
+                {
+                    "pair_id": pair_id,
+                    "symbol_a": active.pair.symbol_a,
+                    "symbol_b": active.pair.symbol_b,
+                    "state": active.state,
+                    "last_zscore": round(active.last_zscore, 3),
+                    "hedge_ratio": round(active.pair.hedge_ratio, 4),
+                    "half_life": round(active.pair.half_life, 1),
+                    "coint_pvalue": round(active.pair.coint_pvalue, 4),
+                    "cumulative_pnl": round(active.cumulative_pnl, 2),
+                }
+            )
         return summary
 
     # ------------------------------------------------------------------
@@ -333,7 +391,9 @@ class PairsTrading(BaseStrategy):
             return "no_action"
 
     def _update_spread_stats(
-        self, active: ActivePair, data: pd.DataFrame,
+        self,
+        active: ActivePair,
+        data: pd.DataFrame,
     ) -> None:
         """
         Recompute rolling spread mean/std from recent data so z-scores
@@ -358,13 +418,15 @@ class PairsTrading(BaseStrategy):
         b_vals = b_prices.loc[common].values
 
         spread = a_vals - pair.hedge_ratio * b_vals
-        recent = spread[-self.config.lookback_window:]
+        recent = spread[-self.config.lookback_window :]
 
         pair.spread_mean = float(np.mean(recent))
         pair.spread_std = float(np.std(recent))
 
     def _estimate_pair_pnl(
-        self, active: ActivePair, current_spread: float,
+        self,
+        active: ActivePair,
+        current_spread: float,
     ) -> float:
         """Estimate P&L from spread change since entry."""
         if active.state == PairState.LONG_SPREAD:
@@ -384,7 +446,8 @@ class PairsTrading(BaseStrategy):
         """Re-run pair scanner, preserving active positions."""
         # Remember which pairs have open positions
         positioned_pairs = {
-            pid: ap for pid, ap in self._active_pairs.items()
+            pid: ap
+            for pid, ap in self._active_pairs.items()
             if ap.state != PairState.FLAT
         }
 
@@ -444,17 +507,19 @@ class PairsTrading(BaseStrategy):
             direction = SignalDirection.LONG if net_score > 0 else SignalDirection.SHORT
             confidence = min(abs(net_score), 1.0)
 
-            results.append(AlphaScore(
-                symbol=symbol,
-                score=net_score,
-                raw_score=net_score,
-                confidence=confidence,
-                direction=direction,
-                metadata={
-                    "pair_count": acc.pair_count,
-                    "pairs": acc.pair_details,
-                },
-            ))
+            results.append(
+                AlphaScore(
+                    symbol=symbol,
+                    score=net_score,
+                    raw_score=net_score,
+                    confidence=confidence,
+                    direction=direction,
+                    metadata={
+                        "pair_count": acc.pair_count,
+                        "pairs": acc.pair_details,
+                    },
+                )
+            )
         return results
 
 
@@ -468,12 +533,14 @@ class _SymbolAccumulator:
 
     def add(self, score: float, zscore: float, pair_id: str, role: str) -> None:
         self.scores.append(score)
-        self.pair_details.append({
-            "pair_id": pair_id,
-            "role": role,
-            "zscore": round(zscore, 3),
-            "score_contribution": round(score, 4),
-        })
+        self.pair_details.append(
+            {
+                "pair_id": pair_id,
+                "role": role,
+                "zscore": round(zscore, 3),
+                "score_contribution": round(score, 4),
+            }
+        )
 
     @property
     def net_score(self) -> float:

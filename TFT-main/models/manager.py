@@ -61,6 +61,7 @@ DEFAULT_PATHS = {
 @dataclass
 class ManagerStatus:
     """Status of all managed models."""
+
     models_registered: int
     models_loaded: int
     models_failed: int
@@ -87,7 +88,9 @@ class ModelManager:
         paths = model_paths or DEFAULT_PATHS
 
         self._models: Dict[str, BaseTFTModel] = {
-            "tft_stocks": TFTStocksAdapter(paths.get("tft_stocks", DEFAULT_PATHS["tft_stocks"])),
+            "tft_stocks": TFTStocksAdapter(
+                paths.get("tft_stocks", DEFAULT_PATHS["tft_stocks"])
+            ),
             "tft_forex": TFTForexModel(),
             "tft_volatility": TFTVolatilityModel(),
             "kronos": KronosModel(),
@@ -115,7 +118,9 @@ class ModelManager:
                     logger.info("Model %s loaded from %s", name, path)
                 else:
                     failed += 1
-                    logger.info("Model %s not available (strategies will use fallback)", name)
+                    logger.info(
+                        "Model %s not available (strategies will use fallback)", name
+                    )
             except Exception as e:
                 failed += 1
                 logger.warning("Model %s load error: %s", name, e)
@@ -131,7 +136,8 @@ class ModelManager:
 
         logger.info(
             "ModelManager: %d/%d models loaded",
-            loaded, len(self._models),
+            loaded,
+            len(self._models),
         )
         return status
 
@@ -198,8 +204,11 @@ class ModelManager:
             results["tdgf"] = self.predict_tdgf(options_data)
 
         total = sum(len(v) for v in results.values())
-        logger.info("ModelManager predictions: %d total (%s)",
-                     total, {k: len(v) for k, v in results.items()})
+        logger.info(
+            "ModelManager predictions: %d total (%s)",
+            total,
+            {k: len(v) for k, v in results.items()},
+        )
         return results
 
     def get_model(self, name: str) -> Optional[BaseTFTModel]:
@@ -222,25 +231,36 @@ class ModelManager:
         )
 
     def predictions_to_dict(
-        self, predictions: List[ModelPrediction],
+        self,
+        predictions: List[ModelPrediction],
     ) -> Dict[str, float]:
         """Convert prediction list to {symbol: predicted_value} for strategy consumption."""
         return {p.symbol: p.predicted_value for p in predictions}
 
     def predictions_to_dataframe(
-        self, predictions: List[ModelPrediction],
+        self,
+        predictions: List[ModelPrediction],
     ) -> pd.DataFrame:
         """Convert predictions to DataFrame for ensemble combiner TFTAdapter."""
         if not predictions:
-            return pd.DataFrame(columns=["symbol", "predicted_return", "confidence",
-                                          "lower_bound", "upper_bound"])
+            return pd.DataFrame(
+                columns=[
+                    "symbol",
+                    "predicted_return",
+                    "confidence",
+                    "lower_bound",
+                    "upper_bound",
+                ]
+            )
         rows = []
         for p in predictions:
-            rows.append({
-                "symbol": p.symbol,
-                "predicted_return": p.predicted_value,
-                "confidence": p.confidence,
-                "lower_bound": p.lower_bound,
-                "upper_bound": p.upper_bound,
-            })
+            rows.append(
+                {
+                    "symbol": p.symbol,
+                    "predicted_return": p.predicted_value,
+                    "confidence": p.confidence,
+                    "lower_bound": p.lower_bound,
+                    "upper_bound": p.upper_bound,
+                }
+            )
         return pd.DataFrame(rows)

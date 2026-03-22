@@ -30,7 +30,9 @@ def _compute_hurst(prices: np.ndarray, max_lag: int = 100) -> float:
     lag_values = []
 
     for lag in lags:
-        chunks = [log_returns[i:i + lag] for i in range(0, len(log_returns) - lag + 1, lag)]
+        chunks = [
+            log_returns[i : i + lag] for i in range(0, len(log_returns) - lag + 1, lag)
+        ]
         rs_list = []
         for chunk in chunks:
             if len(chunk) < 2:
@@ -67,7 +69,12 @@ def _fit_ou_params(prices: np.ndarray) -> Dict[str, float]:
     ss_xx = np.sum((x - x_mean) ** 2)
 
     if ss_xx < 1e-10:
-        return {"mu": float(x_mean), "theta": 0.0, "sigma": 0.0, "half_life": float("inf")}
+        return {
+            "mu": float(x_mean),
+            "theta": 0.0,
+            "sigma": 0.0,
+            "half_life": float("inf"),
+        }
 
     beta = np.sum((x - x_mean) * (y - y_mean)) / ss_xx
     alpha = y_mean - beta * x_mean
@@ -122,7 +129,9 @@ class MeanReversionModel(BaseTFTModel):
 
         predictions = []
         for symbol in data["symbol"].unique():
-            sym_data = data[data["symbol"] == symbol].sort_values("timestamp" if "timestamp" in data.columns else data.columns[0])
+            sym_data = data[data["symbol"] == symbol].sort_values(
+                "timestamp" if "timestamp" in data.columns else data.columns[0]
+            )
             prices = sym_data["close"].dropna().values
 
             if len(prices) < 100:
@@ -137,7 +146,11 @@ class MeanReversionModel(BaseTFTModel):
             # Deviation from equilibrium
             current_log_price = np.log(prices[-1])
             deviation = current_log_price - ou["mu"]
-            price_std = np.std(np.log(prices[-63:])) if len(prices) >= 63 else np.std(np.log(prices))
+            price_std = (
+                np.std(np.log(prices[-63:]))
+                if len(prices) >= 63
+                else np.std(np.log(prices))
+            )
             deviation_zscore = deviation / price_std if price_std > 1e-10 else 0.0
 
             # Predicted value: expected reversion direction and magnitude
@@ -148,24 +161,26 @@ class MeanReversionModel(BaseTFTModel):
             half_life_quality = 1.0 if 2.0 <= ou["half_life"] <= 30.0 else 0.5
             confidence = mr_probability * half_life_quality
 
-            predictions.append(ModelPrediction(
-                symbol=symbol,
-                predicted_value=predicted_value,
-                lower_bound=predicted_value - abs(deviation_zscore) * 0.5,
-                upper_bound=predicted_value + abs(deviation_zscore) * 0.5,
-                confidence=confidence,
-                horizon_days=int(min(ou["half_life"], 30)),
-                model_name=self.name,
-                metadata={
-                    "hurst_exponent": round(hurst, 4),
-                    "half_life": round(ou["half_life"], 2),
-                    "ou_mu": round(ou["mu"], 6),
-                    "ou_theta": round(ou["theta"], 6),
-                    "ou_sigma": round(ou["sigma"], 6),
-                    "deviation_zscore": round(deviation_zscore, 4),
-                    "mr_probability": round(mr_probability, 4),
-                },
-            ))
+            predictions.append(
+                ModelPrediction(
+                    symbol=symbol,
+                    predicted_value=predicted_value,
+                    lower_bound=predicted_value - abs(deviation_zscore) * 0.5,
+                    upper_bound=predicted_value + abs(deviation_zscore) * 0.5,
+                    confidence=confidence,
+                    horizon_days=int(min(ou["half_life"], 30)),
+                    model_name=self.name,
+                    metadata={
+                        "hurst_exponent": round(hurst, 4),
+                        "half_life": round(ou["half_life"], 2),
+                        "ou_mu": round(ou["mu"], 6),
+                        "ou_theta": round(ou["theta"], 6),
+                        "ou_sigma": round(ou["sigma"], 6),
+                        "deviation_zscore": round(deviation_zscore, 4),
+                        "mr_probability": round(mr_probability, 4),
+                    },
+                )
+            )
 
         return predictions
 
@@ -174,7 +189,9 @@ class MeanReversionModel(BaseTFTModel):
 
     def load(self, path: str) -> bool:
         self._is_loaded = True
-        logger.info("MeanReversionModel ready (statistical estimation, no weights to load)")
+        logger.info(
+            "MeanReversionModel ready (statistical estimation, no weights to load)"
+        )
         return True
 
     def get_info(self) -> ModelInfo:

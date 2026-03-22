@@ -11,15 +11,18 @@ import pytest
 from models.base import BaseTFTModel, ModelInfo, ModelPrediction
 from models.manager import ModelManager, ManagerStatus
 
-
 # ---------- Mock model ----------
+
 
 def _make_mock_model(name="test_model", asset_class="stocks", is_loaded=True):
     model = MagicMock(spec=BaseTFTModel)
     model.name = name
     model.asset_class = asset_class
     model.get_info.return_value = ModelInfo(
-        name=name, asset_class=asset_class, version="1.0", is_loaded=is_loaded,
+        name=name,
+        asset_class=asset_class,
+        version="1.0",
+        is_loaded=is_loaded,
     )
     model.load.return_value = is_loaded
     model.predict.return_value = []
@@ -40,48 +43,66 @@ def _make_prediction(symbol="AAPL", value=0.05):
 
 @pytest.fixture
 def sample_data():
-    return pd.DataFrame({
-        "symbol": ["AAPL", "MSFT"] * 10,
-        "timestamp": pd.date_range("2025-01-01", periods=20),
-        "close": [150 + i for i in range(20)],
-        "volume": [1000000] * 20,
-    })
+    return pd.DataFrame(
+        {
+            "symbol": ["AAPL", "MSFT"] * 10,
+            "timestamp": pd.date_range("2025-01-01", periods=20),
+            "close": [150 + i for i in range(20)],
+            "volume": [1000000] * 20,
+        }
+    )
 
 
 # ---------- Constructor ----------
 
+
 class TestConstructor:
     def test_creates_10_models(self):
-        with patch("models.manager.TFTStocksAdapter"), \
-             patch("models.manager.TFTForexModel"), \
-             patch("models.manager.TFTVolatilityModel"), \
-             patch("models.manager.KronosModel"), \
-             patch("models.manager.DeepSurrogateModel"), \
-             patch("models.manager.TDGFModel"), \
-             patch("models.manager.SentimentModel"), \
-             patch("models.manager.MeanReversionModel"), \
-             patch("models.manager.MacroRegimeModel"), \
-             patch("models.manager.MicrostructureModel"):
+        with patch("models.manager.TFTStocksAdapter"), patch(
+            "models.manager.TFTForexModel"
+        ), patch("models.manager.TFTVolatilityModel"), patch(
+            "models.manager.KronosModel"
+        ), patch(
+            "models.manager.DeepSurrogateModel"
+        ), patch(
+            "models.manager.TDGFModel"
+        ), patch(
+            "models.manager.SentimentModel"
+        ), patch(
+            "models.manager.MeanReversionModel"
+        ), patch(
+            "models.manager.MacroRegimeModel"
+        ), patch(
+            "models.manager.MicrostructureModel"
+        ):
             mgr = ModelManager()
             assert len(mgr._models) == 10
 
     def test_custom_paths(self):
         custom_paths = {"tft_stocks": "/custom/path.pth"}
-        with patch("models.manager.TFTStocksAdapter") as mock_adapter, \
-             patch("models.manager.TFTForexModel"), \
-             patch("models.manager.TFTVolatilityModel"), \
-             patch("models.manager.KronosModel"), \
-             patch("models.manager.DeepSurrogateModel"), \
-             patch("models.manager.TDGFModel"), \
-             patch("models.manager.SentimentModel"), \
-             patch("models.manager.MeanReversionModel"), \
-             patch("models.manager.MacroRegimeModel"), \
-             patch("models.manager.MicrostructureModel"):
+        with patch("models.manager.TFTStocksAdapter") as mock_adapter, patch(
+            "models.manager.TFTForexModel"
+        ), patch("models.manager.TFTVolatilityModel"), patch(
+            "models.manager.KronosModel"
+        ), patch(
+            "models.manager.DeepSurrogateModel"
+        ), patch(
+            "models.manager.TDGFModel"
+        ), patch(
+            "models.manager.SentimentModel"
+        ), patch(
+            "models.manager.MeanReversionModel"
+        ), patch(
+            "models.manager.MacroRegimeModel"
+        ), patch(
+            "models.manager.MicrostructureModel"
+        ):
             mgr = ModelManager(model_paths=custom_paths)
             mock_adapter.assert_called_once_with("/custom/path.pth")
 
 
 # ---------- load_all ----------
+
 
 class TestLoadAll:
     def test_all_load_successfully(self):
@@ -122,15 +143,23 @@ class TestLoadAll:
 
 # ---------- predict_* methods ----------
 
+
 class TestPredictMethods:
     @pytest.fixture
     def mgr(self):
         m = MagicMock(spec=ModelManager)
         models = {}
         for name in [
-            "tft_stocks", "tft_forex", "tft_volatility", "kronos",
-            "deep_surrogates", "tdgf", "sentiment", "mean_reversion",
-            "macro_regime", "microstructure",
+            "tft_stocks",
+            "tft_forex",
+            "tft_volatility",
+            "kronos",
+            "deep_surrogates",
+            "tdgf",
+            "sentiment",
+            "mean_reversion",
+            "macro_regime",
+            "microstructure",
         ]:
             models[name] = _make_mock_model(name)
         m._models = models
@@ -179,14 +208,22 @@ class TestPredictMethods:
 
 # ---------- predict_all ----------
 
+
 class TestPredictAll:
     def test_stock_data_only(self):
         mgr = MagicMock(spec=ModelManager)
         models = {}
         for name in [
-            "tft_stocks", "tft_forex", "tft_volatility", "kronos",
-            "deep_surrogates", "tdgf", "sentiment", "mean_reversion",
-            "macro_regime", "microstructure",
+            "tft_stocks",
+            "tft_forex",
+            "tft_volatility",
+            "kronos",
+            "deep_surrogates",
+            "tdgf",
+            "sentiment",
+            "mean_reversion",
+            "macro_regime",
+            "microstructure",
         ]:
             m = _make_mock_model(name)
             m.predict.return_value = [_make_prediction()]
@@ -247,6 +284,7 @@ class TestPredictAll:
 
 # ---------- get_model ----------
 
+
 class TestGetModel:
     def test_existing(self):
         mgr = MagicMock(spec=ModelManager)
@@ -263,6 +301,7 @@ class TestGetModel:
 
 
 # ---------- is_model_loaded ----------
+
 
 class TestIsModelLoaded:
     def test_loaded(self):
@@ -283,6 +322,7 @@ class TestIsModelLoaded:
 
 # ---------- get_status ----------
 
+
 class TestGetStatus:
     def test_status(self):
         mgr = MagicMock(spec=ModelManager)
@@ -299,6 +339,7 @@ class TestGetStatus:
 
 # ---------- predictions_to_dict ----------
 
+
 class TestPredictionsToDict:
     def test_converts(self):
         mgr = MagicMock(spec=ModelManager)
@@ -312,6 +353,7 @@ class TestPredictionsToDict:
 
 
 # ---------- predictions_to_dataframe ----------
+
 
 class TestPredictionsToDataframe:
     def test_converts(self):

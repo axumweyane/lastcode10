@@ -29,8 +29,12 @@ logging.basicConfig(
 logger = logging.getLogger("train_forex")
 
 FX_YF_MAP = {
-    "EURUSD": "EURUSD=X", "GBPUSD": "GBPUSD=X", "USDJPY": "JPY=X",
-    "AUDUSD": "AUDUSD=X", "USDCAD": "CAD=X", "USDCHF": "CHF=X",
+    "EURUSD": "EURUSD=X",
+    "GBPUSD": "GBPUSD=X",
+    "USDJPY": "JPY=X",
+    "AUDUSD": "AUDUSD=X",
+    "USDCAD": "CAD=X",
+    "USDCHF": "CHF=X",
 }
 
 
@@ -41,20 +45,26 @@ def download_fx_data(pairs: list, period: str = "3y") -> pd.DataFrame:
     yf_symbols = [FX_YF_MAP.get(p, f"{p}=X") for p in pairs]
     logger.info("Downloading %d FX pairs (%s)...", len(pairs), period)
 
-    data = yf.download(yf_symbols, period=period, group_by="ticker",
-                       auto_adjust=True, progress=False)
+    data = yf.download(
+        yf_symbols, period=period, group_by="ticker", auto_adjust=True, progress=False
+    )
 
     rows = []
     for pair, yf_sym in zip(pairs, yf_symbols):
         try:
             sym_data = data[yf_sym].dropna() if len(yf_symbols) > 1 else data.dropna()
             for dt, row in sym_data.iterrows():
-                rows.append({
-                    "symbol": pair, "timestamp": dt,
-                    "open": float(row["Open"]), "high": float(row["High"]),
-                    "low": float(row["Low"]), "close": float(row["Close"]),
-                    "volume": int(row.get("Volume", 0)),
-                })
+                rows.append(
+                    {
+                        "symbol": pair,
+                        "timestamp": dt,
+                        "open": float(row["Open"]),
+                        "high": float(row["High"]),
+                        "low": float(row["Low"]),
+                        "close": float(row["Close"]),
+                        "volume": int(row.get("Volume", 0)),
+                    }
+                )
         except Exception as e:
             logger.warning("Failed to get %s: %s", pair, e)
 
@@ -65,9 +75,14 @@ def download_fx_data(pairs: list, period: str = "3y") -> pd.DataFrame:
 
 def main():
     parser = argparse.ArgumentParser(description="Train TFT-Forex model")
-    parser.add_argument("--pairs", nargs="+",
-                        default=["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF"])
-    parser.add_argument("--period", default="3y", help="yfinance period (1y, 2y, 3y, 5y)")
+    parser.add_argument(
+        "--pairs",
+        nargs="+",
+        default=["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF"],
+    )
+    parser.add_argument(
+        "--period", default="3y", help="yfinance period (1y, 2y, 3y, 5y)"
+    )
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--hidden-size", type=int, default=48)

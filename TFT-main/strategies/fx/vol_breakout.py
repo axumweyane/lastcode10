@@ -93,8 +93,10 @@ class FXVolBreakoutStrategy(BaseStrategy):
                 continue
 
             # Squeeze detection: bandwidth at percentile low
-            recent_bw = bandwidths[-self.config.squeeze_lookback:]
-            bandwidth_percentile = sum(1 for b in recent_bw if b <= bandwidth) / len(recent_bw)
+            recent_bw = bandwidths[-self.config.squeeze_lookback :]
+            bandwidth_percentile = sum(1 for b in recent_bw if b <= bandwidth) / len(
+                recent_bw
+            )
 
             is_squeeze = bandwidth_percentile <= self.config.squeeze_percentile
 
@@ -106,8 +108,12 @@ class FXVolBreakoutStrategy(BaseStrategy):
 
             # Volatility forecast: is vol expected to expand?
             # Simple: compare recent realized vol to longer-term
-            recent_vol = float(pd.Series(close_arr[-10:]).pct_change().dropna().std()) * np.sqrt(252)
-            longer_vol = float(pd.Series(close_arr[-63:]).pct_change().dropna().std()) * np.sqrt(252)
+            recent_vol = float(
+                pd.Series(close_arr[-10:]).pct_change().dropna().std()
+            ) * np.sqrt(252)
+            longer_vol = float(
+                pd.Series(close_arr[-63:]).pct_change().dropna().std()
+            ) * np.sqrt(252)
 
             vol_expanding = recent_vol > longer_vol * 0.8  # vol starting to pick up
 
@@ -115,39 +121,53 @@ class FXVolBreakoutStrategy(BaseStrategy):
                 # Need either vol expansion signal or very tight squeeze
                 continue
 
-            vol_forecast_change = (recent_vol / longer_vol - 1.0) if longer_vol > 0 else 0.0
+            vol_forecast_change = (
+                (recent_vol / longer_vol - 1.0) if longer_vol > 0 else 0.0
+            )
 
             # Direction: price momentum during squeeze
             momentum_window = min(self.config.momentum_window, len(close_arr) - 1)
-            price_momentum = (close_arr[-1] / close_arr[-momentum_window] - 1) if momentum_window > 0 else 0.0
+            price_momentum = (
+                (close_arr[-1] / close_arr[-momentum_window] - 1)
+                if momentum_window > 0
+                else 0.0
+            )
             directional_bias = np.sign(price_momentum)
 
             if directional_bias == 0:
                 continue
 
             # Score = squeeze_intensity * vol_forecast_change * directional_bias
-            raw_score = squeeze_intensity * (1.0 + max(vol_forecast_change, 0.0)) * directional_bias
+            raw_score = (
+                squeeze_intensity
+                * (1.0 + max(vol_forecast_change, 0.0))
+                * directional_bias
+            )
 
             direction = SignalDirection.LONG if raw_score > 0 else SignalDirection.SHORT
-            confidence = min(squeeze_intensity * 0.6 + abs(vol_forecast_change) * 0.4, 0.9)
+            confidence = min(
+                squeeze_intensity * 0.6 + abs(vol_forecast_change) * 0.4, 0.9
+            )
 
-            scores.append(AlphaScore(
-                symbol=symbol,
-                score=raw_score,
-                raw_score=raw_score,
-                confidence=confidence,
-                direction=direction,
-                metadata={
-                    "strategy_type": "fx_vol_breakout",
-                    "bandwidth": round(bandwidth, 6),
-                    "bandwidth_percentile": round(bandwidth_percentile, 4),
-                    "squeeze_intensity": round(squeeze_intensity, 4),
-                    "vol_forecast_change": round(vol_forecast_change, 4),
-                    "price_momentum": round(price_momentum, 6),
-                    "recent_vol": round(recent_vol, 4),
-                    "longer_vol": round(longer_vol, 4),
-                },
-            ))
+            scores.append(
+                AlphaScore(
+                    symbol=symbol,
+                    score=raw_score,
+                    raw_score=raw_score,
+                    confidence=confidence,
+                    direction=direction,
+                    metadata={
+                        "strategy_type": "fx_vol_breakout",
+                        "bandwidth": round(bandwidth, 6),
+                        "bandwidth_percentile": round(bandwidth_percentile, 4),
+                        "squeeze_intensity": round(squeeze_intensity, 4),
+                        "vol_forecast_change": round(vol_forecast_change, 4),
+                        "price_momentum": round(price_momentum, 6),
+                        "recent_vol": round(recent_vol, 4),
+                        "longer_vol": round(longer_vol, 4),
+                    },
+                )
+            )
 
         # Z-score normalize
         if scores:

@@ -16,8 +16,8 @@ from monitoring.metrics import (
     DURATION_BUCKETS,
 )
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────────────
+
 
 def _make_metrics() -> PrometheusMetrics:
     """Create a PrometheusMetrics with a fresh registry (avoids cross-test collisions)."""
@@ -26,13 +26,29 @@ def _make_metrics() -> PrometheusMetrics:
 
 def _sample_signals():
     return [
-        {"symbol": "AAPL", "combined_score": 1.5, "confidence": 0.85, "direction": "long"},
-        {"symbol": "MSFT", "combined_score": 0.8, "confidence": 0.72, "direction": "long"},
-        {"symbol": "TSLA", "combined_score": -1.2, "confidence": 0.65, "direction": "short"},
+        {
+            "symbol": "AAPL",
+            "combined_score": 1.5,
+            "confidence": 0.85,
+            "direction": "long",
+        },
+        {
+            "symbol": "MSFT",
+            "combined_score": 0.8,
+            "confidence": 0.72,
+            "direction": "long",
+        },
+        {
+            "symbol": "TSLA",
+            "combined_score": -1.2,
+            "confidence": 0.65,
+            "direction": "short",
+        },
     ]
 
 
 # ── 1. Metric registration ───────────────────────────────────────────────────
+
 
 class TestMetricRegistration:
     """Verify all 9 metrics are registered with correct names and labels."""
@@ -77,10 +93,15 @@ class TestMetricRegistration:
         m = _make_metrics()
         # 9 metrics total
         metric_names = {
-            "apex_signal_score", "apex_strategy_weight", "apex_regime_state",
-            "apex_ensemble_confidence", "apex_execution_slippage_bps",
-            "apex_pipeline_duration_seconds", "apex_risk_drawdown",
-            "apex_risk_var_99", "apex_risk_cvar_95",
+            "apex_signal_score",
+            "apex_strategy_weight",
+            "apex_regime_state",
+            "apex_ensemble_confidence",
+            "apex_execution_slippage_bps",
+            "apex_pipeline_duration_seconds",
+            "apex_risk_drawdown",
+            "apex_risk_var_99",
+            "apex_risk_cvar_95",
         }
         output = m.generate().decode()
         for name in metric_names:
@@ -88,6 +109,7 @@ class TestMetricRegistration:
 
 
 # ── 2. Label correctness ─────────────────────────────────────────────────────
+
 
 class TestLabelCorrectness:
     """Verify label names on labeled metrics."""
@@ -112,6 +134,7 @@ class TestLabelCorrectness:
 
 # ── 3. Signal updates ────────────────────────────────────────────────────────
 
+
 class TestSignalUpdates:
     """Test update_signals() sets gauges and observes histograms."""
 
@@ -130,7 +153,16 @@ class TestSignalUpdates:
 
     def test_clears_stale_signals(self):
         m = _make_metrics()
-        m.update_signals([{"symbol": "OLD", "combined_score": 1, "confidence": 0.5, "direction": "long"}])
+        m.update_signals(
+            [
+                {
+                    "symbol": "OLD",
+                    "combined_score": 1,
+                    "confidence": 0.5,
+                    "direction": "long",
+                }
+            ]
+        )
         m.update_signals(_sample_signals())
         # OLD should be gone
         output = m.generate().decode()
@@ -151,19 +183,24 @@ class TestSignalUpdates:
 
 # ── 4. Weight updates ────────────────────────────────────────────────────────
 
+
 class TestWeightUpdates:
     """Test update_weights() for fixed and Bayesian weights."""
 
     def test_fixed_weights_set(self):
         m = _make_metrics()
         m.update_weights({"momentum": 0.35, "tft": 0.30})
-        val = m.strategy_weight.labels(strategy_name="momentum", weight_type="fixed")._value.get()
+        val = m.strategy_weight.labels(
+            strategy_name="momentum", weight_type="fixed"
+        )._value.get()
         assert val == 0.35
 
     def test_bayesian_weights_set(self):
         m = _make_metrics()
         m.update_weights({"momentum": 0.35}, bayesian_weights={"momentum": 0.42})
-        val = m.strategy_weight.labels(strategy_name="momentum", weight_type="bayesian")._value.get()
+        val = m.strategy_weight.labels(
+            strategy_name="momentum", weight_type="bayesian"
+        )._value.get()
         assert val == 0.42
 
     def test_no_bayesian_when_none(self):
@@ -181,6 +218,7 @@ class TestWeightUpdates:
 
 
 # ── 5. Regime updates ────────────────────────────────────────────────────────
+
 
 class TestRegimeUpdates:
     """Test update_regime() sets Info metric."""
@@ -203,6 +241,7 @@ class TestRegimeUpdates:
 
 # ── 6. Risk updates ──────────────────────────────────────────────────────────
 
+
 class TestRiskUpdates:
     """Test update_risk() sets gauges."""
 
@@ -220,6 +259,7 @@ class TestRiskUpdates:
 
 
 # ── 7. Slippage observations ─────────────────────────────────────────────────
+
 
 class TestSlippageObservations:
     """Test observe_slippage() records per-symbol histogram."""
@@ -242,6 +282,7 @@ class TestSlippageObservations:
 
 # ── 8. Pipeline duration ─────────────────────────────────────────────────────
 
+
 class TestPipelineDuration:
     """Test observe_pipeline_duration() records histogram."""
 
@@ -261,6 +302,7 @@ class TestPipelineDuration:
 
 
 # ── 9. /metrics endpoint format ──────────────────────────────────────────────
+
 
 class TestMetricsEndpoint:
     """Test generate() returns valid Prometheus exposition format."""
@@ -304,15 +346,21 @@ class TestMetricsEndpoint:
         output = m.generate().decode()
         # All metric families present
         for name in [
-            "apex_signal_score", "apex_strategy_weight", "apex_regime_state",
-            "apex_ensemble_confidence", "apex_execution_slippage_bps",
-            "apex_pipeline_duration_seconds", "apex_risk_drawdown",
-            "apex_risk_var_99", "apex_risk_cvar_95",
+            "apex_signal_score",
+            "apex_strategy_weight",
+            "apex_regime_state",
+            "apex_ensemble_confidence",
+            "apex_execution_slippage_bps",
+            "apex_pipeline_duration_seconds",
+            "apex_risk_drawdown",
+            "apex_risk_var_99",
+            "apex_risk_cvar_95",
         ]:
             assert name in output, f"Missing metric: {name}"
 
 
 # ── 10. Histogram bucket definitions ─────────────────────────────────────────
+
 
 class TestBucketDefinitions:
     """Verify histogram bucket configurations."""
@@ -321,13 +369,28 @@ class TestBucketDefinitions:
         assert CONFIDENCE_BUCKETS == (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)
 
     def test_slippage_buckets(self):
-        assert SLIPPAGE_BUCKETS == (-50, -20, -10, -5, -2, 0, 2, 5, 10, 20, 50, 100, 200)
+        assert SLIPPAGE_BUCKETS == (
+            -50,
+            -20,
+            -10,
+            -5,
+            -2,
+            0,
+            2,
+            5,
+            10,
+            20,
+            50,
+            100,
+            200,
+        )
 
     def test_duration_buckets(self):
         assert DURATION_BUCKETS == (1, 5, 10, 30, 60, 120, 300, 600)
 
 
 # ── 11. Grafana dashboard JSON ───────────────────────────────────────────────
+
 
 class TestGrafanaDashboard:
     """Validate the Grafana dashboard JSON structure."""
@@ -336,7 +399,10 @@ class TestGrafanaDashboard:
     def load_dashboard(self):
         dashboard_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "monitoring", "grafana", "dashboards", "apex_ensemble.json",
+            "monitoring",
+            "grafana",
+            "dashboards",
+            "apex_ensemble.json",
         )
         with open(dashboard_path) as f:
             self.dashboard = json.load(f)
@@ -409,20 +475,27 @@ class TestGrafanaDashboard:
 
 # ── 12. Config files ─────────────────────────────────────────────────────────
 
+
 class TestConfigFiles:
     """Validate Prometheus and Grafana config files."""
 
     def test_datasource_yml_exists(self):
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "monitoring", "grafana", "datasources", "datasource.yml",
+            "monitoring",
+            "grafana",
+            "datasources",
+            "datasource.yml",
         )
         assert os.path.exists(path)
 
     def test_datasource_has_prometheus(self):
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "monitoring", "grafana", "datasources", "datasource.yml",
+            "monitoring",
+            "grafana",
+            "datasources",
+            "datasource.yml",
         )
         with open(path) as f:
             content = f.read()
@@ -432,14 +505,18 @@ class TestConfigFiles:
     def test_prometheus_targets_exists(self):
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "monitoring", "prometheus", "apex_targets.yml",
+            "monitoring",
+            "prometheus",
+            "apex_targets.yml",
         )
         assert os.path.exists(path)
 
     def test_prometheus_targets_has_paper_trader(self):
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "monitoring", "prometheus", "apex_targets.yml",
+            "monitoring",
+            "prometheus",
+            "apex_targets.yml",
         )
         with open(path) as f:
             content = f.read()
@@ -458,6 +535,7 @@ class TestConfigFiles:
 
 # ── 13. Paper-trader wiring ──────────────────────────────────────────────────
 
+
 class TestPaperTraderWiring:
     """Verify metrics are wired into paper-trader/main.py."""
 
@@ -465,7 +543,8 @@ class TestPaperTraderWiring:
     def load_source(self):
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "paper-trader", "main.py",
+            "paper-trader",
+            "main.py",
         )
         with open(path) as f:
             self.source = f.read()

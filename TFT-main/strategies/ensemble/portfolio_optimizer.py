@@ -33,10 +33,11 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PortfolioPosition:
     """Target position for a single symbol."""
+
     symbol: str
-    target_weight: float        # fraction of portfolio (-1 to +1)
-    direction: str              # "long" or "short"
-    combined_score: float       # from ensemble
+    target_weight: float  # fraction of portfolio (-1 to +1)
+    direction: str  # "long" or "short"
+    combined_score: float  # from ensemble
     confidence: float
     vol_adjusted_weight: float  # after vol targeting
     contributing_strategies: Dict[str, float] = field(default_factory=dict)
@@ -45,14 +46,15 @@ class PortfolioPosition:
 @dataclass
 class PortfolioTarget:
     """Complete target portfolio from the optimizer."""
+
     positions: List[PortfolioPosition]
     timestamp: datetime
-    gross_leverage: float       # sum of |weights|
-    net_leverage: float         # sum of weights (signed)
-    long_weight: float          # sum of positive weights
-    short_weight: float         # sum of |negative weights|
+    gross_leverage: float  # sum of |weights|
+    net_leverage: float  # sum of weights (signed)
+    long_weight: float  # sum of positive weights
+    short_weight: float  # sum of |negative weights|
     expected_volatility: float  # annualized portfolio vol estimate
-    var_99: float               # 99% 1-day Value at Risk (as % of portfolio)
+    var_99: float  # 99% 1-day Value at Risk (as % of portfolio)
     regime_exposure_scalar: float
     metadata: Dict = field(default_factory=dict)
 
@@ -71,13 +73,15 @@ class PortfolioTarget:
     def to_dataframe(self) -> pd.DataFrame:
         rows = []
         for p in self.positions:
-            rows.append({
-                "symbol": p.symbol,
-                "target_weight": p.target_weight,
-                "direction": p.direction,
-                "combined_score": p.combined_score,
-                "confidence": p.confidence,
-            })
+            rows.append(
+                {
+                    "symbol": p.symbol,
+                    "target_weight": p.target_weight,
+                    "direction": p.direction,
+                    "combined_score": p.combined_score,
+                    "confidence": p.confidence,
+                }
+            )
         return pd.DataFrame(rows)
 
 
@@ -154,15 +158,17 @@ class PortfolioOptimizer:
         positions = []
         for symbol, weight in constrained.items():
             sig = signal_map.get(symbol)
-            positions.append(PortfolioPosition(
-                symbol=symbol,
-                target_weight=weight,
-                direction="long" if weight > 0 else "short",
-                combined_score=sig.combined_score if sig else 0.0,
-                confidence=sig.confidence if sig else 0.0,
-                vol_adjusted_weight=vol_weights.get(symbol, weight),
-                contributing_strategies=sig.contributing_strategies if sig else {},
-            ))
+            positions.append(
+                PortfolioPosition(
+                    symbol=symbol,
+                    target_weight=weight,
+                    direction="long" if weight > 0 else "short",
+                    combined_score=sig.combined_score if sig else 0.0,
+                    confidence=sig.confidence if sig else 0.0,
+                    vol_adjusted_weight=vol_weights.get(symbol, weight),
+                    contributing_strategies=sig.contributing_strategies if sig else {},
+                )
+            )
 
         # Sort by absolute weight descending
         positions.sort(key=lambda p: abs(p.target_weight), reverse=True)
@@ -190,9 +196,13 @@ class PortfolioOptimizer:
         logger.info(
             "Portfolio: %d positions (%d L / %d S), gross=%.2f, net=%.2f, "
             "vol=%.1f%%, VaR99=%.2f%%, regime_scalar=%.0f%%",
-            target.position_count, target.long_count, target.short_count,
-            target.gross_leverage, target.net_leverage,
-            target.expected_volatility * 100, target.var_99 * 100,
+            target.position_count,
+            target.long_count,
+            target.short_count,
+            target.gross_leverage,
+            target.net_leverage,
+            target.expected_volatility * 100,
+            target.var_99 * 100,
             target.regime_exposure_scalar * 100,
         )
 
@@ -203,7 +213,8 @@ class PortfolioOptimizer:
     # ------------------------------------------------------------------
 
     def _score_to_weights(
-        self, signals: List[CombinedSignal],
+        self,
+        signals: List[CombinedSignal],
     ) -> Dict[str, float]:
         """
         Convert combined scores to initial position weights.
@@ -243,7 +254,9 @@ class PortfolioOptimizer:
         for symbol in weights:
             sym_data = price_data[price_data["symbol"] == symbol]
             if len(sym_data) >= 21:
-                returns = sym_data.sort_values("timestamp")["close"].pct_change().dropna()
+                returns = (
+                    sym_data.sort_values("timestamp")["close"].pct_change().dropna()
+                )
                 vol = returns.tail(63).std() * np.sqrt(252)
                 if pd.notna(vol) and vol > 0.01:
                     symbol_vols[symbol] = float(vol)
@@ -269,7 +282,8 @@ class PortfolioOptimizer:
         return adjusted
 
     def _apply_constraints(
-        self, weights: Dict[str, float],
+        self,
+        weights: Dict[str, float],
     ) -> Dict[str, float]:
         """
         Apply hard constraints:
@@ -294,7 +308,9 @@ class PortfolioOptimizer:
         # Trim to max positions (keep highest |weight|)
         if len(constrained) > max_pos:
             sorted_syms = sorted(
-                constrained, key=lambda s: abs(constrained[s]), reverse=True,
+                constrained,
+                key=lambda s: abs(constrained[s]),
+                reverse=True,
             )
             constrained = {s: constrained[s] for s in sorted_syms[:max_pos]}
 
@@ -365,7 +381,9 @@ class PortfolioOptimizer:
             avg_vol = 0.0
             for sym in symbols:
                 if sym in returns_dict:
-                    avg_vol += abs(weights[sym]) * returns_dict[sym].std() * np.sqrt(252)
+                    avg_vol += (
+                        abs(weights[sym]) * returns_dict[sym].std() * np.sqrt(252)
+                    )
                 else:
                     avg_vol += abs(weights[sym]) * 0.20
             return avg_vol
@@ -407,7 +425,8 @@ class PortfolioOptimizer:
         return float(z * daily_vol)
 
     def _empty_target(
-        self, regime_state: Optional[RegimeState],
+        self,
+        regime_state: Optional[RegimeState],
     ) -> PortfolioTarget:
         return PortfolioTarget(
             positions=[],
@@ -418,5 +437,7 @@ class PortfolioOptimizer:
             short_weight=0.0,
             expected_volatility=0.0,
             var_99=0.0,
-            regime_exposure_scalar=regime_state.exposure_scalar if regime_state else 1.0,
+            regime_exposure_scalar=(
+                regime_state.exposure_scalar if regime_state else 1.0
+            ),
         )

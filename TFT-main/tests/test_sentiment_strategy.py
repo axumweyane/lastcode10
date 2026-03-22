@@ -21,8 +21,8 @@ from strategies.config import SentimentConfig
 from strategies.base import SignalDirection, StrategyOutput, AlphaScore
 from models.base import ModelPrediction
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _make_data(symbols=None, n_days=30, sentiment_map=None):
     """Create a DataFrame with OHLCV data for testing."""
@@ -32,15 +32,17 @@ def _make_data(symbols=None, n_days=30, sentiment_map=None):
     for sym in symbols:
         for i in range(n_days):
             price = 100 + i * (1 if sym != "TSLA" else -1)  # TSLA trends down
-            rows.append({
-                "symbol": sym,
-                "timestamp": base + pd.Timedelta(days=i),
-                "open": price - 0.5,
-                "high": price + 1.0,
-                "low": price - 1.0,
-                "close": price,
-                "volume": 1_000_000,
-            })
+            rows.append(
+                {
+                    "symbol": sym,
+                    "timestamp": base + pd.Timedelta(days=i),
+                    "open": price - 0.5,
+                    "high": price + 1.0,
+                    "low": price - 1.0,
+                    "close": price,
+                    "volume": 1_000_000,
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -74,6 +76,7 @@ def _make_strategy(sentiment_scores=None, enabled=True, manager=None):
 
 # ── 1. Valid output ──────────────────────────────────────────────────────────
 
+
 class TestValidOutput:
     """Test that strategy produces valid AlphaScore output."""
 
@@ -101,7 +104,9 @@ class TestValidOutput:
         result = strat.generate_signals(data)
         if len(result.scores) >= 2:
             z_scores = [s.score for s in result.scores]
-            assert abs(np.mean(z_scores)) < 0.5  # approximately zero-mean after z-scoring
+            assert (
+                abs(np.mean(z_scores)) < 0.5
+            )  # approximately zero-mean after z-scoring
 
     def test_metadata_contains_signal_type(self):
         strat = _make_strategy({"AAPL": 0.5})
@@ -116,10 +121,15 @@ class TestValidOutput:
         data = _make_data()
         result = strat.generate_signals(data)
         for s in result.scores:
-            assert s.direction in (SignalDirection.LONG, SignalDirection.SHORT, SignalDirection.NEUTRAL)
+            assert s.direction in (
+                SignalDirection.LONG,
+                SignalDirection.SHORT,
+                SignalDirection.NEUTRAL,
+            )
 
 
 # ── 2. Divergence detection (contrarian signals) ────────────────────────────
+
 
 class TestDivergence:
     """Test contrarian signal generation on sentiment-price divergence."""
@@ -145,7 +155,9 @@ class TestDivergence:
         assert aapl[0].metadata["signal_type"] == "contrarian_sell"
 
     def test_divergence_uses_higher_multiplier(self):
-        raw_score, direction, signal_type = SentimentStrategy._classify_signal(0.5, -0.3)
+        raw_score, direction, signal_type = SentimentStrategy._classify_signal(
+            0.5, -0.3
+        )
         assert signal_type == "contrarian_buy"
         # Divergence = abs(0.5 - (-0.3)) = 0.8
         expected = 0.8 * DIVERGENCE_MULTIPLIER
@@ -153,6 +165,7 @@ class TestDivergence:
 
 
 # ── 3. Alignment detection (momentum confirmation) ──────────────────────────
+
 
 class TestAlignment:
     """Test momentum confirmation on sentiment-price alignment."""
@@ -186,6 +199,7 @@ class TestAlignment:
 
 
 # ── 4. Missing data handling ────────────────────────────────────────────────
+
 
 class TestMissingData:
     """Test graceful handling of missing sentiment data."""
@@ -233,12 +247,14 @@ class TestMissingData:
 
 # ── 5. Combiner integration ─────────────────────────────────────────────────
 
+
 class TestCombinerIntegration:
     """Test sentiment strategy is correctly mapped in the ensemble combiner."""
 
     def test_regime_bucket_mapping(self):
         from strategies.ensemble.combiner import EnsembleCombiner
         from strategies.regime.detector import RegimeState, MarketRegime
+
         combiner = EnsembleCombiner()
         # Create a regime state where "tft" bucket has a distinct weight
         regime = RegimeState(
@@ -250,7 +266,12 @@ class TestCombinerIntegration:
             is_trending=True,
             confidence=0.9,
             exposure_scalar=1.0,
-            strategy_weights={"momentum": 0.4, "mean_reversion": 0.15, "pairs": 0.2, "tft": 0.25},
+            strategy_weights={
+                "momentum": 0.4,
+                "mean_reversion": 0.15,
+                "pairs": 0.2,
+                "tft": 0.25,
+            },
         )
         weight = combiner._get_regime_weight("sentiment", regime)
         # Should map to "tft" bucket = 0.25
@@ -258,6 +279,7 @@ class TestCombinerIntegration:
 
     def test_strategy_output_compatible_with_combiner(self):
         from strategies.ensemble.combiner import EnsembleCombiner
+
         combiner = EnsembleCombiner()
         strat = _make_strategy({"AAPL": 0.8, "TSLA": -0.5})
         data = _make_data()
@@ -270,6 +292,7 @@ class TestCombinerIntegration:
         """Verify sentiment output gets non-zero weight when included."""
         from strategies.ensemble.combiner import EnsembleCombiner
         from strategies.config import EnsembleConfig
+
         combiner = EnsembleCombiner(
             config=EnsembleConfig(enabled=True, weighting_method="equal"),
         )
@@ -283,6 +306,7 @@ class TestCombinerIntegration:
 
 
 # ── 6. Env var toggle ───────────────────────────────────────────────────────
+
 
 class TestEnvVarToggle:
     """Test STRATEGY_SENTIMENT_ENABLED enables/disables the strategy."""
@@ -310,12 +334,14 @@ class TestEnvVarToggle:
 
     def test_config_in_master_config(self):
         from strategies.config import StrategyMasterConfig
+
         master = StrategyMasterConfig()
         assert hasattr(master, "sentiment")
         assert isinstance(master.sentiment, SentimentConfig)
 
     def test_master_config_from_env_includes_sentiment(self):
         from strategies.config import StrategyMasterConfig as SMC
+
         os.environ["STRATEGY_SENTIMENT_ENABLED"] = "true"
         try:
             master = SMC.from_env()
@@ -334,6 +360,7 @@ class TestEnvVarToggle:
 
 
 # ── 7. Classify signal logic ────────────────────────────────────────────────
+
 
 class TestClassifySignal:
     """Unit tests for _classify_signal static method."""
@@ -370,6 +397,7 @@ class TestClassifySignal:
 
 # ── 8. Strategy properties ──────────────────────────────────────────────────
 
+
 class TestStrategyProperties:
     """Test strategy name, description, and performance tracking."""
 
@@ -403,6 +431,7 @@ class TestStrategyProperties:
 
 # ── 9. Paper-trader wiring ──────────────────────────────────────────────────
 
+
 class TestPaperTraderWiring:
     """Verify sentiment strategy is wired into paper-trader/main.py."""
 
@@ -410,13 +439,16 @@ class TestPaperTraderWiring:
     def load_source(self):
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "paper-trader", "main.py",
+            "paper-trader",
+            "main.py",
         )
         with open(path) as f:
             self.source = f.read()
 
     def test_sentiment_strategy_imported(self):
-        assert "from strategies.sentiment.strategy import SentimentStrategy" in self.source
+        assert (
+            "from strategies.sentiment.strategy import SentimentStrategy" in self.source
+        )
 
     def test_sentiment_config_imported(self):
         assert "SentimentConfig" in self.source

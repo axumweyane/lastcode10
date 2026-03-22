@@ -10,30 +10,72 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 
-
 # ── CF-5: CVaR-95 now computed ─────────────────────────────────────────────
+
 
 class TestCF5_CVaR:
     """Verify CVaR-95 (Expected Shortfall) is computed in VaRResult."""
 
     def test_cvar_field_exists(self):
         from strategies.risk.portfolio_risk import PortfolioRiskManager
+
         mgr = PortfolioRiskManager()
         # Need >= 5 returns for VaR calculation
-        for r in [-0.05, -0.03, -0.01, 0.02, 0.01, -0.04, 0.03, -0.02, 0.0, 0.01,
-                   -0.06, 0.02, -0.01, 0.04, -0.03, 0.01, -0.02, 0.03, -0.01, 0.02]:
+        for r in [
+            -0.05,
+            -0.03,
+            -0.01,
+            0.02,
+            0.01,
+            -0.04,
+            0.03,
+            -0.02,
+            0.0,
+            0.01,
+            -0.06,
+            0.02,
+            -0.01,
+            0.04,
+            -0.03,
+            0.01,
+            -0.02,
+            0.03,
+            -0.01,
+            0.02,
+        ]:
             mgr.record_portfolio_return(r)
         report = mgr.assess()
-        assert hasattr(report.var, 'cvar_95')
+        assert hasattr(report.var, "cvar_95")
         assert report.var.cvar_95 > 0
 
     def test_cvar_greater_than_var(self):
         """CVaR should always be >= VaR (it's the expected loss beyond VaR)."""
         from strategies.risk.portfolio_risk import PortfolioRiskManager
+
         mgr = PortfolioRiskManager(var_confidence=0.95)
         # Skewed negative returns to make tail fat
-        returns = [-0.10, -0.08, -0.07, -0.05, -0.03, -0.01, 0.01, 0.02, 0.03, 0.04,
-                   0.01, 0.02, 0.01, 0.03, 0.02, 0.01, 0.02, 0.01, 0.00, 0.01]
+        returns = [
+            -0.10,
+            -0.08,
+            -0.07,
+            -0.05,
+            -0.03,
+            -0.01,
+            0.01,
+            0.02,
+            0.03,
+            0.04,
+            0.01,
+            0.02,
+            0.01,
+            0.03,
+            0.02,
+            0.01,
+            0.02,
+            0.01,
+            0.00,
+            0.01,
+        ]
         for r in returns:
             mgr.record_portfolio_return(r)
         result = mgr._compute_var()
@@ -42,6 +84,7 @@ class TestCF5_CVaR:
     def test_cvar_is_mean_of_worst_5pct(self):
         """Verify CVaR is exactly the mean of the worst 5% of returns."""
         from strategies.risk.portfolio_risk import PortfolioRiskManager
+
         mgr = PortfolioRiskManager()
         # 100 returns — worst 5% = worst 5 values
         returns = list(np.linspace(-0.10, 0.05, 100))
@@ -54,6 +97,7 @@ class TestCF5_CVaR:
 
     def test_cvar_zero_on_insufficient_data(self):
         from strategies.risk.portfolio_risk import PortfolioRiskManager
+
         mgr = PortfolioRiskManager()
         mgr.record_portfolio_return(0.01)
         result = mgr._compute_var()
@@ -63,6 +107,7 @@ class TestCF5_CVaR:
 
 # ── CF-6: Circuit breaker fail-closed ──────────────────────────────────────
 
+
 class TestCF6_CircuitBreakerFailClosed:
     """Verify fail-closed behavior when Redis is unreachable."""
 
@@ -70,7 +115,8 @@ class TestCF6_CircuitBreakerFailClosed:
         """If circuit breaker fails to init, state.circuit_breaker_tripped must be set True."""
         main_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "paper-trader", "main.py",
+            "paper-trader",
+            "main.py",
         )
         with open(main_path) as f:
             source = f.read()
@@ -82,10 +128,12 @@ class TestCF6_CircuitBreakerFailClosed:
         # This is a structural test verifying the code path exists.
         # Read the source and verify the elif branch.
         import inspect
+
         # Import the module's source to check the pattern
         main_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "paper-trader", "main.py",
+            "paper-trader",
+            "main.py",
         )
         with open(main_path) as f:
             source = f.read()
@@ -97,7 +145,8 @@ class TestCF6_CircuitBreakerFailClosed:
         """Verify circuit_breaker.stop() is called during shutdown."""
         main_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "paper-trader", "main.py",
+            "paper-trader",
+            "main.py",
         )
         with open(main_path) as f:
             source = f.read()
@@ -107,7 +156,8 @@ class TestCF6_CircuitBreakerFailClosed:
         """Verify circuit_breaker.start() is called during startup."""
         main_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "paper-trader", "main.py",
+            "paper-trader",
+            "main.py",
         )
         with open(main_path) as f:
             source = f.read()
@@ -115,6 +165,7 @@ class TestCF6_CircuitBreakerFailClosed:
 
 
 # ── CF-7: Kafka explicit commit ────────────────────────────────────────────
+
 
 class TestCF7_KafkaAutoCommit:
     """Verify all 4 microservice consumers use manual commit."""
@@ -135,9 +186,9 @@ class TestCF7_KafkaAutoCommit:
         )
         with open(full_path) as f:
             source = f.read()
-        assert "enable_auto_commit=False" in source, (
-            f"{service} consumer still uses auto-commit"
-        )
+        assert (
+            "enable_auto_commit=False" in source
+        ), f"{service} consumer still uses auto-commit"
 
     @pytest.mark.parametrize("filepath,service", CONSUMER_FILES)
     def test_explicit_commit_present(self, filepath, service):
@@ -148,9 +199,9 @@ class TestCF7_KafkaAutoCommit:
         )
         with open(full_path) as f:
             source = f.read()
-        assert "consumer.commit()" in source or "self.kafka_consumer.commit()" in source, (
-            f"{service} consumer missing explicit commit()"
-        )
+        assert (
+            "consumer.commit()" in source or "self.kafka_consumer.commit()" in source
+        ), f"{service} consumer missing explicit commit()"
 
     @pytest.mark.parametrize("filepath,service", CONSUMER_FILES)
     def test_producer_flush_before_commit(self, filepath, service):
@@ -161,12 +212,11 @@ class TestCF7_KafkaAutoCommit:
         )
         with open(full_path) as f:
             source = f.read()
-        assert ".flush()" in source, (
-            f"{service} missing producer.flush() before commit"
-        )
+        assert ".flush()" in source, f"{service} missing producer.flush() before commit"
 
 
 # ── CF-9: Shutdown timeout ─────────────────────────────────────────────────
+
 
 class TestCF9_ShutdownTimeout:
     """Verify shutdown has timeout and signal handlers."""
@@ -174,7 +224,8 @@ class TestCF9_ShutdownTimeout:
     def _read_main_source(self):
         main_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "paper-trader", "main.py",
+            "paper-trader",
+            "main.py",
         )
         with open(main_path) as f:
             return f.read()
@@ -201,20 +252,25 @@ class TestCF9_ShutdownTimeout:
 
 # ── HI-4: Bear regime scaling direction-aware ──────────────────────────────
 
+
 class TestHI4_DirectionAwareScaling:
     """Verify exposure_scalar only reduces longs in bear regimes."""
 
     def _make_optimizer(self):
         from strategies.ensemble.portfolio_optimizer import PortfolioOptimizer
         from strategies.config import EnsembleConfig
+
         config = EnsembleConfig(
-            enabled=True, max_total_positions=5,
-            max_gross_leverage=3.0, target_volatility=0.15,
+            enabled=True,
+            max_total_positions=5,
+            max_gross_leverage=3.0,
+            target_volatility=0.15,
         )
         return PortfolioOptimizer(config)
 
     def _make_regime(self, exposure_scalar):
         from strategies.regime.detector import RegimeState, MarketRegime
+
         return RegimeState(
             regime=MarketRegime.VOLATILE_CHOPPY,
             vix_level=30.0,
@@ -223,33 +279,43 @@ class TestHI4_DirectionAwareScaling:
             is_volatile=True,
             is_trending=False,
             confidence=0.8,
-            strategy_weights={"momentum": 0.1, "mean_reversion": 0.4, "pairs": 0.3, "tft": 0.2},
+            strategy_weights={
+                "momentum": 0.1,
+                "mean_reversion": 0.4,
+                "pairs": 0.3,
+                "tft": 0.2,
+            },
             exposure_scalar=exposure_scalar,
         )
 
     def _make_signals(self, scores):
         from strategies.ensemble.combiner import CombinedSignal
         from strategies.base import SignalDirection
+
         signals = []
         for symbol, score in scores.items():
             direction = SignalDirection.LONG if score > 0 else SignalDirection.SHORT
-            signals.append(CombinedSignal(
-                symbol=symbol,
-                combined_score=score,
-                confidence=0.8,
-                direction=direction,
-                contributing_strategies={"test": score},
-            ))
+            signals.append(
+                CombinedSignal(
+                    symbol=symbol,
+                    combined_score=score,
+                    confidence=0.8,
+                    direction=direction,
+                    contributing_strategies={"test": score},
+                )
+            )
         return signals
 
     def test_bear_regime_preserves_shorts(self):
         """In bear regime (scalar < 1), shorts should NOT be scaled down."""
         optimizer = self._make_optimizer()
         regime = self._make_regime(exposure_scalar=0.5)
-        signals = self._make_signals({
-            "AAPL": 0.8,   # long
-            "TSLA": -0.6,  # short
-        })
+        signals = self._make_signals(
+            {
+                "AAPL": 0.8,  # long
+                "TSLA": -0.6,  # short
+            }
+        )
         target = optimizer.optimize(signals, price_data=None, regime_state=regime)
 
         # Find positions
@@ -271,7 +337,9 @@ class TestHI4_DirectionAwareScaling:
         regime_bull = self._make_regime(exposure_scalar=1.0)
         signals = self._make_signals({"AAPL": 0.8, "TSLA": -0.6})
 
-        target_bull = optimizer.optimize(signals, price_data=None, regime_state=regime_bull)
+        target_bull = optimizer.optimize(
+            signals, price_data=None, regime_state=regime_bull
+        )
         positions = {p.symbol: p for p in target_bull.positions}
 
         # Both should exist
@@ -286,17 +354,21 @@ class TestHI4_DirectionAwareScaling:
 
         # Neutral regime (scalar=1.0)
         regime_neutral = self._make_regime(exposure_scalar=1.0)
-        target_neutral = optimizer.optimize(signals, price_data=None, regime_state=regime_neutral)
+        target_neutral = optimizer.optimize(
+            signals, price_data=None, regime_state=regime_neutral
+        )
         neutral_long = target_neutral.long_weight
 
         # Bear regime (scalar=0.5)
         regime_bear = self._make_regime(exposure_scalar=0.5)
-        target_bear = optimizer.optimize(signals, price_data=None, regime_state=regime_bear)
+        target_bear = optimizer.optimize(
+            signals, price_data=None, regime_state=regime_bear
+        )
         bear_long = target_bear.long_weight
 
-        assert bear_long < neutral_long, (
-            f"Bear long weight {bear_long} should be less than neutral {neutral_long}"
-        )
+        assert (
+            bear_long < neutral_long
+        ), f"Bear long weight {bear_long} should be less than neutral {neutral_long}"
 
     def test_bear_regime_short_weight_not_reduced(self):
         """Short weight should NOT be reduced in bear regime."""
@@ -305,14 +377,18 @@ class TestHI4_DirectionAwareScaling:
         signals = self._make_signals({"AAPL": 0.8, "TSLA": -0.6})
 
         regime_neutral = self._make_regime(exposure_scalar=1.0)
-        target_neutral = optimizer.optimize(signals, price_data=None, regime_state=regime_neutral)
+        target_neutral = optimizer.optimize(
+            signals, price_data=None, regime_state=regime_neutral
+        )
         neutral_short = target_neutral.short_weight
 
         regime_bear = self._make_regime(exposure_scalar=0.5)
-        target_bear = optimizer.optimize(signals, price_data=None, regime_state=regime_bear)
+        target_bear = optimizer.optimize(
+            signals, price_data=None, regime_state=regime_bear
+        )
         bear_short = target_bear.short_weight
 
         # Short weight should be same or larger (constraints may adjust slightly)
-        assert bear_short >= neutral_short * 0.95, (
-            f"Bear short weight {bear_short} should not be less than neutral {neutral_short}"
-        )
+        assert (
+            bear_short >= neutral_short * 0.95
+        ), f"Bear short weight {bear_short} should not be less than neutral {neutral_short}"

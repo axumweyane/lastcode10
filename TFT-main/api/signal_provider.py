@@ -29,13 +29,14 @@ logger = logging.getLogger(__name__)
 
 # ── Rate limiter ─────────────────────────────────────────────────────────────
 
+
 class RateLimiter:
     """In-memory per-key rate limiter.  Resets every ``window_s`` seconds."""
 
     def __init__(self, max_requests: int = 100, window_s: int = 60):
         self.max_requests = max_requests
         self.window_s = window_s
-        self._buckets: Dict[str, list] = {}   # key → [count, window_start]
+        self._buckets: Dict[str, list] = {}  # key → [count, window_start]
 
     def check(self, key: str) -> bool:
         """Return True if the request is allowed, False if rate-limited."""
@@ -61,9 +62,11 @@ class RateLimiter:
 
 # ── Signal cache ─────────────────────────────────────────────────────────────
 
+
 @dataclass
 class SignalCache:
     """In-memory cache for current pipeline signals."""
+
     signals: List[Dict[str, Any]] = field(default_factory=list)
     weights: Dict[str, float] = field(default_factory=dict)
     bayesian_weights: Optional[Dict[str, float]] = None
@@ -103,6 +106,7 @@ class SignalCache:
 
 
 # ── Factory ──────────────────────────────────────────────────────────────────
+
 
 def create_signal_api(
     api_key: str,
@@ -148,7 +152,10 @@ def create_signal_api(
             remaining = limiter.remaining(provided_key)
             return JSONResponse(
                 status_code=429,
-                content={"error": "Rate limit exceeded", "retry_after_s": limiter.window_s},
+                content={
+                    "error": "Rate limit exceeded",
+                    "retry_after_s": limiter.window_s,
+                },
                 headers={"Retry-After": str(limiter.window_s)},
             )
 
@@ -179,9 +186,16 @@ def create_signal_api(
             "regime": cache.regime,
             "strategies": signal.get("contributing_strategies", {}),
             "metadata": {
-                k: v for k, v in signal.items()
-                if k not in ("symbol", "direction", "combined_score",
-                             "confidence", "contributing_strategies")
+                k: v
+                for k, v in signal.items()
+                if k
+                not in (
+                    "symbol",
+                    "direction",
+                    "combined_score",
+                    "confidence",
+                    "contributing_strategies",
+                )
             },
         }
 
@@ -248,15 +262,17 @@ def create_signal_api(
 
         signals = []
         for row in rows:
-            signals.append({
-                "date": str(row[0]),
-                "strategy": row[1],
-                "symbol": row[2],
-                "score": row[3],
-                "confidence": row[4],
-                "direction": row[5],
-                "metadata": row[6] if row[6] else {},
-            })
+            signals.append(
+                {
+                    "date": str(row[0]),
+                    "strategy": row[1],
+                    "symbol": row[2],
+                    "score": row[3],
+                    "confidence": row[4],
+                    "direction": row[5],
+                    "metadata": row[6] if row[6] else {},
+                }
+            )
 
         result = {
             "symbol": symbol.upper(),

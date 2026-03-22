@@ -2,6 +2,7 @@
 
 import sys
 import os
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import numpy as np
@@ -15,8 +16,12 @@ from strategies.base import StrategyOutput, SignalDirection
 @pytest.fixture
 def strategy():
     config = FXVolBreakoutConfig(
-        enabled=True, lookback_days=60, squeeze_lookback=60,
-        bb_window=20, squeeze_percentile=0.15, momentum_window=5,
+        enabled=True,
+        lookback_days=60,
+        squeeze_lookback=60,
+        bb_window=20,
+        squeeze_percentile=0.15,
+        momentum_window=5,
     )
     return FXVolBreakoutStrategy(config=config)
 
@@ -40,12 +45,14 @@ def squeeze_data():
         drift = 0.0005 if i > 100 else 0.0
         prices.append(prices[-1] * (1 + drift + np.random.normal(0, vol)))
 
-    return pd.DataFrame({
-        "symbol": ["EURUSD"] * n,
-        "timestamp": dates,
-        "close": prices,
-        "volume": [0] * n,
-    })
+    return pd.DataFrame(
+        {
+            "symbol": ["EURUSD"] * n,
+            "timestamp": dates,
+            "close": prices,
+            "volume": [0] * n,
+        }
+    )
 
 
 def test_returns_strategy_output(strategy, squeeze_data):
@@ -58,18 +65,22 @@ def test_strategy_name(strategy):
 
 
 def test_handles_empty_data(strategy):
-    output = strategy.generate_signals(pd.DataFrame({"symbol": [], "timestamp": [], "close": [], "volume": []}))
+    output = strategy.generate_signals(
+        pd.DataFrame({"symbol": [], "timestamp": [], "close": [], "volume": []})
+    )
     assert isinstance(output, StrategyOutput)
     assert output.scores == []
 
 
 def test_handles_short_data(strategy):
-    data = pd.DataFrame({
-        "symbol": ["EURUSD"] * 10,
-        "timestamp": pd.date_range("2023-01-01", periods=10),
-        "close": [1.0] * 10,
-        "volume": [0] * 10,
-    })
+    data = pd.DataFrame(
+        {
+            "symbol": ["EURUSD"] * 10,
+            "timestamp": pd.date_range("2023-01-01", periods=10),
+            "close": [1.0] * 10,
+            "volume": [0] * 10,
+        }
+    )
     output = strategy.generate_signals(data)
     assert output.scores == []
 

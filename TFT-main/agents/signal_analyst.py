@@ -43,9 +43,11 @@ WEIGHT_SHIFT_THRESHOLD = 0.10
 
 # ── Data classes ───────────────────────────────────────────────────────────────
 
+
 @dataclass
 class PatternFlags:
     """Detected patterns in the ensemble output."""
+
     strong_consensus: bool = False
     consensus_direction: Optional[str] = None  # "long" or "short"
     consensus_pct: float = 0.0
@@ -82,19 +84,18 @@ class PatternFlags:
             )
             parts.append(f"Significant weight shifts: {shifted}")
         if self.regime_changed:
-            parts.append(
-                f"Regime changed: {self.prior_regime} → {self.current_regime}"
-            )
+            parts.append(f"Regime changed: {self.prior_regime} → {self.current_regime}")
         return "; ".join(parts) if parts else "No unusual patterns detected"
 
 
 @dataclass
 class SignalAnalysis:
     """Structured output from the LLM signal analyst."""
+
     timestamp: str
-    summary: str                    # 3-sentence market summary
-    patterns: str                   # unusual pattern description
-    confidence: str                 # "low", "medium", or "high"
+    summary: str  # 3-sentence market summary
+    patterns: str  # unusual pattern description
+    confidence: str  # "low", "medium", or "high"
     flags: PatternFlags = field(default_factory=PatternFlags)
     regime: str = ""
     top_signals: List[Dict] = field(default_factory=list)
@@ -126,6 +127,7 @@ class SignalAnalysis:
 
 
 # ── Pattern detection ──────────────────────────────────────────────────────────
+
 
 def detect_patterns(
     signals: List[Dict],
@@ -166,7 +168,7 @@ def detect_patterns(
                 flags.consensus_direction = "short"
                 flags.consensus_pct = short_pct
 
-            if (CONFLICT_THRESHOLD_LOW <= long_pct <= CONFLICT_THRESHOLD_HIGH):
+            if CONFLICT_THRESHOLD_LOW <= long_pct <= CONFLICT_THRESHOLD_HIGH:
                 flags.conflicted = True
 
     # 2. Weight shift detection
@@ -175,12 +177,14 @@ def detect_patterns(
             prior_w = prior_weights.get(name, current_w)
             change = current_w - prior_w
             if abs(change) > WEIGHT_SHIFT_THRESHOLD:
-                flags.weight_shifts.append({
-                    "strategy": name,
-                    "prior": round(prior_w, 4),
-                    "current": round(current_w, 4),
-                    "change": round(change, 4),
-                })
+                flags.weight_shifts.append(
+                    {
+                        "strategy": name,
+                        "prior": round(prior_w, 4),
+                        "current": round(current_w, 4),
+                        "change": round(change, 4),
+                    }
+                )
 
     # 3. Regime change detection
     flags.current_regime = regime
@@ -192,6 +196,7 @@ def detect_patterns(
 
 
 # ── Prompt construction ────────────────────────────────────────────────────────
+
 
 def build_prompt(
     signals: List[Dict],
@@ -207,7 +212,9 @@ def build_prompt(
     patterns, and confidence assessment.
     """
     # Top 5 signals by absolute score
-    sorted_signals = sorted(signals, key=lambda s: abs(s.get("combined_score", 0)), reverse=True)
+    sorted_signals = sorted(
+        signals, key=lambda s: abs(s.get("combined_score", 0)), reverse=True
+    )
     top5 = sorted_signals[:5]
 
     signals_text = "\n".join(
@@ -266,6 +273,7 @@ Rules:
 
 # ── Response parsing ───────────────────────────────────────────────────────────
 
+
 def parse_llm_response(raw: str) -> Dict[str, str]:
     """
     Parse the LLM JSON response, with fallback for malformed output.
@@ -289,7 +297,9 @@ def parse_llm_response(raw: str) -> Dict[str, str]:
         return {
             "summary": str(parsed.get("summary", "Analysis unavailable.")),
             "patterns": str(parsed.get("patterns", "None detected.")),
-            "confidence": _normalize_confidence(str(parsed.get("confidence", "medium"))),
+            "confidence": _normalize_confidence(
+                str(parsed.get("confidence", "medium"))
+            ),
         }
     except (json.JSONDecodeError, ValueError):
         logger.warning("Failed to parse LLM JSON response, using raw text")
@@ -315,6 +325,7 @@ def _normalize_confidence(value: str) -> str:
 
 # ── Ollama client ──────────────────────────────────────────────────────────────
 
+
 class OllamaClient:
     """Async HTTP client for local Ollama API."""
 
@@ -324,7 +335,9 @@ class OllamaClient:
         model: Optional[str] = None,
         timeout_s: int = DEFAULT_TIMEOUT_S,
     ):
-        self.base_url = (base_url or os.getenv("OLLAMA_URL", DEFAULT_OLLAMA_URL)).rstrip("/")
+        self.base_url = (
+            base_url or os.getenv("OLLAMA_URL", DEFAULT_OLLAMA_URL)
+        ).rstrip("/")
         self.model = model or os.getenv("LLM_MODEL", DEFAULT_MODEL)
         self.timeout_s = timeout_s
 
@@ -367,8 +380,8 @@ class OllamaClient:
 # Need asyncio for TimeoutError handling
 import asyncio
 
-
 # ── Signal Analyst ─────────────────────────────────────────────────────────────
+
 
 class SignalAnalyst:
     """
@@ -415,7 +428,9 @@ class SignalAnalyst:
         """
         # Rate limiting: skip manual triggers unless allowed
         if is_manual and not self.allow_manual:
-            logger.info("LLM analyst skipping manual trigger (set LLM_ANALYST_ON_MANUAL=true)")
+            logger.info(
+                "LLM analyst skipping manual trigger (set LLM_ANALYST_ON_MANUAL=true)"
+            )
             return self._last_analysis
 
         self._run_count += 1
@@ -485,7 +500,9 @@ class SignalAnalyst:
 
         logger.info(
             "Signal analysis complete: confidence=%s, latency=%.1fs, model=%s",
-            analysis.confidence, analysis.latency_s, analysis.model_used,
+            analysis.confidence,
+            analysis.latency_s,
+            analysis.model_used,
         )
 
         return analysis

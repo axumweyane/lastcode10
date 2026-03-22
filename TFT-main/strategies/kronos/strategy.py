@@ -131,10 +131,14 @@ class KronosStrategy(BaseStrategy):
             logger.info(
                 "Kronos: %d signals (%d stock, %d fx)",
                 len(output.scores),
-                sum(1 for s in output.scores
-                    if s.metadata.get("asset_class") == "stocks"),
-                sum(1 for s in output.scores
-                    if s.metadata.get("asset_class") == "forex"),
+                sum(
+                    1
+                    for s in output.scores
+                    if s.metadata.get("asset_class") == "stocks"
+                ),
+                sum(
+                    1 for s in output.scores if s.metadata.get("asset_class") == "forex"
+                ),
             )
             return output
 

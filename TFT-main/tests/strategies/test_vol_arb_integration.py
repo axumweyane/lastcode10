@@ -2,6 +2,7 @@
 
 import sys
 import os
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import numpy as np
@@ -30,10 +31,14 @@ def stock_data():
         for i in range(n - 1):
             prices.append(prices[-1] * (1 + np.random.normal(0.0002, 0.015)))
         for i, dt in enumerate(dates):
-            rows.append({
-                "symbol": sym, "timestamp": dt,
-                "close": prices[i], "volume": 2000000,
-            })
+            rows.append(
+                {
+                    "symbol": sym,
+                    "timestamp": dt,
+                    "close": prices[i],
+                    "volume": 2000000,
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -47,7 +52,9 @@ def test_strategy_name(strategy):
 
 
 def test_handles_empty_data(strategy):
-    output = strategy.generate_signals(pd.DataFrame({"symbol": [], "timestamp": [], "close": [], "volume": []}))
+    output = strategy.generate_signals(
+        pd.DataFrame({"symbol": [], "timestamp": [], "close": [], "volume": []})
+    )
     assert isinstance(output, StrategyOutput)
 
 
@@ -67,6 +74,7 @@ def test_has_vol_metadata(strategy, stock_data):
 def test_implements_base_strategy(strategy):
     """Vol arb must implement BaseStrategy for ensemble integration."""
     from strategies.base import BaseStrategy
+
     assert isinstance(strategy, BaseStrategy)
 
 

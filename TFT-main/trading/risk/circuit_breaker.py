@@ -69,7 +69,9 @@ class CircuitBreakerConfig:
             try:
                 method = DrawdownMethod(method_str.strip())
                 threshold = float(thresh_str.strip())
-                configs.append(DrawdownConfig(method=method, threshold_percent=threshold))
+                configs.append(
+                    DrawdownConfig(method=method, threshold_percent=threshold)
+                )
             except (ValueError, KeyError) as e:
                 logger.warning("Skipping invalid drawdown config '%s': %s", part, e)
 
@@ -98,15 +100,17 @@ class CircuitBreakerState:
     last_portfolio_value: float = 0.0
 
     def to_json(self) -> str:
-        return json.dumps({
-            "is_tripped": self.is_tripped,
-            "tripped_at": self.tripped_at,
-            "trip_reason": self.trip_reason,
-            "hwm": self.hwm,
-            "sod_value": self.sod_value,
-            "last_check_time": self.last_check_time,
-            "last_portfolio_value": self.last_portfolio_value,
-        })
+        return json.dumps(
+            {
+                "is_tripped": self.is_tripped,
+                "tripped_at": self.tripped_at,
+                "trip_reason": self.trip_reason,
+                "hwm": self.hwm,
+                "sod_value": self.sod_value,
+                "last_check_time": self.last_check_time,
+                "last_portfolio_value": self.last_portfolio_value,
+            }
+        )
 
     @classmethod
     def from_json(cls, raw: str) -> "CircuitBreakerState":
@@ -148,7 +152,10 @@ class CircuitBreaker:
         self._monitor_task = asyncio.create_task(self._monitor_loop())
         logger.info(
             "Circuit breaker started (methods=%s, interval=%ds)",
-            [f"{c.method.value}:{c.threshold_percent}%" for c in self.config.drawdown_configs],
+            [
+                f"{c.method.value}:{c.threshold_percent}%"
+                for c in self.config.drawdown_configs
+            ],
             self.config.check_interval_seconds,
         )
 
@@ -166,7 +173,10 @@ class CircuitBreaker:
         raw = await self.redis.get(_KEY_STATE)
         if raw:
             self.state = CircuitBreakerState.from_json(raw)
-            logger.info("Loaded circuit breaker state from Redis (tripped=%s)", self.state.is_tripped)
+            logger.info(
+                "Loaded circuit breaker state from Redis (tripped=%s)",
+                self.state.is_tripped,
+            )
             return
 
         # Fall back to PostgreSQL
@@ -184,7 +194,9 @@ class CircuitBreaker:
 
         if latest_snapshot:
             self.state.hwm = latest_snapshot.get("high_water_mark", 0) or 0
-            self.state.last_portfolio_value = latest_snapshot.get("portfolio_value", 0) or 0
+            self.state.last_portfolio_value = (
+                latest_snapshot.get("portfolio_value", 0) or 0
+            )
 
         if self.state.hwm == 0:
             self.state.hwm = self.config.initial_capital
@@ -216,7 +228,9 @@ class CircuitBreaker:
             self._consecutive_api_failures += 1
             logger.error(
                 "Broker API failure (%d/%d): %s",
-                self._consecutive_api_failures, self._MAX_API_FAILURES, e,
+                self._consecutive_api_failures,
+                self._MAX_API_FAILURES,
+                e,
             )
             if self._consecutive_api_failures >= self._MAX_API_FAILURES:
                 await self._trip(
@@ -253,7 +267,9 @@ class CircuitBreaker:
         await self._save_state()
         return False
 
-    def _calculate_drawdown(self, method: DrawdownMethod, current_value: float) -> Optional[float]:
+    def _calculate_drawdown(
+        self, method: DrawdownMethod, current_value: float
+    ) -> Optional[float]:
         if method == DrawdownMethod.HIGH_WATER_MARK:
             if self.state.hwm <= 0:
                 return None
@@ -267,7 +283,10 @@ class CircuitBreaker:
         if method == DrawdownMethod.INITIAL_CAPITAL:
             if self.config.initial_capital <= 0:
                 return None
-            return ((self.config.initial_capital - current_value) / self.config.initial_capital) * 100
+            return (
+                (self.config.initial_capital - current_value)
+                / self.config.initial_capital
+            ) * 100
 
         return None
 
@@ -337,7 +356,9 @@ class CircuitBreaker:
 
         logger.critical(
             "Circuit breaker tripped: %s | closed %d positions | event_id=%d",
-            reason, len(close_results), event_id,
+            reason,
+            len(close_results),
+            event_id,
         )
 
     async def is_tripped(self) -> bool:

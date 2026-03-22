@@ -23,11 +23,14 @@ sys.path.insert(0, ROOT)
 
 # ---------- 1. .env not tracked in git ----------
 
+
 class TestEnvNotTracked:
     def test_env_not_in_git(self):
         result = subprocess.run(
             ["git", "ls-files", ".env"],
-            capture_output=True, text=True, cwd=ROOT,
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
         )
         tracked = result.stdout.strip()
         assert tracked == "", f".env is tracked in git: {tracked}"
@@ -47,7 +50,7 @@ _PASSWORD_FALSE_POSITIVES = {
     "os.getenv",
     "getenv(",
     "${",
-    "password=password",      # variable assignment like password=password_var
+    "password=password",  # variable assignment like password=password_var
     "password=%s",
     "password=None",
     "password=''",
@@ -71,7 +74,7 @@ _PASSWORD_FALSE_POSITIVES = {
     "password_field",
     "password=db_",
     "password=self.",
-    'password=self.db_config',
+    "password=self.db_config",
     '["password"]',
     "['password']",
 }
@@ -82,7 +85,8 @@ class TestNoHardcodedPasswords:
         """Grep Python files for password= with actual values."""
         result = subprocess.run(
             ["grep", "-rn", "--include=*.py", "password=", ROOT],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         hits = []
         for line in result.stdout.splitlines():
@@ -98,9 +102,8 @@ class TestNoHardcodedPasswords:
 
     def test_no_hardcoded_passwords(self):
         hits = self._get_password_lines()
-        assert hits == [], (
-            f"Found {len(hits)} hardcoded password(s):\n" +
-            "\n".join(hits[:10])
+        assert hits == [], f"Found {len(hits)} hardcoded password(s):\n" + "\n".join(
+            hits[:10]
         )
 
 
@@ -118,35 +121,50 @@ class TestNoHardcodedAPIKeys:
         for pattern in _API_KEY_PATTERNS:
             result = subprocess.run(
                 ["grep", "-rnE", "--include=*.py", pattern, ROOT],
-                capture_output=True, text=True,
+                capture_output=True,
+                text=True,
             )
             hits = []
             for line in result.stdout.splitlines():
                 lower = line.lower()
                 # Skip test files, env lookups, comments
-                if any(skip in lower for skip in [
-                    "/tests/", "/test_", "os.environ", "os.getenv",
-                    "# ", "mock", "fixture", "placeholder", "example",
-                ]):
+                if any(
+                    skip in lower
+                    for skip in [
+                        "/tests/",
+                        "/test_",
+                        "os.environ",
+                        "os.getenv",
+                        "# ",
+                        "mock",
+                        "fixture",
+                        "placeholder",
+                        "example",
+                    ]
+                ):
                     continue
                 hits.append(line)
-            assert hits == [], (
-                f"Hardcoded API key pattern '{pattern}' found:\n" +
-                "\n".join(hits[:10])
-            )
+            assert (
+                hits == []
+            ), f"Hardcoded API key pattern '{pattern}' found:\n" + "\n".join(hits[:10])
 
     def test_no_real_alpaca_keys_in_source(self):
         """No Alpaca key patterns (PK...) in Python source (excluding .env)."""
         result = subprocess.run(
             ["grep", "-rn", "--include=*.py", "PK[A-Z0-9]\\{10,\\}", ROOT],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
-        hits = [l for l in result.stdout.splitlines()
-                if "/tests/" not in l and "# " not in l.split(":", 2)[-1].lstrip()]
+        hits = [
+            l
+            for l in result.stdout.splitlines()
+            if "/tests/" not in l and "# " not in l.split(":", 2)[-1].lstrip()
+        ]
         assert hits == [], f"Alpaca key pattern in source:\n" + "\n".join(hits[:5])
 
 
 # ---------- 4. env_validator rejects missing required vars ----------
+
 
 class TestEnvValidatorMissing:
     def test_rejects_missing_db_password(self):
@@ -156,12 +174,18 @@ class TestEnvValidatorMissing:
         env.pop("ALPACA_SECRET_KEY", None)
 
         result = subprocess.run(
-            [sys.executable, "-c",
-             "import sys; sys.path.insert(0,'.'); "
-             "from utils.env_validator import validate; "
-             "msgs = validate(strict=False); "
-             "print('\\n'.join(msgs))"],
-            capture_output=True, text=True, cwd=ROOT, env=env,
+            [
+                sys.executable,
+                "-c",
+                "import sys; sys.path.insert(0,'.'); "
+                "from utils.env_validator import validate; "
+                "msgs = validate(strict=False); "
+                "print('\\n'.join(msgs))",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            env=env,
         )
         assert "DB_PASSWORD" in result.stdout
         assert "FATAL" in result.stdout
@@ -173,12 +197,18 @@ class TestEnvValidatorMissing:
         env.pop("ALPACA_SECRET_KEY", None)
 
         result = subprocess.run(
-            [sys.executable, "-c",
-             "import sys; sys.path.insert(0,'.'); "
-             "from utils.env_validator import validate; "
-             "msgs = validate(strict=False); "
-             "print('\\n'.join(msgs))"],
-            capture_output=True, text=True, cwd=ROOT, env=env,
+            [
+                sys.executable,
+                "-c",
+                "import sys; sys.path.insert(0,'.'); "
+                "from utils.env_validator import validate; "
+                "msgs = validate(strict=False); "
+                "print('\\n'.join(msgs))",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            env=env,
         )
         assert "ALPACA_API_KEY" in result.stdout
 
@@ -188,13 +218,19 @@ class TestEnvValidatorMissing:
             env.pop(var, None)
 
         result = subprocess.run(
-            [sys.executable, "-c",
-             "import sys; sys.path.insert(0,'.'); "
-             "from utils.env_validator import validate; "
-             "msgs = validate(strict=False); "
-             "fatals = [m for m in msgs if 'FATAL' in m]; "
-             "print(len(fatals))"],
-            capture_output=True, text=True, cwd=ROOT, env=env,
+            [
+                sys.executable,
+                "-c",
+                "import sys; sys.path.insert(0,'.'); "
+                "from utils.env_validator import validate; "
+                "msgs = validate(strict=False); "
+                "fatals = [m for m in msgs if 'FATAL' in m]; "
+                "print(len(fatals))",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            env=env,
         )
         count = int(result.stdout.strip())
         assert count >= 3, f"Expected >= 3 FATAL errors, got {count}"
@@ -202,16 +238,20 @@ class TestEnvValidatorMissing:
 
 # ---------- 5. env_validator rejects placeholder values ----------
 
+
 class TestEnvValidatorPlaceholders:
-    @pytest.mark.parametrize("placeholder", [
-        "your_key_here",
-        "YOUR_API_KEY",
-        "CHANGE_ME",
-        "changeme",
-        "xxx",
-        "placeholder_value",
-        "example_password",
-    ])
+    @pytest.mark.parametrize(
+        "placeholder",
+        [
+            "your_key_here",
+            "YOUR_API_KEY",
+            "CHANGE_ME",
+            "changeme",
+            "xxx",
+            "placeholder_value",
+            "example_password",
+        ],
+    )
     def test_rejects_placeholder(self, placeholder):
         env = os.environ.copy()
         env["DB_PASSWORD"] = placeholder
@@ -219,16 +259,22 @@ class TestEnvValidatorPlaceholders:
         env["ALPACA_SECRET_KEY"] = "real_secret_def456"
 
         result = subprocess.run(
-            [sys.executable, "-c",
-             "import sys; sys.path.insert(0,'.'); "
-             "from utils.env_validator import validate; "
-             "msgs = validate(strict=False); "
-             "print('\\n'.join(msgs))"],
-            capture_output=True, text=True, cwd=ROOT, env=env,
+            [
+                sys.executable,
+                "-c",
+                "import sys; sys.path.insert(0,'.'); "
+                "from utils.env_validator import validate; "
+                "msgs = validate(strict=False); "
+                "print('\\n'.join(msgs))",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            env=env,
         )
-        assert "placeholder" in result.stdout.lower() or "FATAL" in result.stdout, (
-            f"Validator did not reject placeholder '{placeholder}'"
-        )
+        assert (
+            "placeholder" in result.stdout.lower() or "FATAL" in result.stdout
+        ), f"Validator did not reject placeholder '{placeholder}'"
 
     def test_accepts_real_values(self):
         env = os.environ.copy()
@@ -237,13 +283,19 @@ class TestEnvValidatorPlaceholders:
         env["ALPACA_SECRET_KEY"] = "abcdef1234567890abcdef1234567890"
 
         result = subprocess.run(
-            [sys.executable, "-c",
-             "import sys; sys.path.insert(0,'.'); "
-             "from utils.env_validator import validate; "
-             "msgs = validate(strict=False); "
-             "fatals = [m for m in msgs if 'FATAL' in m]; "
-             "print(len(fatals))"],
-            capture_output=True, text=True, cwd=ROOT, env=env,
+            [
+                sys.executable,
+                "-c",
+                "import sys; sys.path.insert(0,'.'); "
+                "from utils.env_validator import validate; "
+                "msgs = validate(strict=False); "
+                "fatals = [m for m in msgs if 'FATAL' in m]; "
+                "print(len(fatals))",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            env=env,
         )
         count = int(result.stdout.strip())
         assert count == 0, "Validator rejected real credential values"
@@ -251,16 +303,22 @@ class TestEnvValidatorPlaceholders:
 
 # ---------- 6. pip-audit ----------
 
+
 class TestPipAudit:
     def test_no_critical_or_high_vulns(self):
         result = subprocess.run(
             [sys.executable, "-m", "pip_audit", "--desc", "--progress-spinner=off"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
         output = result.stdout + result.stderr
         # pip-audit exits 1 if vulns found. Check for CRITICAL/HIGH.
-        critical = [l for l in output.splitlines()
-                    if "CRITICAL" in l.upper() or "HIGH" in l.upper()]
+        critical = [
+            l
+            for l in output.splitlines()
+            if "CRITICAL" in l.upper() or "HIGH" in l.upper()
+        ]
         # This is informational — we warn but don't hard-fail since
         # transitive deps may have known issues without available fixes.
         if critical:
@@ -272,21 +330,38 @@ class TestPipAudit:
 
 # ---------- 7. detect-secrets ----------
 
+
 class TestDetectSecrets:
     def test_no_secrets_in_source(self):
         result = subprocess.run(
-            [sys.executable, "-m", "detect_secrets", "scan",
-             "--exclude-files", r"\.env$",
-             "--exclude-files", r"\.env\.template$",
-             "--exclude-files", r"tests/",
-             "--exclude-files", r"lightning_logs/",
-             "--exclude-files", r"\.pth$",
-             "--exclude-files", r"\.ckpt$",
-             "--exclude-files", r"node_modules/",
-             "."],
-            capture_output=True, text=True, cwd=ROOT, timeout=120,
+            [
+                sys.executable,
+                "-m",
+                "detect_secrets",
+                "scan",
+                "--exclude-files",
+                r"\.env$",
+                "--exclude-files",
+                r"\.env\.template$",
+                "--exclude-files",
+                r"tests/",
+                "--exclude-files",
+                r"lightning_logs/",
+                "--exclude-files",
+                r"\.pth$",
+                "--exclude-files",
+                r"\.ckpt$",
+                "--exclude-files",
+                r"node_modules/",
+                ".",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            timeout=120,
         )
         import json
+
         try:
             scan = json.loads(result.stdout)
         except json.JSONDecodeError:
@@ -298,7 +373,10 @@ class TestDetectSecrets:
         real_secrets = {}
         for filepath, findings in results.items():
             # Skip documentation, markdown, configs
-            if any(filepath.endswith(ext) for ext in [".md", ".json", ".yml", ".yaml", ".txt", ".cfg"]):
+            if any(
+                filepath.endswith(ext)
+                for ext in [".md", ".json", ".yml", ".yaml", ".txt", ".cfg"]
+            ):
                 continue
             real = [f for f in findings if f.get("type") != "Hex High Entropy String"]
             if real:

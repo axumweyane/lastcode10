@@ -13,6 +13,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # ── 1. ci.yml validity ──────────────────────────────────────────────────────
 
+
 class TestCIYamlValid:
     """Test that ci.yml is valid YAML with expected structure."""
 
@@ -91,7 +92,9 @@ class TestCIYamlValid:
 
     def test_test_job_uploads_artifact(self):
         steps = self.ci["jobs"]["test"]["steps"]
-        assert any(s.get("uses", "").startswith("actions/upload-artifact") for s in steps)
+        assert any(
+            s.get("uses", "").startswith("actions/upload-artifact") for s in steps
+        )
 
     def test_security_runs_pip_audit(self):
         steps = self.ci["jobs"]["security"]["steps"]
@@ -105,7 +108,9 @@ class TestCIYamlValid:
 
     def test_security_continues_on_error(self):
         steps = self.ci["jobs"]["security"]["steps"]
-        audit_step = [s for s in steps if s.get("name", "") == "Check for vulnerable dependencies"]
+        audit_step = [
+            s for s in steps if s.get("name", "") == "Check for vulnerable dependencies"
+        ]
         assert len(audit_step) == 1
         assert audit_step[0].get("continue-on-error") is True
 
@@ -133,6 +138,7 @@ class TestCIYamlValid:
 
 # ── 2. Referenced paths exist ────────────────────────────────────────────────
 
+
 class TestReferencedPaths:
     """Verify that files and directories referenced by CI exist."""
 
@@ -155,11 +161,14 @@ class TestReferencedPaths:
 
     def test_grafana_datasource_exists(self):
         assert os.path.isfile(
-            os.path.join(BASE_DIR, "monitoring", "grafana", "datasources", "datasource.yml")
+            os.path.join(
+                BASE_DIR, "monitoring", "grafana", "datasources", "datasource.yml"
+            )
         )
 
 
 # ── 3. requirements.txt parseable ───────────────────────────────────────────
+
 
 class TestRequirementsTxt:
     """Verify requirements.txt is parseable."""
@@ -183,17 +192,20 @@ class TestRequirementsTxt:
             assert len(line) > 0, f"Empty requirement on line {i}"
             # Should not contain spaces (except in markers like ; python_version)
             parts = line.split(";")[0].strip()
-            assert " " not in parts or "[" in parts, (
-                f"Malformed requirement on line {i}: {line}"
-            )
+            assert (
+                " " not in parts or "[" in parts
+            ), f"Malformed requirement on line {i}: {line}"
 
     def test_common_deps_present(self):
         content = "\n".join(self.lines).lower()
         for dep in ["fastapi", "pandas", "numpy"]:
-            assert dep in content, f"Expected dependency '{dep}' not in requirements.txt"
+            assert (
+                dep in content
+            ), f"Expected dependency '{dep}' not in requirements.txt"
 
 
 # ── 4. README badge ─────────────────────────────────────────────────────────
+
 
 class TestReadmeBadge:
     """Verify CI badge is in README.md."""
@@ -206,6 +218,7 @@ class TestReadmeBadge:
 
 
 # ── 5. CONTRIBUTING.md ──────────────────────────────────────────────────────
+
 
 class TestContributing:
     """Verify CONTRIBUTING.md exists and documents branch protection."""

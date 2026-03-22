@@ -95,7 +95,8 @@ class SentimentStrategy(BaseStrategy):
 
             # Classify relationship and compute raw score
             raw_score, direction, signal_type = self._classify_signal(
-                sentiment_score, price_trend,
+                sentiment_score,
+                price_trend,
             )
 
             if direction == SignalDirection.NEUTRAL:
@@ -107,19 +108,21 @@ class SentimentStrategy(BaseStrategy):
                 1.0,
             )
 
-            scores.append(AlphaScore(
-                symbol=symbol,
-                score=raw_score,
-                raw_score=raw_score,
-                confidence=confidence,
-                direction=direction,
-                metadata={
-                    "sentiment_score": round(sentiment_score, 4),
-                    "price_trend": round(price_trend, 4),
-                    "signal_type": signal_type,
-                    "strategy_type": "sentiment",
-                },
-            ))
+            scores.append(
+                AlphaScore(
+                    symbol=symbol,
+                    score=raw_score,
+                    raw_score=raw_score,
+                    confidence=confidence,
+                    direction=direction,
+                    metadata={
+                        "sentiment_score": round(sentiment_score, 4),
+                        "price_trend": round(price_trend, 4),
+                        "signal_type": signal_type,
+                        "strategy_type": "sentiment",
+                    },
+                )
+            )
 
         # Z-score normalize
         if scores:
@@ -137,8 +140,13 @@ class SentimentStrategy(BaseStrategy):
         shorts = [s for s in scores if s.direction == SignalDirection.SHORT][:max_pos]
         scores = longs + shorts
 
-        logger.info("%s: %d signals (%d long, %d short)",
-                    self.name, len(scores), len(longs), len(shorts))
+        logger.info(
+            "%s: %d signals (%d long, %d short)",
+            self.name,
+            len(scores),
+            len(longs),
+            len(shorts),
+        )
 
         return StrategyOutput(
             strategy_name=self.name,

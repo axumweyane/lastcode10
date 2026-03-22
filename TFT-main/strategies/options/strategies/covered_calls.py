@@ -20,8 +20,11 @@ import numpy as np
 import pandas as pd
 
 from strategies.base import (
-    AlphaScore, BaseStrategy, SignalDirection,
-    StrategyOutput, StrategyPerformance,
+    AlphaScore,
+    BaseStrategy,
+    SignalDirection,
+    StrategyOutput,
+    StrategyPerformance,
 )
 from strategies.options.config import CoveredCallConfig
 from strategies.options.infrastructure.vol_monitor import VolMonitor, VolMetrics
@@ -74,34 +77,41 @@ class CoveredCalls(BaseStrategy):
             # Signal: higher IV rank → stronger sell signal
             # Score is positive because selling calls = income on long positions
             raw_score = (metrics.iv_rank - 50) / 50.0  # -1 to +1 centered at 50%
-            premium_estimate = estimated_iv * np.sqrt(30 / 365) * sym_data["close"].iloc[-1]
+            premium_estimate = (
+                estimated_iv * np.sqrt(30 / 365) * sym_data["close"].iloc[-1]
+            )
             premium_pct = premium_estimate / sym_data["close"].iloc[-1] * 100
 
             confidence = min(metrics.iv_rank / 100.0, 0.95)
 
-            scores.append(AlphaScore(
-                symbol=symbol,
-                score=max(raw_score, 0.01),  # always slightly positive (income)
-                raw_score=raw_score,
-                confidence=confidence,
-                direction=SignalDirection.LONG,  # overlays on existing longs
-                metadata={
-                    "strategy_type": "covered_call",
-                    "iv_rank": round(metrics.iv_rank, 1),
-                    "estimated_iv": round(estimated_iv, 4),
-                    "rv_21d": round(rv_21d, 4),
-                    "target_delta": self.config.target_delta,
-                    "target_dte": (self.config.min_dte + self.config.max_dte) // 2,
-                    "premium_estimate_pct": round(premium_pct, 2),
-                    "vol_regime": metrics.vol_regime,
-                },
-            ))
+            scores.append(
+                AlphaScore(
+                    symbol=symbol,
+                    score=max(raw_score, 0.01),  # always slightly positive (income)
+                    raw_score=raw_score,
+                    confidence=confidence,
+                    direction=SignalDirection.LONG,  # overlays on existing longs
+                    metadata={
+                        "strategy_type": "covered_call",
+                        "iv_rank": round(metrics.iv_rank, 1),
+                        "estimated_iv": round(estimated_iv, 4),
+                        "rv_21d": round(rv_21d, 4),
+                        "target_delta": self.config.target_delta,
+                        "target_dte": (self.config.min_dte + self.config.max_dte) // 2,
+                        "premium_estimate_pct": round(premium_pct, 2),
+                        "vol_regime": metrics.vol_regime,
+                    },
+                )
+            )
 
         scores.sort(key=lambda s: s.score, reverse=True)
 
         logger.info(
             "%s: %d signals from %d symbols (min IV rank: %.0f%%)",
-            self.name, len(scores), len(symbols), self.config.min_iv_rank,
+            self.name,
+            len(scores),
+            len(symbols),
+            self.config.min_iv_rank,
         )
 
         return StrategyOutput(

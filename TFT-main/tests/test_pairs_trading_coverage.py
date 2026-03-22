@@ -19,10 +19,12 @@ from strategies.statarb.pairs import (
 )
 from strategies.statarb.scanner import TradingPair
 
-
 # ---------- Helpers ----------
 
-def _make_pair(sym_a="AAPL", sym_b="MSFT", hedge_ratio=1.0, spread_mean=0.0, spread_std=5.0):
+
+def _make_pair(
+    sym_a="AAPL", sym_b="MSFT", hedge_ratio=1.0, spread_mean=0.0, spread_std=5.0
+):
     return TradingPair(
         symbol_a=sym_a,
         symbol_b=sym_b,
@@ -70,6 +72,7 @@ def strategy(config):
 
 # ---------- _SymbolAccumulator ----------
 
+
 class TestSymbolAccumulator:
     def test_add_and_net_score(self):
         acc = _SymbolAccumulator("AAPL")
@@ -87,6 +90,7 @@ class TestSymbolAccumulator:
 
 # ---------- PairState ----------
 
+
 class TestPairStateConstants:
     def test_values(self):
         assert PairState.FLAT == "flat"
@@ -95,6 +99,7 @@ class TestPairStateConstants:
 
 
 # ---------- ActivePair ----------
+
 
 class TestActivePair:
     def test_defaults(self):
@@ -107,6 +112,7 @@ class TestActivePair:
 
 # ---------- Properties ----------
 
+
 class TestStrategyProperties:
     def test_name(self, strategy):
         assert strategy.name == "pairs_trading"
@@ -116,6 +122,7 @@ class TestStrategyProperties:
 
 
 # ---------- initialize ----------
+
 
 class TestInitialize:
     def test_initialize_calls_scanner(self, strategy):
@@ -142,6 +149,7 @@ class TestInitialize:
 
 
 # ---------- _evaluate_pair ----------
+
 
 class TestEvaluatePair:
     def test_flat_enter_short_spread(self, strategy):
@@ -192,6 +200,7 @@ class TestEvaluatePair:
 
 # ---------- _estimate_pair_pnl ----------
 
+
 class TestEstimatePairPnl:
     def test_long_spread_profit(self, strategy):
         pair = _make_pair()
@@ -213,6 +222,7 @@ class TestEstimatePairPnl:
 
 # ---------- _should_rescan ----------
 
+
 class TestShouldRescan:
     def test_no_scan_date(self, strategy):
         assert strategy._should_rescan() is True
@@ -228,20 +238,40 @@ class TestShouldRescan:
 
 # ---------- _get_latest_prices ----------
 
+
 class TestGetLatestPrices:
     def test_gets_latest(self):
-        data = pd.DataFrame([
-            {"symbol": "AAPL", "timestamp": pd.Timestamp("2025-01-01"), "close": 100},
-            {"symbol": "AAPL", "timestamp": pd.Timestamp("2025-01-02"), "close": 105},
-            {"symbol": "MSFT", "timestamp": pd.Timestamp("2025-01-01"), "close": 200},
-            {"symbol": "MSFT", "timestamp": pd.Timestamp("2025-01-02"), "close": 210},
-        ])
+        data = pd.DataFrame(
+            [
+                {
+                    "symbol": "AAPL",
+                    "timestamp": pd.Timestamp("2025-01-01"),
+                    "close": 100,
+                },
+                {
+                    "symbol": "AAPL",
+                    "timestamp": pd.Timestamp("2025-01-02"),
+                    "close": 105,
+                },
+                {
+                    "symbol": "MSFT",
+                    "timestamp": pd.Timestamp("2025-01-01"),
+                    "close": 200,
+                },
+                {
+                    "symbol": "MSFT",
+                    "timestamp": pd.Timestamp("2025-01-02"),
+                    "close": 210,
+                },
+            ]
+        )
         prices = PairsTrading._get_latest_prices(data)
         assert prices["AAPL"] == 105
         assert prices["MSFT"] == 210
 
 
 # ---------- _accumulate ----------
+
 
 class TestAccumulate:
     def test_new_symbol(self):
@@ -258,6 +288,7 @@ class TestAccumulate:
 
 
 # ---------- _finalize_scores ----------
+
 
 class TestFinalizeScores:
     def test_filters_small_scores(self):
@@ -289,6 +320,7 @@ class TestFinalizeScores:
 
 # ---------- generate_signals ----------
 
+
 class TestGenerateSignals:
     def test_auto_initializes(self, strategy):
         data = _make_data()
@@ -299,16 +331,30 @@ class TestGenerateSignals:
         assert output.strategy_name == "pairs_trading"
 
     def test_with_active_pairs_entry(self, strategy):
-        pair = _make_pair("AAPL", "MSFT", hedge_ratio=1.0, spread_mean=0.0, spread_std=5.0)
+        pair = _make_pair(
+            "AAPL", "MSFT", hedge_ratio=1.0, spread_mean=0.0, spread_std=5.0
+        )
         strategy._initialized = True
         strategy._last_scan_date = datetime.now(timezone.utc)
         strategy._active_pairs = {pair.pair_id: ActivePair(pair=pair)}
 
         # Create data where spread z-score > entry threshold
-        data = pd.DataFrame([
-            {"symbol": "AAPL", "timestamp": pd.Timestamp("2025-01-01"), "close": 115.0, "volume": 1e6},
-            {"symbol": "MSFT", "timestamp": pd.Timestamp("2025-01-01"), "close": 100.0, "volume": 1e6},
-        ])
+        data = pd.DataFrame(
+            [
+                {
+                    "symbol": "AAPL",
+                    "timestamp": pd.Timestamp("2025-01-01"),
+                    "close": 115.0,
+                    "volume": 1e6,
+                },
+                {
+                    "symbol": "MSFT",
+                    "timestamp": pd.Timestamp("2025-01-01"),
+                    "close": 100.0,
+                    "volume": 1e6,
+                },
+            ]
+        )
         # spread = 115 - 1.0*100 = 15, zscore = (15-0)/5 = 3.0 > 2.0 entry
         output = strategy.generate_signals(data)
         assert output.strategy_name == "pairs_trading"
@@ -318,10 +364,14 @@ class TestGenerateSignals:
             assert "AAPL" in symbols or "MSFT" in symbols
 
     def test_exit_signal(self, strategy):
-        pair = _make_pair("AAPL", "MSFT", hedge_ratio=1.0, spread_mean=0.0, spread_std=5.0)
+        pair = _make_pair(
+            "AAPL", "MSFT", hedge_ratio=1.0, spread_mean=0.0, spread_std=5.0
+        )
         ap = ActivePair(
-            pair=pair, state=PairState.SHORT_SPREAD,
-            entry_spread=15.0, entry_zscore=3.0,
+            pair=pair,
+            state=PairState.SHORT_SPREAD,
+            entry_spread=15.0,
+            entry_zscore=3.0,
             entry_date=datetime.now(timezone.utc),
         )
         strategy._initialized = True
@@ -329,18 +379,34 @@ class TestGenerateSignals:
         strategy._active_pairs = {pair.pair_id: ap}
 
         # spread z-score near 0 -> exit
-        data = pd.DataFrame([
-            {"symbol": "AAPL", "timestamp": pd.Timestamp("2025-01-01"), "close": 101.0, "volume": 1e6},
-            {"symbol": "MSFT", "timestamp": pd.Timestamp("2025-01-01"), "close": 100.0, "volume": 1e6},
-        ])
+        data = pd.DataFrame(
+            [
+                {
+                    "symbol": "AAPL",
+                    "timestamp": pd.Timestamp("2025-01-01"),
+                    "close": 101.0,
+                    "volume": 1e6,
+                },
+                {
+                    "symbol": "MSFT",
+                    "timestamp": pd.Timestamp("2025-01-01"),
+                    "close": 100.0,
+                    "volume": 1e6,
+                },
+            ]
+        )
         output = strategy.generate_signals(data)
         assert strategy._active_pairs[pair.pair_id].state == PairState.FLAT
 
     def test_stop_loss_signal(self, strategy):
-        pair = _make_pair("AAPL", "MSFT", hedge_ratio=1.0, spread_mean=0.0, spread_std=5.0)
+        pair = _make_pair(
+            "AAPL", "MSFT", hedge_ratio=1.0, spread_mean=0.0, spread_std=5.0
+        )
         ap = ActivePair(
-            pair=pair, state=PairState.SHORT_SPREAD,
-            entry_spread=15.0, entry_zscore=3.0,
+            pair=pair,
+            state=PairState.SHORT_SPREAD,
+            entry_spread=15.0,
+            entry_zscore=3.0,
             entry_date=datetime.now(timezone.utc),
         )
         strategy._initialized = True
@@ -348,33 +414,63 @@ class TestGenerateSignals:
         strategy._active_pairs = {pair.pair_id: ap}
 
         # spread z-score > stop_loss (4.0) -> stop_loss
-        data = pd.DataFrame([
-            {"symbol": "AAPL", "timestamp": pd.Timestamp("2025-01-01"), "close": 125.0, "volume": 1e6},
-            {"symbol": "MSFT", "timestamp": pd.Timestamp("2025-01-01"), "close": 100.0, "volume": 1e6},
-        ])
+        data = pd.DataFrame(
+            [
+                {
+                    "symbol": "AAPL",
+                    "timestamp": pd.Timestamp("2025-01-01"),
+                    "close": 125.0,
+                    "volume": 1e6,
+                },
+                {
+                    "symbol": "MSFT",
+                    "timestamp": pd.Timestamp("2025-01-01"),
+                    "close": 100.0,
+                    "volume": 1e6,
+                },
+            ]
+        )
         # spread = 25, z = 25/5 = 5.0 > 4.0
         output = strategy.generate_signals(data)
         assert strategy._active_pairs[pair.pair_id].state == PairState.FLAT
 
     def test_long_spread_entry(self, strategy):
-        pair = _make_pair("AAPL", "MSFT", hedge_ratio=1.0, spread_mean=0.0, spread_std=5.0)
+        pair = _make_pair(
+            "AAPL", "MSFT", hedge_ratio=1.0, spread_mean=0.0, spread_std=5.0
+        )
         strategy._initialized = True
         strategy._last_scan_date = datetime.now(timezone.utc)
         strategy._active_pairs = {pair.pair_id: ActivePair(pair=pair)}
 
         # spread = 85 - 100 = -15, z = -15/5 = -3.0 < -2.0
-        data = pd.DataFrame([
-            {"symbol": "AAPL", "timestamp": pd.Timestamp("2025-01-01"), "close": 85.0, "volume": 1e6},
-            {"symbol": "MSFT", "timestamp": pd.Timestamp("2025-01-01"), "close": 100.0, "volume": 1e6},
-        ])
+        data = pd.DataFrame(
+            [
+                {
+                    "symbol": "AAPL",
+                    "timestamp": pd.Timestamp("2025-01-01"),
+                    "close": 85.0,
+                    "volume": 1e6,
+                },
+                {
+                    "symbol": "MSFT",
+                    "timestamp": pd.Timestamp("2025-01-01"),
+                    "close": 100.0,
+                    "volume": 1e6,
+                },
+            ]
+        )
         output = strategy.generate_signals(data)
         assert strategy._active_pairs[pair.pair_id].state == PairState.LONG_SPREAD
 
     def test_long_spread_exit(self, strategy):
-        pair = _make_pair("AAPL", "MSFT", hedge_ratio=1.0, spread_mean=0.0, spread_std=5.0)
+        pair = _make_pair(
+            "AAPL", "MSFT", hedge_ratio=1.0, spread_mean=0.0, spread_std=5.0
+        )
         ap = ActivePair(
-            pair=pair, state=PairState.LONG_SPREAD,
-            entry_spread=-15.0, entry_zscore=-3.0,
+            pair=pair,
+            state=PairState.LONG_SPREAD,
+            entry_spread=-15.0,
+            entry_zscore=-3.0,
             entry_date=datetime.now(timezone.utc),
         )
         strategy._initialized = True
@@ -382,18 +478,34 @@ class TestGenerateSignals:
         strategy._active_pairs = {pair.pair_id: ap}
 
         # z near 0 -> exit
-        data = pd.DataFrame([
-            {"symbol": "AAPL", "timestamp": pd.Timestamp("2025-01-01"), "close": 100.5, "volume": 1e6},
-            {"symbol": "MSFT", "timestamp": pd.Timestamp("2025-01-01"), "close": 100.0, "volume": 1e6},
-        ])
+        data = pd.DataFrame(
+            [
+                {
+                    "symbol": "AAPL",
+                    "timestamp": pd.Timestamp("2025-01-01"),
+                    "close": 100.5,
+                    "volume": 1e6,
+                },
+                {
+                    "symbol": "MSFT",
+                    "timestamp": pd.Timestamp("2025-01-01"),
+                    "close": 100.0,
+                    "volume": 1e6,
+                },
+            ]
+        )
         output = strategy.generate_signals(data)
         assert strategy._active_pairs[pair.pair_id].state == PairState.FLAT
 
     def test_long_spread_stop_loss(self, strategy):
-        pair = _make_pair("AAPL", "MSFT", hedge_ratio=1.0, spread_mean=0.0, spread_std=5.0)
+        pair = _make_pair(
+            "AAPL", "MSFT", hedge_ratio=1.0, spread_mean=0.0, spread_std=5.0
+        )
         ap = ActivePair(
-            pair=pair, state=PairState.LONG_SPREAD,
-            entry_spread=-15.0, entry_zscore=-3.0,
+            pair=pair,
+            state=PairState.LONG_SPREAD,
+            entry_spread=-15.0,
+            entry_zscore=-3.0,
             entry_date=datetime.now(timezone.utc),
         )
         strategy._initialized = True
@@ -401,10 +513,22 @@ class TestGenerateSignals:
         strategy._active_pairs = {pair.pair_id: ap}
 
         # z = -25/5 = -5.0 < -4.0 -> stop loss
-        data = pd.DataFrame([
-            {"symbol": "AAPL", "timestamp": pd.Timestamp("2025-01-01"), "close": 75.0, "volume": 1e6},
-            {"symbol": "MSFT", "timestamp": pd.Timestamp("2025-01-01"), "close": 100.0, "volume": 1e6},
-        ])
+        data = pd.DataFrame(
+            [
+                {
+                    "symbol": "AAPL",
+                    "timestamp": pd.Timestamp("2025-01-01"),
+                    "close": 75.0,
+                    "volume": 1e6,
+                },
+                {
+                    "symbol": "MSFT",
+                    "timestamp": pd.Timestamp("2025-01-01"),
+                    "close": 100.0,
+                    "volume": 1e6,
+                },
+            ]
+        )
         output = strategy.generate_signals(data)
         assert strategy._active_pairs[pair.pair_id].state == PairState.FLAT
 
@@ -415,14 +539,22 @@ class TestGenerateSignals:
         strategy._active_pairs = {pair.pair_id: ActivePair(pair=pair)}
 
         # Only AAPL data, no MSFT
-        data = pd.DataFrame([
-            {"symbol": "AAPL", "timestamp": pd.Timestamp("2025-01-01"), "close": 100.0, "volume": 1e6},
-        ])
+        data = pd.DataFrame(
+            [
+                {
+                    "symbol": "AAPL",
+                    "timestamp": pd.Timestamp("2025-01-01"),
+                    "close": 100.0,
+                    "volume": 1e6,
+                },
+            ]
+        )
         output = strategy.generate_signals(data)
         assert len(output.scores) == 0
 
 
 # ---------- _rescan ----------
+
 
 class TestRescan:
     def test_rescan_preserves_positioned_pairs(self, strategy):
@@ -430,8 +562,10 @@ class TestRescan:
         new_pair = _make_pair("GOOGL", "META")
 
         ap = ActivePair(
-            pair=old_pair, state=PairState.SHORT_SPREAD,
-            entry_zscore=2.5, entry_spread=10.0,
+            pair=old_pair,
+            state=PairState.SHORT_SPREAD,
+            entry_zscore=2.5,
+            entry_spread=10.0,
             entry_date=datetime.now(timezone.utc),
         )
         strategy._active_pairs = {old_pair.pair_id: ap}
@@ -450,8 +584,10 @@ class TestRescan:
     def test_rescan_updates_stats_for_existing(self, strategy):
         pair = _make_pair("AAPL", "MSFT")
         ap = ActivePair(
-            pair=pair, state=PairState.LONG_SPREAD,
-            entry_zscore=-2.5, cumulative_pnl=100.0,
+            pair=pair,
+            state=PairState.LONG_SPREAD,
+            entry_zscore=-2.5,
+            cumulative_pnl=100.0,
             entry_date=datetime.now(timezone.utc),
         )
         strategy._active_pairs = {pair.pair_id: ap}
@@ -471,6 +607,7 @@ class TestRescan:
 
 # ---------- get_performance / get_active_pairs_summary ----------
 
+
 class TestHelperMethods:
     def test_get_performance(self, strategy):
         perf = strategy.get_performance()
@@ -486,6 +623,7 @@ class TestHelperMethods:
 
 
 # ---------- _update_spread_stats ----------
+
 
 class TestUpdateSpreadStats:
     def test_updates_spread_mean_std(self, strategy):

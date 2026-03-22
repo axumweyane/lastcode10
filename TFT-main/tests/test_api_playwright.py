@@ -19,6 +19,7 @@ def api():
 
 # ---------- 1. GET /health ----------
 
+
 class TestHealthEndpoint:
     def test_returns_200(self, api):
         resp = api.get("/health")
@@ -45,6 +46,7 @@ class TestHealthEndpoint:
 
 # ---------- 2. GET /dashboard ----------
 
+
 class TestDashboardEndpoint:
     def test_returns_200(self, api):
         resp = api.get("/dashboard")
@@ -70,6 +72,7 @@ class TestDashboardEndpoint:
 
 # ---------- 3. GET /weights ----------
 
+
 class TestWeightsEndpoint:
     def test_returns_200(self, api):
         resp = api.get("/weights")
@@ -82,6 +85,7 @@ class TestWeightsEndpoint:
 
 
 # ---------- 4. GET /history ----------
+
 
 class TestHistoryEndpoint:
     def test_returns_200(self, api):
@@ -96,6 +100,7 @@ class TestHistoryEndpoint:
 
 # ---------- 5. GET /dlq ----------
 
+
 class TestDLQEndpoint:
     def test_returns_200(self, api):
         resp = api.get("/dlq")
@@ -108,6 +113,7 @@ class TestDLQEndpoint:
 
 
 # ---------- 6-8. Signal Provider API (may require API key) ----------
+
 
 class TestSignalAPI:
     """Signal provider endpoints return 200 (no key required) or 401 (key required)."""
@@ -127,7 +133,11 @@ class TestSignalAPI:
     def test_unauthenticated_is_consistent(self, api):
         """All signal endpoints should behave the same without a key."""
         statuses = set()
-        for path in ["/api/v1/signals", "/api/v1/signals/regime", "/api/v1/signals/weights"]:
+        for path in [
+            "/api/v1/signals",
+            "/api/v1/signals/regime",
+            "/api/v1/signals/weights",
+        ]:
             statuses.add(api.get(path).status)
         # All should return the same status (either all 200 or all 401)
         assert len(statuses) == 1, f"Inconsistent signal API statuses: {statuses}"

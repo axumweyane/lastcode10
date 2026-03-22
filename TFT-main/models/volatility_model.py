@@ -87,7 +87,8 @@ class TFTVolatilityModel(BaseTFTModel):
             if "high" in g.columns and "low" in g.columns:
                 hl_ratio = np.log(g["high"] / g["low"])
                 g["parkinson_vol"] = hl_ratio.rolling(21).apply(
-                    lambda x: np.sqrt((x ** 2).sum() / (4 * len(x) * np.log(2))) * np.sqrt(252),
+                    lambda x: np.sqrt((x**2).sum() / (4 * len(x) * np.log(2)))
+                    * np.sqrt(252),
                     raw=True,
                 )
             else:
@@ -147,25 +148,32 @@ class TFTVolatilityModel(BaseTFTModel):
         for col in df.select_dtypes(include=[np.number]).columns:
             df[col] = df[col].fillna(0)
 
-        logger.info("Vol features: %d rows, %d symbols, %d columns",
-                     len(df), df["symbol"].nunique(), len(df.columns))
+        logger.info(
+            "Vol features: %d rows, %d symbols, %d columns",
+            len(df),
+            df["symbol"].nunique(),
+            len(df.columns),
+        )
         return df
 
     def _compute_garch_residual(self, returns: pd.Series) -> pd.Series:
         """GARCH(1,1) standardized residual as surprise measure."""
         try:
             from arch import arch_model
+
             clean = returns.dropna().values * 100  # scale for numerical stability
             if len(clean) < 100:
                 return pd.Series(0.0, index=returns.index)
 
-            am = arch_model(clean[-252:], vol="Garch", p=1, q=1, mean="Constant", rescale=False)
+            am = arch_model(
+                clean[-252:], vol="Garch", p=1, q=1, mean="Constant", rescale=False
+            )
             res = am.fit(disp="off", show_warning=False)
             std_resid = res.std_resid
 
             # Map back to original index
             out = pd.Series(0.0, index=returns.index)
-            out.iloc[-len(std_resid):] = std_resid
+            out.iloc[-len(std_resid) :] = std_resid
             return out
         except Exception:
             return pd.Series(0.0, index=returns.index)
@@ -186,16 +194,39 @@ class TFTVolatilityModel(BaseTFTModel):
         max_time_idx = df["time_idx"].max()
         training_cutoff = int(max_time_idx * 0.8)
 
-        time_varying_known = [c for c in [
-            "time_idx", "day_sin", "day_cos", "month_sin", "month_cos",
-        ] if c in df.columns]
+        time_varying_known = [
+            c
+            for c in [
+                "time_idx",
+                "day_sin",
+                "day_cos",
+                "month_sin",
+                "month_cos",
+            ]
+            if c in df.columns
+        ]
 
-        time_varying_unknown = [c for c in [
-            "close", "rv_5d", "rv_10d", "rv_21d", "rv_63d",
-            "abs_return", "abs_return_5d_avg", "parkinson_vol",
-            "est_iv", "iv_rv_spread", "iv_rank",
-            "vol_of_vol", "garch_residual", "rv_momentum", "rv_trend",
-        ] if c in df.columns]
+        time_varying_unknown = [
+            c
+            for c in [
+                "close",
+                "rv_5d",
+                "rv_10d",
+                "rv_21d",
+                "rv_63d",
+                "abs_return",
+                "abs_return_5d_avg",
+                "parkinson_vol",
+                "est_iv",
+                "iv_rv_spread",
+                "iv_rank",
+                "vol_of_vol",
+                "garch_residual",
+                "rv_momentum",
+                "rv_trend",
+            ]
+            if c in df.columns
+        ]
 
         training_ds = TimeSeriesDataSet(
             df[df["time_idx"] <= training_cutoff],
@@ -214,14 +245,20 @@ class TFTVolatilityModel(BaseTFTModel):
         )
 
         val_ds = TimeSeriesDataSet.from_dataset(
-            training_ds, df[df["time_idx"] > training_cutoff],
-            predict=True, stop_randomization=True,
+            training_ds,
+            df[df["time_idx"] > training_cutoff],
+            predict=True,
+            stop_randomization=True,
         )
 
         self._training_dataset = training_ds
 
-        train_dl = training_ds.to_dataloader(train=True, batch_size=self.config["batch_size"], num_workers=0)
-        val_dl = val_ds.to_dataloader(train=False, batch_size=self.config["batch_size"], num_workers=0)
+        train_dl = training_ds.to_dataloader(
+            train=True, batch_size=self.config["batch_size"], num_workers=0
+        )
+        val_dl = val_ds.to_dataloader(
+            train=False, batch_size=self.config["batch_size"], num_workers=0
+        )
 
         model = TemporalFusionTransformer.from_dataset(
             training_ds,
@@ -239,8 +276,12 @@ class TFTVolatilityModel(BaseTFTModel):
             max_epochs=self.config["max_epochs"],
             accelerator="auto",
             callbacks=[
-                pl.callbacks.EarlyStopping(monitor="val_loss", patience=self.config["patience"]),
-                pl.callbacks.ModelCheckpoint(monitor="val_loss", save_top_k=1, mode="min"),
+                pl.callbacks.EarlyStopping(
+                    monitor="val_loss", patience=self.config["patience"]
+                ),
+                pl.callbacks.ModelCheckpoint(
+                    monitor="val_loss", save_top_k=1, mode="min"
+                ),
             ],
             gradient_clip_val=0.1,
             enable_progress_bar=True,
@@ -264,13 +305,21 @@ class TFTVolatilityModel(BaseTFTModel):
             df = self.prepare_features(data)
 
             val_ds = self._training_dataset.from_dataset(
-                self._training_dataset, df,
-                predict=True, stop_randomization=True,
+                self._training_dataset,
+                df,
+                predict=True,
+                stop_randomization=True,
             )
-            dl = val_ds.to_dataloader(train=False, batch_size=self.config["batch_size"], num_workers=0)
+            dl = val_ds.to_dataloader(
+                train=False, batch_size=self.config["batch_size"], num_workers=0
+            )
 
             raw_preds = self._model.predict(dl, mode="prediction")
-            preds_np = raw_preds.numpy() if hasattr(raw_preds, "numpy") else np.array(raw_preds)
+            preds_np = (
+                raw_preds.numpy()
+                if hasattr(raw_preds, "numpy")
+                else np.array(raw_preds)
+            )
 
             symbols = df["symbol"].unique()
             predictions = []
@@ -281,7 +330,11 @@ class TFTVolatilityModel(BaseTFTModel):
 
                 pred = preds_np[i]
                 if pred.ndim >= 2 and pred.shape[-1] >= 3:
-                    lower, median, upper = float(pred[-1, 0]), float(pred[-1, 1]), float(pred[-1, 2])
+                    lower, median, upper = (
+                        float(pred[-1, 0]),
+                        float(pred[-1, 1]),
+                        float(pred[-1, 2]),
+                    )
                 else:
                     median = float(pred.flatten()[-1])
                     lower, upper = median * 0.8, median * 1.2
@@ -294,16 +347,18 @@ class TFTVolatilityModel(BaseTFTModel):
                 spread = abs(upper - lower)
                 confidence = max(0.1, 1.0 - spread / median)
 
-                predictions.append(ModelPrediction(
-                    symbol=symbol,
-                    predicted_value=median,
-                    lower_bound=lower,
-                    upper_bound=upper,
-                    confidence=min(confidence, 0.95),
-                    horizon_days=5,
-                    model_name=self.name,
-                    metadata={"predicted_metric": "realized_vol_5d_annualized"},
-                ))
+                predictions.append(
+                    ModelPrediction(
+                        symbol=symbol,
+                        predicted_value=median,
+                        lower_bound=lower,
+                        upper_bound=upper,
+                        confidence=min(confidence, 0.95),
+                        horizon_days=5,
+                        model_name=self.name,
+                        metadata={"predicted_metric": "realized_vol_5d_annualized"},
+                    )
+                )
 
             logger.info("TFT-Volatility: %d predictions", len(predictions))
             return predictions
@@ -316,12 +371,15 @@ class TFTVolatilityModel(BaseTFTModel):
         if self._model is None:
             raise ValueError("No model to save")
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        torch.save({
-            "model_state_dict": self._model.state_dict(),
-            "config": self.config,
-            "training_dataset": self._training_dataset,
-            "trained_at": self._trained_at,
-        }, path)
+        torch.save(
+            {
+                "model_state_dict": self._model.state_dict(),
+                "config": self.config,
+                "training_dataset": self._training_dataset,
+                "trained_at": self._trained_at,
+            },
+            path,
+        )
         logger.info("TFT-Volatility saved to %s", path)
 
     def load(self, path: str) -> bool:
@@ -330,11 +388,13 @@ class TFTVolatilityModel(BaseTFTModel):
             return False
         try:
             from pytorch_forecasting import TemporalFusionTransformer
+
             checkpoint = torch.load(path, map_location="cpu", weights_only=False)
             self.config = checkpoint["config"]
             self._training_dataset = checkpoint["training_dataset"]
             self._trained_at = checkpoint.get("trained_at")
             from pytorch_forecasting.metrics import QuantileLoss
+
             self._model = TemporalFusionTransformer.from_dataset(
                 self._training_dataset,
                 learning_rate=self.config["learning_rate"],
@@ -354,6 +414,9 @@ class TFTVolatilityModel(BaseTFTModel):
 
     def get_info(self) -> ModelInfo:
         return ModelInfo(
-            name=self.name, asset_class=self.asset_class, version="1.0",
-            trained_at=self._trained_at, is_loaded=self._is_loaded,
+            name=self.name,
+            asset_class=self.asset_class,
+            version="1.0",
+            trained_at=self._trained_at,
+            is_loaded=self._is_loaded,
         )
