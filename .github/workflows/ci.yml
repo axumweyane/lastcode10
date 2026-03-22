@@ -33,7 +33,7 @@ jobs:
           pip install black flake8 mypy yamllint
 
       - name: Check formatting (black)
-        run: black --check . --exclude '/(\.git|__pycache__|venv|\.venv|lightning_logs|advanced_copilot_prompts\.py)/'
+        run: black --check . --exclude '/(\.git|__pycache__|venv|\.venv|lightning_logs)/'
 
       - name: Lint (flake8)
         continue-on-error: true
@@ -73,7 +73,7 @@ jobs:
         run: |
           pytest tests/ -v --tb=short -x --junitxml=test-results.xml \
             --ignore=tests/test_api_playwright.py \
-            --ignore=tests/test_browser_dashboard.py \
+            --ignore=tests/test_dashboard_browser.py \
             --cov=models --cov=strategies --cov=trading --cov=services \
             --cov-report=term-missing --cov-report=xml:coverage.xml \
             --cov-fail-under=40
