@@ -52,11 +52,11 @@ def load_config():
     load_dotenv()
 
     db_config = {
-        "host": os.getenv("POSTGRES_HOST", "localhost"),
-        "database": os.getenv("POSTGRES_DB", "stock_trading_analysis"),
-        "user": os.getenv("POSTGRES_USER", "trading_user"),
-        "password": os.environ["POSTGRES_PASSWORD"],
-        "port": int(os.getenv("POSTGRES_PORT", 5432)),
+        "host": os.getenv("POSTGRES_HOST", os.getenv("DB_HOST", "localhost")),
+        "database": os.getenv("POSTGRES_DB", os.getenv("DB_NAME", "apex")),
+        "user": os.getenv("POSTGRES_USER", os.getenv("DB_USER", "postgres")),
+        "password": os.getenv("POSTGRES_PASSWORD", os.getenv("DB_PASSWORD", "")),
+        "port": int(os.getenv("POSTGRES_PORT", os.getenv("DB_PORT", "15432"))),
         "schema": os.getenv("POSTGRES_SCHEMA", "public"),
     }
 
