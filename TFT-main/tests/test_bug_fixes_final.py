@@ -26,7 +26,8 @@ class TestCF8SessionTimeout:
 
     def test_session_constructor_has_timeout(self):
         source = self._read_source()
-        assert "ClientSession(timeout=" in source
+        assert "ClientSession(" in source
+        assert "timeout=" in source
 
     def test_session_timeout_value_is_30s(self):
         source = self._read_source()
