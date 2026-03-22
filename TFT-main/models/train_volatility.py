@@ -31,28 +31,27 @@ logger = logging.getLogger("train_volatility")
 
 
 def download_stock_data(symbols: list, period: str = "5y") -> pd.DataFrame:
-    """Download stock data via yfinance for vol model training."""
+    """Download stock data via yfinance Ticker API for vol model training."""
     import yfinance as yf
 
     # Always include VIX and SPY for regime context
     all_symbols = list(set(symbols + ["SPY", "^VIX"]))
     logger.info("Downloading %d symbols (%s)...", len(all_symbols), period)
 
-    data = yf.download(
-        all_symbols, period=period, group_by="ticker", auto_adjust=True, progress=False
-    )
-
     rows = []
     for sym in all_symbols:
-        # Use the symbol as-is for the model, but clean ^VIX to VIX
         clean_sym = sym.replace("^", "")
         try:
-            sym_data = data[sym].dropna() if len(all_symbols) > 1 else data.dropna()
-            for dt, row in sym_data.iterrows():
+            ticker = yf.Ticker(sym)
+            hist = ticker.history(period=period, auto_adjust=True)
+            if hist.empty:
+                logger.warning("No data for %s", sym)
+                continue
+            for dt, row in hist.dropna().iterrows():
                 rows.append(
                     {
                         "symbol": clean_sym,
-                        "timestamp": dt,
+                        "timestamp": dt.tz_localize(None) if dt.tzinfo else dt,
                         "open": float(row["Open"]),
                         "high": float(row["High"]),
                         "low": float(row["Low"]),
@@ -64,6 +63,9 @@ def download_stock_data(symbols: list, period: str = "5y") -> pd.DataFrame:
             logger.warning("Failed to get %s: %s", sym, e)
 
     df = pd.DataFrame(rows)
+    if df.empty:
+        logger.error("No data downloaded")
+        return df
 
     # If VIX data is available, add as a feature to all other symbols
     if "VIX" in df["symbol"].unique():
@@ -72,7 +74,7 @@ def download_stock_data(symbols: list, period: str = "5y") -> pd.DataFrame:
         )
         df = df[df["symbol"] != "VIX"]  # remove VIX as a standalone symbol
         df = df.merge(vix_data, on="timestamp", how="left")
-        df["vix_level"] = df["vix_level"].fillna(method="ffill").fillna(20.0)
+        df["vix_level"] = df["vix_level"].ffill().fillna(20.0)
 
     logger.info("Downloaded %d rows for %d symbols", len(df), df["symbol"].nunique())
     return df

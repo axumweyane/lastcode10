@@ -39,25 +39,25 @@ FX_YF_MAP = {
 
 
 def download_fx_data(pairs: list, period: str = "3y") -> pd.DataFrame:
-    """Download FX data via yfinance."""
+    """Download FX data via yfinance using Ticker API."""
     import yfinance as yf
 
-    yf_symbols = [FX_YF_MAP.get(p, f"{p}=X") for p in pairs]
     logger.info("Downloading %d FX pairs (%s)...", len(pairs), period)
 
-    data = yf.download(
-        yf_symbols, period=period, group_by="ticker", auto_adjust=True, progress=False
-    )
-
     rows = []
-    for pair, yf_sym in zip(pairs, yf_symbols):
+    for pair in pairs:
+        yf_sym = FX_YF_MAP.get(pair, f"{pair}=X")
         try:
-            sym_data = data[yf_sym].dropna() if len(yf_symbols) > 1 else data.dropna()
-            for dt, row in sym_data.iterrows():
+            ticker = yf.Ticker(yf_sym)
+            hist = ticker.history(period=period, auto_adjust=True)
+            if hist.empty:
+                logger.warning("No data for %s (%s)", pair, yf_sym)
+                continue
+            for dt, row in hist.dropna().iterrows():
                 rows.append(
                     {
                         "symbol": pair,
-                        "timestamp": dt,
+                        "timestamp": dt.tz_localize(None) if dt.tzinfo else dt,
                         "open": float(row["Open"]),
                         "high": float(row["High"]),
                         "low": float(row["Low"]),
@@ -69,6 +69,9 @@ def download_fx_data(pairs: list, period: str = "3y") -> pd.DataFrame:
             logger.warning("Failed to get %s: %s", pair, e)
 
     df = pd.DataFrame(rows)
+    if df.empty:
+        logger.error("No FX data downloaded")
+        return df
     logger.info("Downloaded %d rows for %d pairs", len(df), df["symbol"].nunique())
     return df
 
