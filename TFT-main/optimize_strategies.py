@@ -15,6 +15,7 @@ import argparse
 import itertools
 import json
 import logging
+import random
 import sys
 from dataclasses import asdict
 from datetime import datetime
@@ -247,17 +248,26 @@ def optimize_strategy(
     stock_data: pd.DataFrame,
     benchmark: pd.DataFrame,
     n_folds: int = 5,
+    max_samples: int = 100,
 ) -> List[Dict[str, Any]]:
-    """Run walk-forward grid search for a strategy."""
+    """Run walk-forward random search for a strategy."""
     all_dates = sorted(stock_data["timestamp"].unique())
     date_index = pd.DatetimeIndex(all_dates)
     splits = make_walk_forward_splits(date_index, n_folds)
 
-    combos = expand_grid(grid)
-    logger.info(
-        "%s: %d parameter combos × %d folds = %d trials",
-        name, len(combos), len(splits), len(combos) * len(splits),
-    )
+    all_combos = expand_grid(grid)
+    if len(all_combos) > max_samples:
+        combos = random.sample(all_combos, max_samples)
+        logger.info(
+            "%s: %d/%d random samples × %d folds = %d trials",
+            name, max_samples, len(all_combos), len(splits), max_samples * len(splits),
+        )
+    else:
+        combos = all_combos
+        logger.info(
+            "%s: %d parameter combos × %d folds = %d trials",
+            name, len(combos), len(splits), len(combos) * len(splits),
+        )
 
     # Aggregate OOS results across folds
     results_by_combo = {i: [] for i in range(len(combos))}
@@ -339,11 +349,12 @@ def main():
     parser = argparse.ArgumentParser(description="APEX Strategy Parameter Optimizer")
     parser.add_argument("--output", default="optimization_results.json")
     parser.add_argument("--folds", type=int, default=5)
+    parser.add_argument("--max-samples", type=int, default=100, help="Max random samples per strategy")
     args = parser.parse_args()
 
     print(SEPARATOR)
     print("  APEX STRATEGY PARAMETER OPTIMIZER")
-    print(f"  Walk-Forward Grid Search | {args.folds} folds")
+    print(f"  Walk-Forward Random Search | {args.folds} folds | {args.max_samples} samples/strategy")
     print(f"  {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print(SEPARATOR)
 
@@ -369,6 +380,7 @@ def main():
         stocks_no_spy,
         benchmark,
         n_folds=args.folds,
+        max_samples=args.max_samples,
     )
     print_top_results(momentum_results)
     all_results["cross_sectional_momentum"] = momentum_results[:10]
@@ -385,6 +397,7 @@ def main():
         stocks_no_spy,
         benchmark,
         n_folds=args.folds,
+        max_samples=args.max_samples,
     )
     print_top_results(statarb_results)
     all_results["pairs_trading"] = statarb_results[:10]
