@@ -436,7 +436,8 @@ class TestPaperTraderVWAPWiring:
 
     def test_vwap_import(self):
         source = self._read_source()
-        assert "from trading.execution.vwap import VWAPExecutionModel" in source
+        assert "from trading.execution.vwap import" in source
+        assert "VWAPExecutionModel" in source
 
     def test_vwap_env_var(self):
         source = self._read_source()

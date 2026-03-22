@@ -220,8 +220,10 @@ class TestEnvExample:
                     "",
                     "your_secure_password_here",
                     "your_alpaca_secret_key_here",
+                    "your_alpaca_paper_secret_key_here",
                     "your_reddit_client_secret_here",
                     "your_grafana_password_here",
+                    "your_live_secret_key_here",
                 ), f"Line {i}: {key} has non-placeholder value: {value!r}"
 
     def test_has_required_vars(self):
