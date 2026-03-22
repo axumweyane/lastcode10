@@ -487,9 +487,18 @@ class DeepSurrogateModel(BaseTFTModel):
             if repo_path.exists() and str(repo_path) not in sys.path:
                 sys.path.insert(0, str(repo_path))
 
+            # DeepSurrogate's pre-trained models use legacy Keras format
+            os.environ["TF_USE_LEGACY_KERAS"] = "1"
+
             from source.deepsurrogate import DeepSurrogate  # type: ignore
 
-            self._surrogate = DeepSurrogate(self._model_type)
+            # DeepSurrogate uses relative paths for model files — chdir briefly
+            original_dir = os.getcwd()
+            try:
+                os.chdir(str(repo_path))
+                self._surrogate = DeepSurrogate(self._model_type)
+            finally:
+                os.chdir(original_dir)
             self._is_loaded = True
             logger.info("DeepSurrogate loaded (model_type=%s)", self._model_type)
             return True

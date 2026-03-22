@@ -35,6 +35,7 @@ load_dotenv(
 from datetime import datetime, date, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
+import yfinance  # import BEFORE tensorflow to avoid HTTP context conflict
 import aiohttp
 import numpy as np
 import pandas as pd
@@ -698,24 +699,20 @@ def fetch_stock_data(symbols: List[str], days: int = 300) -> pd.DataFrame:
 
     logger.info("Fetching data for %d symbols...", len(symbols))
 
-    all_symbols = symbols + ["SPY"]  # always include SPY for regime
-    data = yf.download(
-        all_symbols,
-        period=f"{days}d",
-        group_by="ticker",
-        auto_adjust=True,
-        progress=False,
-    )
-
+    all_symbols = list(dict.fromkeys(symbols + ["SPY"]))  # dedupe, keep SPY
     rows = []
     for sym in all_symbols:
         try:
-            sym_data = data[sym].dropna() if len(all_symbols) > 1 else data.dropna()
-            for dt, row in sym_data.iterrows():
+            ticker = yf.Ticker(sym)
+            hist = ticker.history(period=f"{days}d", auto_adjust=True)
+            if hist.empty:
+                logger.warning("No data returned for %s", sym)
+                continue
+            for dt, row in hist.dropna().iterrows():
                 rows.append(
                     {
                         "symbol": sym,
-                        "timestamp": dt,
+                        "timestamp": dt.tz_localize(None) if dt.tzinfo else dt,
                         "open": float(row["Open"]),
                         "high": float(row["High"]),
                         "low": float(row["Low"]),
@@ -727,6 +724,9 @@ def fetch_stock_data(symbols: List[str], days: int = 300) -> pd.DataFrame:
             logger.warning("Failed to get data for %s: %s", sym, e)
 
     df = pd.DataFrame(rows)
+    if df.empty:
+        logger.error("No stock data fetched for any symbol")
+        return df
     logger.info("Fetched %d rows for %d symbols", len(df), df["symbol"].nunique())
     return df
 
@@ -743,24 +743,19 @@ def fetch_fx_data(pairs: List[str], days: int = 200) -> pd.DataFrame:
         "USDCHF": "CHF=X",
     }
 
-    yf_symbols = [yf_map.get(p, f"{p}=X") for p in pairs]
-    data = yf.download(
-        yf_symbols,
-        period=f"{days}d",
-        group_by="ticker",
-        auto_adjust=True,
-        progress=False,
-    )
-
     rows = []
-    for pair, yf_sym in zip(pairs, yf_symbols):
+    for pair in pairs:
+        yf_sym = yf_map.get(pair, f"{pair}=X")
         try:
-            sym_data = data[yf_sym].dropna()
-            for dt, row in sym_data.iterrows():
+            ticker = yf.Ticker(yf_sym)
+            hist = ticker.history(period=f"{days}d", auto_adjust=True)
+            if hist.empty:
+                continue
+            for dt, row in hist.dropna().iterrows():
                 rows.append(
                     {
                         "symbol": pair,
-                        "timestamp": dt,
+                        "timestamp": dt.tz_localize(None) if dt.tzinfo else dt,
                         "close": float(row["Close"]),
                         "volume": 0,
                     }
@@ -1812,17 +1807,7 @@ async def lifespan(app: FastAPI):
         redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
         await redis_client.ping()
 
-        cb_config = CircuitBreakerConfig(
-            drawdown_configs=[
-                DrawdownConfig(
-                    method=DrawdownMethod.HIGH_WATER_MARK, threshold_percent=5.0
-                ),
-                DrawdownConfig(
-                    method=DrawdownMethod.START_OF_DAY, threshold_percent=3.0
-                ),
-            ],
-            initial_capital=INITIAL_CAPITAL,
-        )
+        cb_config = CircuitBreakerConfig.from_env()
         circuit_breaker = CircuitBreaker(
             config=cb_config,
             broker=broker,

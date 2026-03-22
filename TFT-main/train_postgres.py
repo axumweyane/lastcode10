@@ -61,7 +61,7 @@ def load_config():
     }
 
     model_config = {
-        "max_encoder_length": int(os.getenv("TFT_ENCODER_LENGTH", 63)),
+        "max_encoder_length": int(os.getenv("TFT_ENCODER_LENGTH", 30)),
         "max_prediction_length": int(os.getenv("TFT_PREDICTION_LENGTH", 5)),
         "batch_size": int(os.getenv("TFT_BATCH_SIZE", 64)),
         "learning_rate": float(os.getenv("TFT_LEARNING_RATE", 0.001)),
@@ -70,6 +70,12 @@ def load_config():
         "dropout": float(os.getenv("TFT_DROPOUT", 0.2)),
         "max_epochs": int(os.getenv("TFT_MAX_EPOCHS", 100)),
         "early_stopping_patience": int(os.getenv("TFT_EARLY_STOPPING", 10)),
+        "validation_split": float(os.getenv("TFT_VALIDATION_SPLIT", 0.2)),
+        "target_type": "returns",
+        "prediction_horizon": 5,
+        "hidden_continuous_size": 32,
+        "lstm_layers": 2,
+        "quantiles": [0.1, 0.5, 0.9],
     }
 
     return db_config, model_config
