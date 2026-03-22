@@ -1,91 +1,89 @@
 # Core ML libraries
-torch==2.1.0
-pytorch-lightning==2.1.0
-pytorch-forecasting==1.0.0
+torch>=2.2.0
+pytorch-lightning>=2.1.0
+pytorch-forecasting>=1.0.0
 
 # Data processing
-pandas==2.1.0
-numpy==1.24.0
-scikit-learn==1.3.0
-pyarrow==13.0.0
-fastparquet==2023.7.0
+pandas>=2.1.0
+numpy>=1.24.0
+scikit-learn>=1.3.0
+pyarrow>=13.0.0
+fastparquet>=2023.7.0
 
 # Visualization
-matplotlib==3.7.0
-seaborn==0.12.0
-plotly==5.15.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.15.0
 
 # API and scheduling
-fastapi==0.100.0
-uvicorn==0.23.0
-apscheduler==3.10.0
-pydantic==2.0.0
-schedule==1.2.0
+fastapi>=0.100.0
+uvicorn>=0.23.0
+apscheduler>=3.10.0
+pydantic>=2.0.0
+schedule>=1.2.0
 
 # Database
-sqlalchemy==2.0.0
-psycopg2-binary==2.9.0
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
 
 # Monitoring and logging
-mlflow==2.5.0
-wandb==0.15.0
+mlflow>=2.5.0
 
 # Financial data APIs
-alpha-vantage==2.3.0
-polygon-api-client==1.12.0
-alpaca-trade-api==3.0.0
+polygon-api-client>=1.12.0
+alpaca-trade-api>=3.0.0
 
 # Social media and sentiment
-praw==7.7.0
-tweepy==4.14.0
-textblob==0.17.1
-vaderSentiment==3.3.2
+praw>=7.7.0
+vaderSentiment>=3.3.2
 
 # NLP and sentiment analysis
-transformers==4.30.0
-torch-audio==2.1.0
-datasets==2.12.0
+transformers>=4.30.0
+datasets>=2.12.0
 
 # Additional utilities
-requests==2.31.0
-python-dotenv==1.0.0
-aiohttp==3.8.0
-asyncio-throttle==1.0.2
+requests>=2.31.0
+python-dotenv>=1.0.0
+aiohttp>=3.8.0
 
 # Data validation and parsing
-pydantic==2.0.0
-jsonschema==4.17.0
+jsonschema>=4.17.0
 
 # Hyperparameter optimization
-optuna==3.2.0
-ray[tune]==2.5.0
+optuna>=3.2.0
 
 # Statistical analysis
-scipy==1.11.0
-statsmodels==0.14.0
+scipy>=1.11.0
+statsmodels>=0.14.0
 
 # Time series analysis
-ta==0.10.2
-ta-lib==0.4.26
+ta>=0.10.2
 
 # Web scraping (for alternative data)
-beautifulsoup4==4.12.0
-selenium==4.10.0
+beautifulsoup4>=4.12.0
 
 # Notification systems
-discord-webhook==1.3.0
-smtplib-async==1.1.0
+discord-webhook>=1.3.0
 
 # Performance monitoring
-prometheus-client==0.17.0
-psutil==5.9.0
+prometheus-client>=0.17.0
+psutil>=5.9.0
 
 # Testing
-pytest==7.4.0
-pytest-asyncio==0.21.0
-pytest-mock==3.11.0
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-mock>=3.11.0
 
 # Development tools
-black==23.7.0
-flake8==6.0.0
-mypy==1.4.0
+black>=23.7.0
+flake8>=6.0.0
+mypy>=1.4.0
+
+# Kafka
+confluent-kafka>=2.1.0
+
+# Redis
+redis>=4.5.0
+
+# yfinance
+yfinance>=0.2.0
