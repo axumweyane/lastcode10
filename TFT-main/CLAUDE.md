@@ -69,6 +69,20 @@ python test_service.py                   # Service-level test
 ./devtools/prompt_runner.sh --test-all   # Copilot prompt validation
 ```
 
+### Production Health Check Suite
+```bash
+bash run_all_checks.sh                   # Run all 5 suites, compute health score 0-100
+bash run_all_checks.sh --install-timer   # Install systemd timer for 8:30 AM ET daily
+
+# Individual suites:
+python audit_data.py                     # TimescaleDB data integrity (32 checks)
+python audit_data.py --fix               # Auto-fix duplicates and bad data
+python validate_models.py               # TFT model validation with GPU (3 models + ModelManager)
+python test_e2e.py                       # Paper trader end-to-end (43 checks)
+python validate_backtest.py             # Strategy backtest validation (32 checks)
+python test_infra.py                     # Infrastructure health (32 checks)
+```
+
 ### Linting
 ```bash
 black .          # Format
@@ -332,6 +346,20 @@ Added in Phase 04 (2026-03-21):
 - Integrated into all 4 Kafka consumers (sentiment-engine, trading-engine, tft-predictor, orchestrator)
 - Background retry worker thread (polls every 30s)
 - `/dlq` dashboard endpoint in paper-trader
+
+## Production Test & Monitoring System
+
+Five automated test suites with a unified runner and systemd timer:
+
+| Suite | Script | Checks | What it tests |
+|-------|--------|--------|---------------|
+| Data Audit | `audit_data.py` | 32 | DB structure, OHLCV quality, NULLs, dupes, OHLC consistency, gaps, coverage |
+| Model Validation | `validate_models.py` | ~25 | 3 TFT models (GPU inference), letter grades A/B/C/F, ModelManager (10 models) |
+| Paper Trader E2E | `test_e2e.py` | 43 | Health, Prometheus, Redis, DB, endpoints, ensemble, risk, circuit breaker, Alpaca |
+| Backtest Validation | `validate_backtest.py` | 32 | Data quality, momentum/statarb strategies, backtest engine, risk manager, optimizer |
+| Infrastructure | `test_infra.py` | 32 | Disk/RAM/GPU, Docker containers, ports, DB size, systemd, logs, network |
+
+All results saved to `results/` with timestamps. `run_all_checks.sh` computes a health score 0-100. Systemd timer runs daily at 8:30 AM ET. See `MAINTENANCE.md` for daily/weekly/monthly checklists.
 
 ## Notes
 
