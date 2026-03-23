@@ -163,3 +163,7 @@ trading_data/
 backtest_results/
 performance_reports/
 *.ckpt
+
+# Training Logs & Results
+lightning_logs/
+results/
