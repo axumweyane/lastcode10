@@ -2,8 +2,9 @@
 Kronos — Pre-trained financial time series foundation model.
 
 Strategy #12: Stocks + Forex price forecasting via Monte Carlo sampling.
-Uses HuggingFace pre-trained models (NeoQuasar/Kronos-*).
-NO TRAINING NEEDED — download and run inference.
+Uses HuggingFace pre-trained models (NeoQuasar/Kronos-*) when available,
+with a built-in bootstrap Monte Carlo fallback for environments without
+the external kronos package.
 
 Repository: https://github.com/shiyu-coder/Kronos
 Models: NeoQuasar/Kronos-mini (4.1M), NeoQuasar/Kronos-small (24.7M),
@@ -35,12 +36,52 @@ KRONOS_PREDICTION_LENGTH = int(os.getenv("KRONOS_PREDICTION_LENGTH", "5"))
 FX_PAIRS = {"EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF"}
 
 
+class BootstrapPredictor:
+    """
+    Bootstrap Monte Carlo fallback when the external Kronos package is
+    unavailable. Samples future OHLC paths from historical return
+    distributions with block bootstrapping for autocorrelation preservation.
+    """
+
+    def __init__(self, block_size: int = 5):
+        self._block_size = block_size
+
+    def predict(self, ohlcv: pd.DataFrame, prediction_length: int = 5,
+                num_samples: int = 100) -> Dict[str, np.ndarray]:
+        """Generate Monte Carlo OHLC samples via block bootstrap."""
+        close = ohlcv["close"].values.astype(np.float64)
+        if len(close) < 2:
+            return {"close": np.full((num_samples, prediction_length), close[-1])}
+
+        # Log returns
+        returns = np.diff(np.log(np.maximum(close, 1e-8)))
+        n_ret = len(returns)
+        block = min(self._block_size, max(1, n_ret // 2))
+
+        rng = np.random.default_rng()
+        samples = np.zeros((num_samples, prediction_length))
+        last_price = close[-1]
+
+        for i in range(num_samples):
+            path = []
+            while len(path) < prediction_length:
+                start = rng.integers(0, max(1, n_ret - block + 1))
+                path.extend(returns[start: start + block].tolist())
+            path = np.array(path[:prediction_length])
+            samples[i] = last_price * np.exp(np.cumsum(path))
+
+        return {"close": samples}
+
+
 class KronosModel(BaseTFTModel):
     """
     Wraps the Kronos pre-trained foundation model for financial forecasting.
 
     Produces probabilistic multi-step forecasts via Monte Carlo sampling
     of future K-lines. Supports both stocks and forex.
+
+    Falls back to bootstrap Monte Carlo if the external kronos package
+    is not installed.
     """
 
     def __init__(self):
@@ -52,6 +93,7 @@ class KronosModel(BaseTFTModel):
         self._max_context = KRONOS_MAX_CONTEXT
         self._num_samples = KRONOS_NUM_SAMPLES
         self._prediction_length = KRONOS_PREDICTION_LENGTH
+        self._using_fallback = False
 
     @property
     def name(self) -> str:
@@ -105,7 +147,6 @@ class KronosModel(BaseTFTModel):
         """Run Kronos inference for a single symbol."""
         df = self.prepare_features(sym_data)
 
-        # Truncate to max context length
         if len(df) > self._max_context:
             df = df.tail(self._max_context)
 
@@ -115,14 +156,12 @@ class KronosModel(BaseTFTModel):
             )
             return None
 
-        # Build OHLCV input
         ohlcv = df[["open", "high", "low", "close"]].copy()
         if "volume" in df.columns:
             ohlcv["volume"] = df["volume"]
         if "amount" in df.columns:
             ohlcv["amount"] = df["amount"]
 
-        # Run Kronos predictor
         try:
             result = self._predictor.predict(
                 ohlcv,
@@ -133,15 +172,12 @@ class KronosModel(BaseTFTModel):
             logger.error("Kronos predict() failed for %s: %s", symbol, e)
             return None
 
-        # Extract close price forecasts from Monte Carlo samples
         close_samples = self._extract_close_samples(result)
         if close_samples is None or len(close_samples) == 0:
             return None
 
-        # Compute statistics from samples
         current_close = float(df["close"].iloc[-1])
 
-        # Use the final prediction step
         if close_samples.ndim > 1:
             final_step_samples = close_samples[:, -1]
         else:
@@ -151,14 +187,12 @@ class KronosModel(BaseTFTModel):
         lower_price = float(np.percentile(final_step_samples, 10))
         upper_price = float(np.percentile(final_step_samples, 90))
 
-        # Convert to returns
         if current_close <= 0:
             return None
         predicted_return = (median_price - current_close) / current_close
         lower_return = (lower_price - current_close) / current_close
         upper_return = (upper_price - current_close) / current_close
 
-        # Confidence from spread (tighter spread = higher confidence)
         spread = abs(upper_return - lower_return)
         confidence = max(0.1, min(0.95, 1.0 - spread * 5))
 
@@ -177,7 +211,7 @@ class KronosModel(BaseTFTModel):
                 "median_price": median_price,
                 "current_price": current_close,
                 "num_samples": self._num_samples,
-                "model": self._model_name,
+                "model": self._model_name if not self._using_fallback else "bootstrap_fallback",
             },
         )
 
@@ -189,7 +223,6 @@ class KronosModel(BaseTFTModel):
                     return np.array(result["close"])
                 if "samples" in result:
                     samples = np.array(result["samples"])
-                    # Shape (num_samples, pred_len, 4) — close is index 3
                     if samples.ndim == 3 and samples.shape[2] >= 4:
                         return samples[:, :, 3]
                     return samples
@@ -211,7 +244,11 @@ class KronosModel(BaseTFTModel):
         logger.info("Kronos is pre-trained; no local model to save")
 
     def load(self, path: str = None) -> bool:
-        """Load Kronos from HuggingFace via the cloned repo."""
+        """
+        Load Kronos from HuggingFace via the cloned repo, or fall back
+        to built-in bootstrap Monte Carlo predictor.
+        """
+        # Try external Kronos first
         try:
             kronos_path = Path(KRONOS_REPO_PATH)
             if kronos_path.exists() and str(kronos_path) not in sys.path:
@@ -224,25 +261,34 @@ class KronosModel(BaseTFTModel):
                 tokenizer_name=self._tokenizer_name,
             )
             self._is_loaded = True
+            self._using_fallback = False
             logger.info("Kronos model loaded: %s", self._model_name)
             return True
-        except ImportError as e:
-            logger.warning(
-                "Kronos not available (clone repo to %s): %s",
-                KRONOS_REPO_PATH,
-                e,
-            )
-            return False
+        except ImportError:
+            pass
         except Exception as e:
-            logger.error("Failed to load Kronos: %s", e)
+            logger.warning("External Kronos failed: %s", e)
+
+        # Fallback: bootstrap Monte Carlo predictor
+        try:
+            self._predictor = BootstrapPredictor()
+            self._is_loaded = True
+            self._using_fallback = True
+            logger.info(
+                "Kronos using bootstrap fallback (install kronos package for full model)"
+            )
+            return True
+        except Exception as e:
+            logger.error("Failed to load Kronos fallback: %s", e)
             return False
 
     def get_info(self) -> ModelInfo:
         return ModelInfo(
             name=self.name,
             asset_class=self.asset_class,
-            version="1.0",
+            version="2.0",
             symbols=self._symbols,
-            model_path=KRONOS_REPO_PATH,
+            model_path="bootstrap_fallback" if self._using_fallback else KRONOS_REPO_PATH,
             is_loaded=self._is_loaded,
+            metrics={"using_fallback": self._using_fallback},
         )

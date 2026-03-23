@@ -21,12 +21,25 @@ Model registry (10 models):
 
 import logging
 import os
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import pandas as pd
+
+# Compatibility shim: pytorch_forecasting >=1.2 refactored timeseries from
+# a package (directory) to a single module (timeseries.py). Saved checkpoints
+# reference the old submodule path. Register an alias so torch.load() works.
+try:
+    import pytorch_forecasting.data.timeseries as _ts_module
+    if not hasattr(_ts_module, "__path__"):  # it's a .py file, not a package
+        sys.modules.setdefault(
+            "pytorch_forecasting.data.timeseries._timeseries", _ts_module
+        )
+except ImportError:
+    pass
 
 from models.base import BaseTFTModel, ModelInfo, ModelPrediction
 from models.stocks_adapter import TFTStocksAdapter

@@ -1,31 +1,31 @@
 """
 TDGF — Time Deep Gradient Flow for American option pricing.
 
-Strategy #14: Solves option pricing PDEs using deep learning, supporting
-Black-Scholes, Heston, and lifted Heston (rough volatility) models.
-Handles free-boundary PDEs for American options (early exercise).
+Built-in PyTorch implementation of the Deep Galerkin Method (DGM) neural
+PDE solver. Handles free-boundary PDEs for American options with early
+exercise. No external dependencies required.
 
-NEEDS LIGHT TRAINING on specific option parameters (minutes to hours on GPU).
+Architecture: DGM-style layers with GRU-like gating, softplus output
+for no-arbitrage constraint. Supports Black-Scholes (1D) and Heston (2D).
 
-Repository: https://github.com/jgrou/TDGF
-Architecture: 3 layers x 50 neurons, DGM-style, softplus output (no-arbitrage)
+GPU-accelerated training and inference via PyTorch.
 """
 
 import logging
 import os
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+import torch
+import torch.nn as nn
 
 from models.base import BaseTFTModel, ModelInfo, ModelPrediction
 
 logger = logging.getLogger(__name__)
 
-TDGF_REPO_PATH = os.getenv("TDGF_REPO_PATH", "/opt/tdgf")
 TDGF_HIDDEN_LAYERS = int(os.getenv("TDGF_HIDDEN_LAYERS", "3"))
 TDGF_HIDDEN_UNITS = int(os.getenv("TDGF_HIDDEN_UNITS", "50"))
 TDGF_LEARNING_RATE = float(os.getenv("TDGF_LEARNING_RATE", "0.001"))
@@ -33,19 +33,397 @@ TDGF_MAX_EPOCHS = int(os.getenv("TDGF_MAX_EPOCHS", "5000"))
 TDGF_PDE_MODEL = os.getenv("TDGF_PDE_MODEL", "heston")
 
 
+# ── DGM Neural Network Architecture ─────────────────────────────────
+
+
+class DGMLayer(nn.Module):
+    """
+    Single DGM (Deep Galerkin Method) layer with GRU-like gating.
+
+    Implements:
+        Z = sigmoid(Uz*x + Wz*s + bz)         (update gate)
+        G = sigmoid(Ug*x + Wg*(s*Z) + bg)     (output gate)
+        R = sigmoid(Ur*x + Wr*s + br)         (reset gate)
+        H = tanh(Uh*x + Wh*(s*R) + bh)        (candidate)
+        out = (1 - G) * H + G * s              (GRU-style update)
+    """
+
+    def __init__(self, input_dim: int, hidden_dim: int):
+        super().__init__()
+        self.Uz = nn.Linear(input_dim, hidden_dim)
+        self.Wz = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.Ug = nn.Linear(input_dim, hidden_dim)
+        self.Wg = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.Ur = nn.Linear(input_dim, hidden_dim)
+        self.Wr = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.Uh = nn.Linear(input_dim, hidden_dim)
+        self.Wh = nn.Linear(hidden_dim, hidden_dim, bias=False)
+
+    def forward(self, x: torch.Tensor, s: torch.Tensor) -> torch.Tensor:
+        z = torch.sigmoid(self.Uz(x) + self.Wz(s))
+        g = torch.sigmoid(self.Ug(x) + self.Wg(s * z))
+        r = torch.sigmoid(self.Ur(x) + self.Wr(s))
+        h = torch.tanh(self.Uh(x) + self.Wh(s * r))
+        return (1.0 - g) * h + g * s
+
+
+class DGMNet(nn.Module):
+    """
+    Deep Galerkin Method network for solving PDEs.
+
+    Input: (s, tau) for BS or (s, w, tau) for Heston
+    Output: normalized option price v = V/K (non-negative via softplus)
+    """
+
+    def __init__(self, input_dim: int, hidden_dim: int, n_layers: int):
+        super().__init__()
+        self.input_dim = input_dim
+        self.initial = nn.Linear(input_dim, hidden_dim)
+        self.layers = nn.ModuleList([
+            DGMLayer(input_dim, hidden_dim) for _ in range(n_layers)
+        ])
+        self.output = nn.Linear(hidden_dim, 1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        s = torch.tanh(self.initial(x))
+        for layer in self.layers:
+            s = layer(x, s)
+        return torch.nn.functional.softplus(self.output(s))
+
+
+# ── American Option PDE Solver ───────────────────────────────────────
+
+
+class AmericanOptionSolver:
+    """
+    Solves American option pricing PDEs using the DGM neural network.
+
+    Supports Black-Scholes (1D) and Heston (2D) models. Uses the penalty
+    method to enforce the early exercise constraint.
+
+    The PDE is solved in normalized coordinates (s = S/K, v = V/K) so the
+    solution is independent of strike K.
+    """
+
+    def __init__(self, hidden_layers: int = 3, hidden_units: int = 50):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.hidden_layers = hidden_layers
+        self.hidden_units = hidden_units
+        self.net = None
+        self._pde_params: Dict[str, float] = {}
+        self._trained_model_type: Optional[str] = None
+
+    def train(self, model_type, params, n_epochs, learning_rate,
+              hidden_layers=None, hidden_units=None):
+        """
+        Train the DGM network to solve the option pricing PDE.
+
+        The network learns v(s, tau) = V(S, tau)/K in normalized coordinates.
+        Uses penalty method for American early exercise constraint.
+        """
+        hl = hidden_layers or self.hidden_layers
+        hu = hidden_units or self.hidden_units
+
+        if model_type == "black_scholes":
+            input_dim = 2  # (s, tau)
+        elif model_type in ("heston", "lifted_heston"):
+            input_dim = 3  # (s, w, tau)
+        else:
+            input_dim = 2
+
+        # Rebuild network if input dimension changed
+        if self.net is None or self.net.input_dim != input_dim:
+            self.net = DGMNet(input_dim, hu, hl).to(self.device)
+
+        optimizer = torch.optim.Adam(self.net.parameters(), lr=learning_rate)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=max(1, n_epochs // 3), gamma=0.5)
+
+        # Extract scalar PDE parameters
+        r = float(np.mean(params["rate"]))
+        T = float(np.max(params["tau"])) if np.max(params["tau"]) > 0 else 1.0
+        T = max(T, 0.1)
+
+        self._pde_params = {"r": r, "T": T, "model_type": model_type}
+
+        if model_type == "black_scholes":
+            sigma = float(np.mean(params["sigma"]))
+            self._pde_params["sigma"] = sigma
+            result = self._train_bs(r, T, sigma, n_epochs, optimizer, scheduler)
+        elif model_type in ("heston", "lifted_heston"):
+            kappa = float(np.mean(params["kappa"]))
+            theta = float(np.mean(params["theta"]))
+            sigma_h = float(np.mean(params["sigma"]))
+            rho = float(np.mean(params["rho"]))
+            v0 = float(np.mean(params["v0"]))
+            self._pde_params.update({
+                "kappa": kappa, "theta": theta, "sigma_h": sigma_h,
+                "rho": rho, "v0": v0,
+            })
+            result = self._train_heston(
+                r, T, kappa, theta, sigma_h, rho, v0, n_epochs, optimizer, scheduler,
+            )
+        else:
+            logger.warning("Unknown model type %s, defaulting to BS", model_type)
+            sigma = float(np.mean(params.get("sigma", [0.2])))
+            self._pde_params["sigma"] = sigma
+            result = self._train_bs(r, T, sigma, n_epochs, optimizer, scheduler)
+
+        self._trained_model_type = model_type
+        return result
+
+    def _train_bs(self, r, T, sigma, n_epochs, optimizer, scheduler,
+                  n_interior=500, n_ic=100, n_bc=100):
+        """Train on Black-Scholes PDE for American put."""
+        s_max = 3.0  # normalized domain [0, 3]
+
+        final_loss = 0.0
+        final_pde = 0.0
+        final_ic = 0.0
+
+        for epoch in range(n_epochs):
+            # Interior points
+            s = (torch.rand(n_interior, 1, device=self.device) * s_max).detach().requires_grad_(True)
+            tau = (torch.rand(n_interior, 1, device=self.device) * T).detach().requires_grad_(True)
+
+            x = torch.cat([s, tau], dim=1)
+            v = self.net(x)
+
+            grads = torch.autograd.grad(v.sum(), [s, tau], create_graph=True)
+            dv_ds = grads[0]
+            dv_dtau = grads[1]
+            d2v_ds2 = torch.autograd.grad(dv_ds.sum(), s, create_graph=True)[0]
+
+            # PDE: dv/dtau = 0.5*sigma^2*s^2*d2v/ds2 + r*s*dv/ds - r*v
+            Lv = 0.5 * sigma ** 2 * s ** 2 * d2v_ds2 + r * s * dv_ds - r * v
+            pde_res = dv_dtau - Lv
+            L_pde = torch.mean(pde_res ** 2)
+
+            # Initial condition at tau=0 (expiry): v = max(1-s, 0)
+            s_ic = (torch.rand(n_ic, 1, device=self.device) * s_max).detach()
+            tau_ic = torch.zeros(n_ic, 1, device=self.device)
+            x_ic = torch.cat([s_ic, tau_ic], dim=1)
+            v_ic = self.net(x_ic)
+            payoff_ic = torch.clamp(1.0 - s_ic, min=0.0)
+            L_ic = torch.mean((v_ic - payoff_ic) ** 2)
+
+            # Boundary: s=0 -> v = exp(-r*tau)
+            tau_bc = (torch.rand(n_bc, 1, device=self.device) * T).detach()
+            s_bc0 = torch.zeros(n_bc, 1, device=self.device)
+            x_bc0 = torch.cat([s_bc0, tau_bc], dim=1)
+            v_bc0 = self.net(x_bc0)
+            L_bc0 = torch.mean((v_bc0 - torch.exp(-r * tau_bc)) ** 2)
+
+            # Boundary: s=s_max -> v ~ 0
+            s_bcmax = torch.full((n_bc, 1), s_max, device=self.device)
+            x_bcmax = torch.cat([s_bcmax, tau_bc], dim=1)
+            v_bcmax = self.net(x_bcmax)
+            L_bcmax = torch.mean(v_bcmax ** 2)
+
+            # American constraint: v >= max(1-s, 0)
+            payoff = torch.clamp(1.0 - s, min=0.0)
+            L_am = torch.mean(torch.clamp(payoff - v, min=0.0) ** 2)
+
+            loss = L_pde + 10.0 * L_ic + L_bc0 + L_bcmax + 100.0 * L_am
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            scheduler.step()
+
+            final_loss = float(loss.detach())
+            final_pde = float(L_pde.detach())
+            final_ic = float(L_ic.detach())
+
+        return {
+            "loss": final_loss,
+            "epochs": n_epochs,
+            "pde_residual": final_pde,
+            "boundary_error": final_ic,
+        }
+
+    def _train_heston(self, r, T, kappa, theta, sigma_h, rho, v0,
+                      n_epochs, optimizer, scheduler,
+                      n_interior=500, n_ic=100, n_bc=80):
+        """Train on Heston PDE for American put."""
+        s_max = 3.0
+        w_max = 1.0  # variance domain [0.001, 1.0]
+
+        final_loss = 0.0
+        final_pde = 0.0
+        final_ic = 0.0
+
+        for epoch in range(n_epochs):
+            # Interior points: (s, w, tau)
+            s = (torch.rand(n_interior, 1, device=self.device) * s_max).detach().requires_grad_(True)
+            w = (torch.rand(n_interior, 1, device=self.device) * w_max + 0.001).detach().requires_grad_(True)
+            tau = (torch.rand(n_interior, 1, device=self.device) * T).detach().requires_grad_(True)
+
+            x = torch.cat([s, w, tau], dim=1)
+            v = self.net(x)
+
+            grads = torch.autograd.grad(v.sum(), [s, w, tau], create_graph=True)
+            dv_ds = grads[0]
+            dv_dw = grads[1]
+            dv_dtau = grads[2]
+
+            d2v_ds2 = torch.autograd.grad(dv_ds.sum(), s, create_graph=True)[0]
+            d2v_dw2 = torch.autograd.grad(dv_dw.sum(), w, create_graph=True)[0]
+            d2v_dsdw = torch.autograd.grad(dv_ds.sum(), w, create_graph=True)[0]
+
+            # Heston PDE
+            Lv = (0.5 * w * s ** 2 * d2v_ds2
+                  + rho * sigma_h * w * s * d2v_dsdw
+                  + 0.5 * sigma_h ** 2 * w * d2v_dw2
+                  + r * s * dv_ds
+                  + kappa * (theta - w) * dv_dw
+                  - r * v)
+            pde_res = dv_dtau - Lv
+            L_pde = torch.mean(pde_res ** 2)
+
+            # Initial condition at tau=0
+            s_ic = (torch.rand(n_ic, 1, device=self.device) * s_max).detach()
+            w_ic = (torch.rand(n_ic, 1, device=self.device) * w_max + 0.001).detach()
+            tau_ic = torch.zeros(n_ic, 1, device=self.device)
+            x_ic = torch.cat([s_ic, w_ic, tau_ic], dim=1)
+            v_ic = self.net(x_ic)
+            payoff_ic = torch.clamp(1.0 - s_ic, min=0.0)
+            L_ic = torch.mean((v_ic - payoff_ic) ** 2)
+
+            # Boundary conditions
+            tau_bc = (torch.rand(n_bc, 1, device=self.device) * T).detach()
+            w_bc = (torch.rand(n_bc, 1, device=self.device) * w_max + 0.001).detach()
+
+            # s=0: v = exp(-r*tau)
+            s_bc0 = torch.zeros(n_bc, 1, device=self.device)
+            x_bc0 = torch.cat([s_bc0, w_bc, tau_bc], dim=1)
+            v_bc0 = self.net(x_bc0)
+            L_bc0 = torch.mean((v_bc0 - torch.exp(-r * tau_bc)) ** 2)
+
+            # s=s_max: v ~ 0
+            s_bcmax = torch.full((n_bc, 1), s_max, device=self.device)
+            x_bcmax = torch.cat([s_bcmax, w_bc, tau_bc], dim=1)
+            v_bcmax = self.net(x_bcmax)
+            L_bcmax = torch.mean(v_bcmax ** 2)
+
+            # American constraint
+            payoff = torch.clamp(1.0 - s, min=0.0)
+            L_am = torch.mean(torch.clamp(payoff - v, min=0.0) ** 2)
+
+            loss = L_pde + 10.0 * L_ic + L_bc0 + L_bcmax + 100.0 * L_am
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            scheduler.step()
+
+            final_loss = float(loss.detach())
+            final_pde = float(L_pde.detach())
+            final_ic = float(L_ic.detach())
+
+        return {
+            "loss": final_loss,
+            "epochs": n_epochs,
+            "pde_residual": final_pde,
+            "boundary_error": final_ic,
+        }
+
+    def price(self, model_type, params):
+        """
+        Price options using the trained DGM network.
+
+        Evaluates v(s, tau) = V/K in normalized coordinates, then scales
+        back: V = K * v(S/K, tau).
+        """
+        if self.net is None:
+            return None
+
+        S = np.asarray(params["spot"], dtype=np.float32).flatten()
+        K = np.asarray(params["strike"], dtype=np.float32).flatten()
+        tau = np.asarray(params["tau"], dtype=np.float32).flatten()
+        s = S / np.maximum(K, 1e-8)
+
+        if model_type in ("heston", "lifted_heston") and "v0" in params:
+            w = np.asarray(params["v0"], dtype=np.float32).flatten()
+            # Ensure same length (broadcast if scalar)
+            if len(w) == 1 and len(s) > 1:
+                w = np.full_like(s, w[0])
+            x_np = np.column_stack([s, w, tau])
+        else:
+            x_np = np.column_stack([s, tau])
+
+        x = torch.tensor(x_np, dtype=torch.float32, device=self.device)
+        with torch.no_grad():
+            v = self.net(x).cpu().numpy().flatten()
+
+        return K * v
+
+    def greeks(self, model_type, params):
+        """Compute option Greeks via automatic differentiation."""
+        if self.net is None:
+            return None
+
+        S = np.asarray(params["spot"], dtype=np.float32).flatten()
+        K = np.asarray(params["strike"], dtype=np.float32).flatten()
+        tau_np = np.asarray(params["tau"], dtype=np.float32).flatten()
+        s_np = S / np.maximum(K, 1e-8)
+
+        s = torch.tensor(s_np, dtype=torch.float32, device=self.device).requires_grad_(True)
+        t = torch.tensor(tau_np, dtype=torch.float32, device=self.device).requires_grad_(True)
+
+        if model_type in ("heston", "lifted_heston") and "v0" in params:
+            w_np = np.asarray(params["v0"], dtype=np.float32).flatten()
+            if len(w_np) == 1 and len(s_np) > 1:
+                w_np = np.full_like(s_np, w_np[0])
+            w = torch.tensor(w_np, dtype=torch.float32, device=self.device).requires_grad_(True)
+            x = torch.stack([s, w, t], dim=1)
+        else:
+            w = None
+            x = torch.stack([s, t], dim=1)
+
+        v = self.net(x).squeeze(-1)  # (N,)
+        K_t = torch.tensor(K, dtype=torch.float32, device=self.device)
+
+        # Delta = dV/dS = dv/ds (since V=K*v, s=S/K, chain rule cancels K)
+        v_sum = v.sum()
+        inputs = [s, t] if w is None else [s, w, t]
+        grads = torch.autograd.grad(v_sum, inputs, create_graph=True)
+        dv_ds = grads[0]
+        dv_dt = grads[-1]  # last is always tau
+
+        d2v_ds2 = torch.autograd.grad(dv_ds.sum(), s, create_graph=False)[0]
+
+        result = {
+            "delta": dv_ds.detach().cpu().numpy(),
+            "gamma": (d2v_ds2 / K_t).detach().cpu().numpy(),
+            "theta": -(K_t * dv_dt).detach().cpu().numpy(),
+        }
+
+        if w is not None:
+            dv_dw = grads[1]
+            result["vega"] = (K_t * dv_dw).detach().cpu().numpy()
+
+        return result
+
+    def state_dict(self):
+        if self.net is None:
+            return {}
+        return self.net.state_dict()
+
+    def load_state_dict(self, state_dict):
+        if self.net is not None and state_dict:
+            self.net.load_state_dict(state_dict)
+
+
+# ── TDGF Model (BaseTFTModel interface) ─────────────────────────────
+
+
 class TDGFModel(BaseTFTModel):
     """
     Time Deep Gradient Flow for American option pricing.
 
-    Key advantage over PINN: handles free-boundary PDEs for American options
-    (early exercise boundary). Uses DGM-style architecture with softplus
-    output to enforce no-arbitrage constraints.
-
-    Supports:
-      - Black-Scholes (1D)
-      - Heston stochastic volatility (2D)
-      - Lifted Heston / rough volatility (higher-D)
-      - American options up to 5 dimensions
+    Uses the DGM (Deep Galerkin Method) neural network to solve option
+    pricing PDEs. Supports Black-Scholes (1D) and Heston (2D).
+    Softplus output enforces no-arbitrage (non-negative prices).
     """
 
     def __init__(self):
@@ -69,16 +447,12 @@ class TDGFModel(BaseTFTModel):
         """
         Prepare option parameters for TDGF pricing.
 
-        Expected columns for Heston model:
-          spot, strike, rate, tau, kappa, theta, sigma, rho, v0
-
-        For Black-Scholes:
-          spot, strike, rate, tau, sigma
+        Expected columns for Heston: spot, strike, rate, tau, kappa, theta, sigma, rho, v0
+        For Black-Scholes: spot, strike, rate, tau, sigma
         """
         df = raw_data.copy()
         df.columns = [c.lower() for c in df.columns]
 
-        # Compute moneyness if not present
         if (
             "moneyness" not in df.columns
             and "spot" in df.columns
@@ -86,7 +460,6 @@ class TDGFModel(BaseTFTModel):
         ):
             df["moneyness"] = df["spot"] / df["strike"]
 
-        # Compute time to maturity in years if dates are given
         if "tau" not in df.columns and "expiry" in df.columns:
             today = pd.Timestamp.now()
             df["tau"] = (pd.to_datetime(df["expiry"]) - today).dt.days / 365.0
@@ -98,13 +471,7 @@ class TDGFModel(BaseTFTModel):
         """
         Train TDGF network on specific option parameters.
 
-        The TDGF solver learns the PDE solution for a given set of model
-        parameters. Training takes minutes to hours depending on problem
-        dimension and desired accuracy.
-
-        Args:
-            data: DataFrame with option parameters
-            **kwargs: Optional overrides for epochs, lr, etc.
+        The solver learns the PDE solution for the given model parameters.
         """
         if not self._is_loaded:
             logger.error("TDGF solver not loaded. Call load() first.")
@@ -116,19 +483,15 @@ class TDGFModel(BaseTFTModel):
         df = self.prepare_features(data)
 
         try:
-            # Extract model parameters for training
             params = self._extract_pde_params(df)
             if params is None:
                 return {"error": "invalid_params"}
 
             logger.info(
                 "Training TDGF (%s model, %d epochs, lr=%.6f)",
-                self._pde_model,
-                epochs,
-                lr,
+                self._pde_model, epochs, lr,
             )
 
-            # Train the TDGF solver
             result = self._solver.train(
                 model_type=self._pde_model,
                 params=params,
@@ -141,7 +504,6 @@ class TDGFModel(BaseTFTModel):
             self._is_trained = True
             self._trained_at = datetime.now()
 
-            # Extract training metrics
             metrics = {}
             if isinstance(result, dict):
                 metrics = {
@@ -160,9 +522,7 @@ class TDGFModel(BaseTFTModel):
             return {"error": str(e)}
 
     def predict(self, data: pd.DataFrame) -> List[ModelPrediction]:
-        """
-        Price American options and compute Greeks using the trained TDGF network.
-        """
+        """Price American options and compute Greeks using the trained DGM network."""
         if not self._is_loaded:
             logger.debug("TDGF not loaded, returning empty predictions")
             return []
@@ -199,28 +559,22 @@ class TDGFModel(BaseTFTModel):
             return results
 
         try:
-            # Get option prices from TDGF solver
             prices = self._solver.price(
-                model_type=self._pde_model,
-                params=params,
+                model_type=self._pde_model, params=params,
             )
 
-            # Get Greeks if available
             greeks = None
             if hasattr(self._solver, "greeks"):
                 greeks = self._solver.greeks(
-                    model_type=self._pde_model,
-                    params=params,
+                    model_type=self._pde_model, params=params,
                 )
 
             if prices is None:
                 return results
 
-            # Convert prices to array
             if not isinstance(prices, np.ndarray):
                 prices = np.array(prices).flatten()
 
-            # Generate signal: compare TDGF price to market price for mispricing
             for i, row in df.iterrows():
                 if i >= len(prices):
                     break
@@ -229,12 +583,10 @@ class TDGFModel(BaseTFTModel):
                 market_price = float(row.get("market_price", tdgf_price))
 
                 if market_price > 0 and tdgf_price > 0:
-                    # Mispricing ratio: positive = option undervalued
                     mispricing = (tdgf_price - market_price) / market_price
                 else:
                     mispricing = 0.0
 
-                # Confidence depends on PDE solution quality
                 confidence = min(
                     0.90,
                     0.5 + (1.0 - self._training_metrics.get("pde_residual", 0.5)) * 0.4,
@@ -248,7 +600,6 @@ class TDGFModel(BaseTFTModel):
                     "asset_class": "options",
                 }
 
-                # Add Greeks to metadata if available
                 if greeks is not None and isinstance(greeks, dict):
                     for greek_name, greek_vals in greeks.items():
                         if isinstance(greek_vals, (list, np.ndarray)):
@@ -264,7 +615,7 @@ class TDGFModel(BaseTFTModel):
                         lower_bound=mispricing - 0.05,
                         upper_bound=mispricing + 0.05,
                         confidence=confidence,
-                        horizon_days=int(row.get("tau", 0.1) * 365),
+                        horizon_days=max(1, int(row.get("tau", 0.1) * 365)),
                         model_name=self.name,
                         metadata=metadata,
                     )
@@ -284,15 +635,8 @@ class TDGFModel(BaseTFTModel):
             required = ["spot", "strike", "rate", "tau", "sigma"]
         elif self._pde_model in ("heston", "lifted_heston"):
             required = [
-                "spot",
-                "strike",
-                "rate",
-                "tau",
-                "kappa",
-                "theta",
-                "sigma",
-                "rho",
-                "v0",
+                "spot", "strike", "rate", "tau",
+                "kappa", "theta", "sigma", "rho", "v0",
             ]
         else:
             required = ["spot", "strike", "rate", "tau"]
@@ -311,7 +655,6 @@ class TDGFModel(BaseTFTModel):
             else:
                 return None
 
-        # Add option type (American put by default)
         params["option_type"] = df.get("option_type", pd.Series(["put"])).iloc[0]
         params["exercise_type"] = "american"
 
@@ -324,8 +667,6 @@ class TDGFModel(BaseTFTModel):
             return
 
         try:
-            import torch
-
             save_data = {
                 "pde_model": self._pde_model,
                 "trained_at": self._trained_at,
@@ -344,15 +685,15 @@ class TDGFModel(BaseTFTModel):
             logger.error("Failed to save TDGF model: %s", e)
 
     def load(self, path: str = None) -> bool:
-        """Load TDGF solver from the cloned repo."""
+        """
+        Load the built-in DGM PDE solver.
+
+        Creates the AmericanOptionSolver and performs a quick self-training
+        on a default American put problem for out-of-box operation. If a
+        checkpoint file exists at `path`, loads pre-trained weights instead.
+        """
         try:
-            repo_path = Path(TDGF_REPO_PATH)
-            if repo_path.exists() and str(repo_path) not in sys.path:
-                sys.path.insert(0, str(repo_path))
-
-            from tdgf import TDGFSolver  # type: ignore
-
-            self._solver = TDGFSolver(
+            self._solver = AmericanOptionSolver(
                 hidden_layers=TDGF_HIDDEN_LAYERS,
                 hidden_units=TDGF_HIDDEN_UNITS,
             )
@@ -361,9 +702,9 @@ class TDGFModel(BaseTFTModel):
             # Try to load pre-trained weights
             if path and Path(path).exists():
                 try:
-                    import torch
-
-                    checkpoint = torch.load(path, weights_only=False)
+                    checkpoint = torch.load(
+                        path, map_location=self._solver.device, weights_only=False,
+                    )
                     if "state_dict" in checkpoint:
                         self._solver.load_state_dict(checkpoint["state_dict"])
                     self._pde_model = checkpoint.get("pde_model", self._pde_model)
@@ -372,29 +713,51 @@ class TDGFModel(BaseTFTModel):
                     self._is_trained = True
                     logger.info("TDGF loaded pre-trained weights from %s", path)
                 except Exception as e:
-                    logger.info("No pre-trained TDGF weights at %s: %s", path, e)
+                    logger.info("Could not load TDGF weights from %s: %s", path, e)
+                    self._quick_train()
+            else:
+                self._quick_train()
 
-            logger.info("TDGF solver loaded (model=%s)", self._pde_model)
-            return True
-        except ImportError as e:
-            logger.warning(
-                "TDGF not available (clone repo to %s): %s",
-                TDGF_REPO_PATH,
-                e,
+            logger.info(
+                "TDGF solver loaded (model=%s, device=%s)",
+                self._pde_model, self._solver.device,
             )
-            return False
+            return True
         except Exception as e:
             logger.error("Failed to load TDGF: %s", e)
             return False
+
+    def _quick_train(self):
+        """Quick self-training on default American put for out-of-box operation."""
+        logger.info("TDGF: quick self-training on default American put (BS, 1000 epochs)...")
+        default_params = {
+            "spot": np.array([1.0]),
+            "strike": np.array([1.0]),
+            "rate": np.array([0.05]),
+            "tau": np.array([2.0]),
+            "sigma": np.array([0.2]),
+        }
+        metrics = self._solver.train(
+            model_type="black_scholes",
+            params=default_params,
+            n_epochs=1000,
+            learning_rate=1e-3,
+            hidden_layers=TDGF_HIDDEN_LAYERS,
+            hidden_units=TDGF_HIDDEN_UNITS,
+        )
+        self._is_trained = True
+        self._trained_at = datetime.now()
+        self._training_metrics = metrics
+        logger.info("TDGF quick training complete: loss=%.6f", metrics.get("loss", 0))
 
     def get_info(self) -> ModelInfo:
         return ModelInfo(
             name=self.name,
             asset_class=self.asset_class,
-            version="1.0",
+            version="2.0",
             trained_at=self._trained_at,
             symbols=self._symbols,
-            model_path=TDGF_REPO_PATH,
+            model_path="built-in (DGM PDE solver)",
             is_loaded=self._is_loaded,
             metrics=self._training_metrics,
         )

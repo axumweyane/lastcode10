@@ -1,33 +1,28 @@
 """
-Deep Surrogates — Neural network surrogate for Heston/Bates option pricing.
+Deep Surrogates — Heston stochastic volatility option pricer.
 
-Strategy #13: Options pricing acceleration + crash prediction via tail risk index.
-Pre-trained neural surrogates for IV, Greeks, and prices — 100-1000x faster
-than traditional numerical methods.
+Built-in PyTorch implementation using the Heston semi-closed-form
+characteristic function for GPU-accelerated option pricing, IV
+computation, and Greeks. No external dependencies required.
 
-NO TRAINING NEEDED — pre-trained surrogates included in repo.
-
-Repository: https://github.com/DeepSurrogate/OptionPricing
-
-Key feature: Build a TAIL RISK INDEX from daily recalibrated Heston parameters
-that predicts market crashes by tracking parameter evolution.
+Key feature: Build a TAIL RISK INDEX from daily recalibrated Heston
+parameters that predicts market crashes by tracking parameter evolution.
 """
 
 import logging
 import os
-import sys
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+import torch
+from scipy.stats import norm as sp_norm
 
 from models.base import BaseTFTModel, ModelInfo, ModelPrediction
 
 logger = logging.getLogger(__name__)
 
-DEEP_SURROGATE_REPO_PATH = os.getenv("DEEP_SURROGATE_REPO_PATH", "/opt/deep_surrogate")
 DEEP_SURROGATE_MODEL_TYPE = os.getenv("DEEP_SURROGATE_MODEL_TYPE", "heston")
 
 # Tail risk index thresholds
@@ -37,10 +32,197 @@ TAIL_RISK_SKEW_WEIGHT = 0.25
 TAIL_RISK_JUMP_WEIGHT = 0.15
 
 
+class HestonEngine:
+    """
+    Heston stochastic volatility option pricer using the semi-closed-form
+    characteristic function with numerical integration.
+
+    GPU-accelerated via PyTorch for batched pricing. Uses the 'little Heston
+    trap' formulation (Albrecher et al.) for numerical stability.
+
+    Provides:
+      - get_price(): Heston call prices (normalized, C/S)
+      - get_iv(): Black-Scholes implied volatilities from Heston prices
+      - get_iv_delta(): BS deltas at the implied vol
+    """
+
+    def __init__(self, device=None, n_points=256, u_max=50.0):
+        if device is None:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            self.device = torch.device(device)
+
+        self._n_points = n_points
+        self._u_max = u_max
+        self._du = u_max / n_points
+        self._u = torch.linspace(
+            self._du / 2, u_max - self._du / 2, n_points,
+            dtype=torch.float64, device=self.device,
+        )
+
+    def _heston_call(self, moneyness, tau, rate, kappa, theta, sigma_h, rho, v0):
+        """
+        Vectorized Heston European call prices (normalized: S=1, K=moneyness).
+
+        Uses the 'little Heston trap' formulation for numerical stability.
+        All inputs: 1D float64 tensors of length N.
+        Returns: 1D float64 tensor of normalized call prices C/S.
+        """
+        tau = torch.clamp(tau, min=1.0 / 365.0)
+        sigma_h = torch.clamp(sigma_h, min=0.01)
+        kappa = torch.clamp(kappa, min=0.01)
+        theta = torch.clamp(theta, min=1e-4)
+        v0 = torch.clamp(v0, min=1e-4)
+
+        K = moneyness
+        u = self._u
+        du = self._du
+
+        # Broadcast: (N, 1) x (1, Q) -> (N, Q)
+        K_ = K.unsqueeze(1)
+        r_ = rate.unsqueeze(1)
+        T_ = tau.unsqueeze(1)
+        kap_ = kappa.unsqueeze(1)
+        the_ = theta.unsqueeze(1)
+        sig_ = sigma_h.unsqueeze(1)
+        rh_ = rho.unsqueeze(1)
+        v_ = v0.unsqueeze(1)
+        u_ = u.unsqueeze(0)
+        a_ = kap_ * the_
+
+        P = []
+        for j in [1, 2]:
+            uj = 0.5 if j == 1 else -0.5
+            bj = (kap_ - rh_ * sig_) if j == 1 else kap_
+
+            iu = 1j * u_
+            rsi = rh_ * sig_ * iu
+
+            disc = (rsi - bj) ** 2 + sig_ ** 2 * (2 * uj * iu + u_ ** 2)
+            d = torch.sqrt(disc + 0j)
+
+            g_num = bj - rsi - d
+            g_den = bj - rsi + d
+            g = g_num / (g_den + 1e-30)
+
+            exp_neg_dt = torch.exp(-d * T_)
+            denom = 1.0 - g * exp_neg_dt
+            denom = denom + (denom.abs() < 1e-30) * 1e-30
+
+            D_val = (g_num / (sig_ ** 2 + 1e-30)) * (
+                (1.0 - exp_neg_dt) / denom
+            )
+
+            log_arg = denom / (1.0 - g + 1e-30)
+            C_val = r_ * iu * T_ + (a_ / (sig_ ** 2 + 1e-30)) * (
+                g_num * T_ - 2.0 * torch.log(log_arg + 0j)
+            )
+
+            f = torch.exp(C_val + D_val * v_)
+            integrand = (torch.exp(-iu * torch.log(K_ + 0j)) * f / (iu + 1e-30)).real
+
+            Pj = 0.5 + (1.0 / np.pi) * torch.sum(integrand * du, dim=1)
+            P.append(torch.clamp(Pj, 0.0, 1.0))
+
+        P1, P2 = P
+        prices = P1 - K * torch.exp(-rate * tau) * P2
+        return torch.clamp(prices, min=0.0)
+
+    @staticmethod
+    def _bs_call_np(sigma, moneyness, rate, tau):
+        """Black-Scholes call price (S=1, K=moneyness). Numpy."""
+        sigma = np.maximum(sigma, 1e-8)
+        tau = np.maximum(tau, 1e-8)
+        sqrt_t = np.sqrt(tau)
+        d1 = (np.log(1.0 / np.maximum(moneyness, 1e-8))
+              + (rate + 0.5 * sigma ** 2) * tau) / (sigma * sqrt_t)
+        d2 = d1 - sigma * sqrt_t
+        return sp_norm.cdf(d1) - moneyness * np.exp(-rate * tau) * sp_norm.cdf(d2)
+
+    @staticmethod
+    def _bs_vega_np(sigma, moneyness, rate, tau):
+        """Black-Scholes vega (S=1). Numpy."""
+        sigma = np.maximum(sigma, 1e-8)
+        tau = np.maximum(tau, 1e-8)
+        sqrt_t = np.sqrt(tau)
+        d1 = (np.log(1.0 / np.maximum(moneyness, 1e-8))
+              + (rate + 0.5 * sigma ** 2) * tau) / (sigma * sqrt_t)
+        return sqrt_t * sp_norm.pdf(d1)
+
+    @staticmethod
+    def _bs_delta_np(sigma, moneyness, rate, tau):
+        """Black-Scholes delta (S=1). Numpy."""
+        sigma = np.maximum(sigma, 1e-8)
+        tau = np.maximum(tau, 1e-8)
+        sqrt_t = np.sqrt(tau)
+        d1 = (np.log(1.0 / np.maximum(moneyness, 1e-8))
+              + (rate + 0.5 * sigma ** 2) * tau) / (sigma * sqrt_t)
+        return sp_norm.cdf(d1)
+
+    def _implied_vol(self, price, moneyness, rate, tau, max_iter=50, tol=1e-8):
+        """Extract BS implied vol from Heston price via Newton's method."""
+        sigma = np.full_like(price, 0.3)
+        for _ in range(max_iter):
+            bs_price = self._bs_call_np(sigma, moneyness, rate, tau)
+            vega = self._bs_vega_np(sigma, moneyness, rate, tau)
+            diff = bs_price - price
+            mask = np.abs(vega) > 1e-12
+            if not np.any(mask):
+                break
+            sigma[mask] -= diff[mask] / vega[mask]
+            sigma = np.clip(sigma, 0.001, 5.0)
+            if np.max(np.abs(diff[mask])) < tol:
+                break
+        return sigma
+
+    def _to_tensor(self, arr):
+        return torch.tensor(np.asarray(arr, dtype=np.float64), device=self.device)
+
+    def get_price(self, df, model_type="heston"):
+        """
+        Compute Heston call prices (normalized: C/S where S=1, K=moneyness).
+
+        Input: DataFrame with [kappa, theta, sigma, rho, v0, rate, tau, moneyness].
+        Returns: numpy array of normalized call prices.
+        """
+        with torch.no_grad():
+            prices = self._heston_call(
+                self._to_tensor(df["moneyness"].values),
+                self._to_tensor(df["tau"].values),
+                self._to_tensor(df["rate"].values),
+                self._to_tensor(df["kappa"].values),
+                self._to_tensor(df["theta"].values),
+                self._to_tensor(df["sigma"].values),
+                self._to_tensor(df["rho"].values),
+                self._to_tensor(df["v0"].values),
+            )
+        return prices.cpu().numpy()
+
+    def get_iv(self, df, model_type="heston"):
+        """Compute implied volatilities (Heston price -> BS IV inversion)."""
+        prices = self.get_price(df, model_type)
+        return self._implied_vol(
+            prices,
+            df["moneyness"].values.astype(np.float64),
+            df["rate"].values.astype(np.float64),
+            df["tau"].values.astype(np.float64),
+        )
+
+    def get_iv_delta(self, df, model_type="heston"):
+        """Compute Black-Scholes delta at the implied vol."""
+        ivs = self.get_iv(df, model_type)
+        return self._bs_delta_np(
+            ivs,
+            df["moneyness"].values.astype(np.float64),
+            df["rate"].values.astype(np.float64),
+            df["tau"].values.astype(np.float64),
+        )
+
+
 class DeepSurrogateModel(BaseTFTModel):
     """
-    Wraps the DeepSurrogate option pricing models for fast IV/Greeks computation
-    and tail risk monitoring.
+    Wraps the built-in Heston option pricing engine for fast IV/Greeks
+    computation and tail risk monitoring.
 
     Produces two types of signals:
       1. Options signals: IV surface anomalies, mispricing detection
@@ -73,7 +255,6 @@ class DeepSurrogateModel(BaseTFTModel):
         df = raw_data.copy()
         df.columns = [c.lower() for c in df.columns]
 
-        # If raw options chain data, compute Heston input parameters
         if "moneyness" not in df.columns and "strike" in df.columns:
             if "spot" in df.columns:
                 df["moneyness"] = df["strike"] / df["spot"]
@@ -131,17 +312,13 @@ class DeepSurrogateModel(BaseTFTModel):
         heston_params = self._calibrate_heston(df, iv_surface)
         if heston_params is not None:
             self._param_history.append(heston_params)
-            # Keep last 252 trading days of params
             if len(self._param_history) > 252:
                 self._param_history = self._param_history[-252:]
 
-            # Compute tail risk index
             tail_risk = self._compute_tail_risk_index(heston_params)
             self._tail_risk_history.append(tail_risk)
 
-            # Generate tail risk signal as a ModelPrediction
-            # Higher tail_risk = more crash risk = bearish signal
-            risk_signal = -tail_risk  # negative = bearish
+            risk_signal = -tail_risk
             confidence = min(0.95, 0.3 + abs(tail_risk) * 0.5)
 
             results.append(
@@ -166,7 +343,6 @@ class DeepSurrogateModel(BaseTFTModel):
                 )
             )
 
-        # Generate IV-based mispricing signal
         iv_signal = self._compute_iv_signal(iv_surface, symbol)
         if iv_signal is not None:
             results.append(iv_signal)
@@ -204,13 +380,11 @@ class DeepSurrogateModel(BaseTFTModel):
         self, df: pd.DataFrame, iv_surface: Dict[str, np.ndarray]
     ) -> Optional[Dict[str, float]]:
         """Extract/calibrate Heston parameters from the data or IV surface."""
-        # If parameters are directly in the data, use them
         param_cols = ["kappa", "theta", "sigma", "rho", "v0"]
         if all(col in df.columns for col in param_cols):
             row = df[param_cols].iloc[-1]
             return {col: float(row[col]) for col in param_cols}
 
-        # Otherwise, use median of available parameters
         params = {}
         for col in param_cols:
             if col in df.columns:
@@ -221,13 +395,8 @@ class DeepSurrogateModel(BaseTFTModel):
         """
         Build a tail risk index from Heston parameters.
 
-        The index captures:
-        - Vol-of-vol (sigma): higher = more tail risk
-        - Correlation (rho): more negative = more crash risk (leverage effect)
-        - Variance skew: deviation from long-run variance
-        - Jump intensity: if using Bates model
-
-        Returns a score in [0, 1] where 1 = maximum crash risk.
+        Captures vol-of-vol, correlation (leverage effect), variance skew,
+        and mean reversion speed. Returns score in [0, 1] where 1 = max risk.
         """
         sigma = params.get("sigma", 0.3)
         rho = params.get("rho", -0.7)
@@ -235,25 +404,17 @@ class DeepSurrogateModel(BaseTFTModel):
         v0 = params.get("v0", 0.04)
         kappa = params.get("kappa", 2.0)
 
-        # Vol-of-vol component: normalize sigma to [0,1]
-        # Typical range: 0.1 to 1.5
         vol_of_vol_score = min(1.0, max(0.0, (sigma - 0.1) / 1.4))
-
-        # Correlation component: more negative = higher risk
-        # Typical range: -1.0 to 0.0
         correlation_score = min(1.0, max(0.0, -rho))
 
-        # Skew component: v0 much higher than theta = elevated risk
         if theta > 0:
             variance_ratio = v0 / theta
             skew_score = min(1.0, max(0.0, (variance_ratio - 1.0) / 3.0))
         else:
             skew_score = 0.5
 
-        # Mean reversion speed: lower kappa = risk persists longer
         jump_score = min(1.0, max(0.0, 1.0 - kappa / 10.0))
 
-        # Weighted combination
         tail_risk = (
             TAIL_RISK_VOL_OF_VOL_WEIGHT * vol_of_vol_score
             + TAIL_RISK_CORRELATION_WEIGHT * correlation_score
@@ -261,7 +422,6 @@ class DeepSurrogateModel(BaseTFTModel):
             + TAIL_RISK_JUMP_WEIGHT * jump_score
         )
 
-        # Add momentum component if we have history
         if len(self._tail_risk_history) >= 5:
             recent = np.mean(self._tail_risk_history[-5:])
             older = (
@@ -288,10 +448,7 @@ class DeepSurrogateModel(BaseTFTModel):
             return None
 
         atm_iv = float(np.mean(ivs[atm_mask]))
-
-        # IV level signal: high IV relative to history suggests mean reversion
-        # (simplified — a full implementation would use IV rank)
-        iv_signal = -(atm_iv - 0.20) * 2.0  # mean-revert around 20% vol
+        iv_signal = -(atm_iv - 0.20) * 2.0
         iv_signal = max(-1.0, min(1.0, iv_signal))
 
         return ModelPrediction(
@@ -317,9 +474,9 @@ class DeepSurrogateModel(BaseTFTModel):
         """
         Calibrate Heston model parameters from market option prices.
 
-        Uses multi-start L-BFGS-B optimization with the DeepSurrogate for
-        fast evaluation (replaces slow Monte Carlo). Best result across
-        restarts is returned. Validates the Feller condition on the output.
+        Uses multi-start L-BFGS-B optimization with the built-in Heston
+        pricer for fast evaluation. Best result across restarts is returned.
+        Validates the Feller condition on the output.
 
         Args:
             market_data: DataFrame with columns: strike, spot, rate, tau,
@@ -329,7 +486,6 @@ class DeepSurrogateModel(BaseTFTModel):
         Returns:
             Dict with calibrated parameters: kappa, theta, sigma, rho, v0,
             plus calibration_error, feller_satisfied, and success flag.
-            Empty dict on failure.
         """
         if not self._is_loaded or self._surrogate is None:
             logger.error("calibrate_heston: surrogate not loaded")
@@ -349,21 +505,16 @@ class DeepSurrogateModel(BaseTFTModel):
             logger.warning("calibrate_heston: need >= 3 option prices, got %d", len(df))
             return {}
 
-        market_prices = df["market_price"].values
-        # Pre-compute moneyness once
+        # Normalize market prices by spot for comparison with C/S prices
+        spot = df["spot"].values
+        market_prices_norm = df["market_price"].values / spot
+
         if "moneyness" not in df.columns:
             df = df.copy()
             df["moneyness"] = df["strike"] / df["spot"]
 
         surrogate_cols = [
-            "kappa",
-            "theta",
-            "sigma",
-            "rho",
-            "v0",
-            "rate",
-            "tau",
-            "moneyness",
+            "kappa", "theta", "sigma", "rho", "v0", "rate", "tau", "moneyness",
         ]
 
         def objective(params):
@@ -377,41 +528,34 @@ class DeepSurrogateModel(BaseTFTModel):
 
             try:
                 model_prices = self._surrogate.get_price(
-                    cal_df[surrogate_cols],
-                    model_type=self._model_type,
+                    cal_df[surrogate_cols], model_type=self._model_type,
                 )
                 model_prices = np.array(model_prices).flatten()
-                if len(model_prices) != len(market_prices):
+                if len(model_prices) != len(market_prices_norm):
                     return 1e10
-                # Relative RMSE to handle different price magnitudes
-                denom = np.maximum(market_prices, 0.01)
-                return float(np.sum(((model_prices - market_prices) / denom) ** 2))
+                denom = np.maximum(np.abs(market_prices_norm), 0.001)
+                return float(np.sum(((model_prices - market_prices_norm) / denom) ** 2))
             except Exception:
                 return 1e10
 
         bounds = [
-            (0.01, 20.0),  # kappa (mean reversion speed)
-            (0.001, 1.0),  # theta (long-run variance)
-            (0.01, 2.0),  # sigma (vol of vol)
-            (-0.99, 0.0),  # rho (correlation, negative for equities)
-            (0.001, 1.0),  # v0 (initial variance)
+            (0.01, 20.0),   # kappa
+            (0.001, 1.0),   # theta
+            (0.01, 2.0),    # sigma (vol of vol)
+            (-0.99, 0.0),   # rho
+            (0.001, 1.0),   # v0
         ]
 
-        # Multi-start: deterministic first, then random
-        starting_points = [
-            [2.0, 0.04, 0.3, -0.7, 0.04],  # typical equity params
-        ]
+        starting_points = [[2.0, 0.04, 0.3, -0.7, 0.04]]
         rng = np.random.default_rng(42)
         for _ in range(n_restarts - 1):
-            starting_points.append(
-                [
-                    rng.uniform(0.5, 10.0),  # kappa
-                    rng.uniform(0.01, 0.15),  # theta
-                    rng.uniform(0.1, 1.0),  # sigma
-                    rng.uniform(-0.95, -0.2),  # rho
-                    rng.uniform(0.01, 0.15),  # v0
-                ]
-            )
+            starting_points.append([
+                rng.uniform(0.5, 10.0),
+                rng.uniform(0.01, 0.15),
+                rng.uniform(0.1, 1.0),
+                rng.uniform(-0.95, -0.2),
+                rng.uniform(0.01, 0.15),
+            ])
 
         best_result = None
         best_fun = float("inf")
@@ -419,10 +563,7 @@ class DeepSurrogateModel(BaseTFTModel):
         for x0 in starting_points:
             try:
                 result = minimize(
-                    objective,
-                    x0,
-                    method="L-BFGS-B",
-                    bounds=bounds,
+                    objective, x0, method="L-BFGS-B", bounds=bounds,
                     options={"maxiter": 200, "ftol": 1e-10},
                 )
                 if result.fun < best_fun:
@@ -436,10 +577,7 @@ class DeepSurrogateModel(BaseTFTModel):
             return {}
 
         kappa, theta, sigma, rho, v0 = best_result.x
-
-        # Feller condition: 2*kappa*theta > sigma^2
-        # When satisfied, variance process stays strictly positive
-        feller = 2.0 * kappa * theta > sigma**2
+        feller = 2.0 * kappa * theta > sigma ** 2
 
         calibrated = {
             "kappa": round(kappa, 6),
@@ -458,21 +596,13 @@ class DeepSurrogateModel(BaseTFTModel):
                 "Heston calibration: Feller condition NOT satisfied "
                 "(2*kappa*theta=%.4f < sigma^2=%.4f). "
                 "Variance process may hit zero.",
-                2 * kappa * theta,
-                sigma**2,
+                2 * kappa * theta, sigma ** 2,
             )
 
         logger.info(
             "Heston calibrated from %d options: kappa=%.3f theta=%.4f "
             "sigma=%.3f rho=%.3f v0=%.4f (error=%.6f, feller=%s)",
-            len(df),
-            kappa,
-            theta,
-            sigma,
-            rho,
-            v0,
-            best_fun,
-            feller,
+            len(df), kappa, theta, sigma, rho, v0, best_fun, feller,
         )
         return calibrated
 
@@ -481,34 +611,15 @@ class DeepSurrogateModel(BaseTFTModel):
         logger.info("DeepSurrogate is pre-trained; no local model to save")
 
     def load(self, path: str = None) -> bool:
-        """Load DeepSurrogate from the cloned repo."""
+        """Load the built-in Heston pricing engine (GPU-accelerated)."""
         try:
-            repo_path = Path(DEEP_SURROGATE_REPO_PATH)
-            if repo_path.exists() and str(repo_path) not in sys.path:
-                sys.path.insert(0, str(repo_path))
-
-            # DeepSurrogate's pre-trained models use legacy Keras format
-            os.environ["TF_USE_LEGACY_KERAS"] = "1"
-
-            from source.deepsurrogate import DeepSurrogate  # type: ignore
-
-            # DeepSurrogate uses relative paths for model files — chdir briefly
-            original_dir = os.getcwd()
-            try:
-                os.chdir(str(repo_path))
-                self._surrogate = DeepSurrogate(self._model_type)
-            finally:
-                os.chdir(original_dir)
+            self._surrogate = HestonEngine()
             self._is_loaded = True
-            logger.info("DeepSurrogate loaded (model_type=%s)", self._model_type)
-            return True
-        except ImportError as e:
-            logger.warning(
-                "DeepSurrogate not available (clone repo to %s): %s",
-                DEEP_SURROGATE_REPO_PATH,
-                e,
+            logger.info(
+                "DeepSurrogate loaded (model_type=%s, device=%s)",
+                self._model_type, self._surrogate.device,
             )
-            return False
+            return True
         except Exception as e:
             logger.error("Failed to load DeepSurrogate: %s", e)
             return False
@@ -517,9 +628,9 @@ class DeepSurrogateModel(BaseTFTModel):
         return ModelInfo(
             name=self.name,
             asset_class=self.asset_class,
-            version="1.0",
+            version="2.0",
             symbols=self._symbols,
-            model_path=DEEP_SURROGATE_REPO_PATH,
+            model_path="built-in (PyTorch Heston)",
             is_loaded=self._is_loaded,
             metrics={
                 "tail_risk_latest": (
