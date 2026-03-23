@@ -767,6 +767,95 @@ def fetch_fx_data(pairs: List[str], days: int = 200) -> pd.DataFrame:
 
 
 # ============================================================
+# OPTIONS CHAIN FETCHER
+# ============================================================
+def fetch_options_data(symbols: List[str]) -> pd.DataFrame:
+    """Fetch options chains via yfinance and convert to DataFrame for options strategies.
+
+    Returns a DataFrame with columns needed by DeepSurrogate, TDGF, and VolArb:
+    symbol, strike, spot, expiry, moneyness, tau, rate, implied_vol, delta,
+    bid, ask, volume, open_interest, option_type, kappa, theta, sigma, rho, v0.
+    """
+    try:
+        today = date.today()
+        rows = []
+        for symbol in symbols:
+            try:
+                ticker = yfinance.Ticker(symbol)
+                # Get spot price
+                hist = ticker.history(period="1d")
+                if hist.empty:
+                    continue
+                spot = float(hist["Close"].iloc[-1])
+                if spot <= 0:
+                    continue
+
+                expiry_strings = ticker.options
+                if not expiry_strings:
+                    continue
+
+                for exp_str in expiry_strings:
+                    exp_date = datetime.strptime(exp_str, "%Y-%m-%d").date()
+                    dte = (exp_date - today).days
+                    if dte < 7 or dte > 60:
+                        continue
+                    tau = max(dte / 365.0, 1e-6)
+
+                    try:
+                        chain = ticker.option_chain(exp_str)
+                    except Exception:
+                        continue
+
+                    for side_df, opt_type in [(chain.calls, "call"), (chain.puts, "put")]:
+                        if side_df is None or side_df.empty:
+                            continue
+                        for _, row in side_df.iterrows():
+                            strike = float(row.get("strike", 0))
+                            if strike <= 0:
+                                continue
+                            iv = float(row.get("impliedVolatility", 0) or 0)
+                            rows.append({
+                                "symbol": symbol,
+                                "strike": strike,
+                                "spot": spot,
+                                "expiry": exp_date,
+                                "moneyness": strike / spot,
+                                "tau": tau,
+                                "dte": dte,
+                                "rate": 0.05,
+                                "implied_vol": iv,
+                                "bid": float(row.get("bid", 0) or 0),
+                                "ask": float(row.get("ask", 0) or 0),
+                                "last": float(row.get("lastPrice", 0) or 0),
+                                "volume": int(row.get("volume", 0) or 0),
+                                "open_interest": int(row.get("openInterest", 0) or 0),
+                                "option_type": opt_type,
+                                # Default Heston params (model will calibrate from IV)
+                                "kappa": 2.0,
+                                "theta": 0.04,
+                                "sigma": max(iv, 0.01) if iv > 0 else 0.20,
+                                "rho": -0.7,
+                                "v0": max(iv ** 2, 1e-4) if iv > 0 else 0.04,
+                            })
+            except Exception as e:
+                logger.debug("Options fetch failed for %s: %s", symbol, e)
+
+        if not rows:
+            logger.info("No options data fetched")
+            return pd.DataFrame()
+
+        df = pd.DataFrame(rows)
+        logger.info(
+            "Fetched options data: %d contracts across %d symbols",
+            len(df), df["symbol"].nunique(),
+        )
+        return df
+    except Exception as e:
+        logger.error("Options data fetch failed: %s", e)
+        return pd.DataFrame()
+
+
+# ============================================================
 # STRATEGY RUNNER (dynamic registry)
 # ============================================================
 def _run_strategy(
@@ -881,9 +970,13 @@ async def run_daily_pipeline(is_manual: bool = False):
             except Exception:
                 pass
 
-        # 1. Fetch data
-        stock_data = fetch_stock_data(TRADING_SYMBOLS)
+        # 1. Fetch data (include FX ETFs for order execution)
+        _FX_ETFS = ["FXE", "FXB", "FXY", "FXA", "FXC", "FXF"]
+        stock_data = fetch_stock_data(TRADING_SYMBOLS + _FX_ETFS)
         fx_data = fetch_fx_data(FX_PAIRS)
+
+        # Fetch options chains for options strategies (deep_surrogates, tdgf, vol_arb)
+        options_data = fetch_options_data(TRADING_SYMBOLS)
 
         if stock_data.empty:
             logger.error("No stock data fetched, aborting")
@@ -957,16 +1050,19 @@ async def run_daily_pipeline(is_manual: bool = False):
 
         strategy_outputs = []
         fx_strategies = {"fx_carry_trend", "fx_momentum", "fx_vol_breakout"}
+        options_strategies = {"deep_surrogates", "tdgf"}
 
         for strat_name, strategy in strategy_map.items():
-            # Use FX data for FX strategies, stock data otherwise
-            input_data = (
-                fx_data
-                if strat_name in fx_strategies and not fx_data.empty
-                else stock_data
-            )
-            if strat_name in fx_strategies and fx_data.empty:
-                continue
+            # Route data: FX strategies get fx_data, options strategies get
+            # options_data (with stock_data fallback), others get stock_data
+            if strat_name in fx_strategies:
+                if fx_data.empty:
+                    continue
+                input_data = fx_data
+            elif strat_name in options_strategies and not options_data.empty:
+                input_data = options_data
+            else:
+                input_data = stock_data
 
             output = _run_strategy(strat_name, strategy, input_data, today)
             if output is not None:
@@ -1220,6 +1316,11 @@ async def run_daily_pipeline(is_manual: bool = False):
                 current_holdings = {}
 
             trades_executed = 0
+            logger.info(
+                "Order loop: %d target positions: %s",
+                len(target.positions),
+                [f"{p.symbol}:{p.target_weight:.4f}" for p in target.positions],
+            )
             for pos in target.positions:
                 # GUARDRAIL: Execution failure rate check before each order
                 exec_health = exec_monitor.check()
@@ -1245,15 +1346,45 @@ async def run_daily_pipeline(is_manual: bool = False):
                 target_value = pos.target_weight * state.portfolio_value
                 current_qty = current_holdings.get(symbol, 0)
 
-                # Get latest price
-                sym_data = stock_data[stock_data["symbol"] == symbol]
+                # FX pair → CurrencyShares ETF mapping for Alpaca execution
+                _FX_ETF_MAP = {
+                    "EURUSD": ("FXE", False),   # long EURUSD = long FXE
+                    "GBPUSD": ("FXB", False),
+                    "AUDUSD": ("FXA", False),
+                    "USDJPY": ("FXY", True),    # long USDJPY = short FXY
+                    "USDCAD": ("FXC", True),
+                    "USDCHF": ("FXF", True),
+                }
+
+                is_fx = symbol in _FX_ETF_MAP
+                trade_symbol = symbol
+                flip_side = False
+
+                if is_fx:
+                    etf_sym, flip_side = _FX_ETF_MAP[symbol]
+                    trade_symbol = etf_sym
+                    # Use ETF holdings for position diff
+                    current_qty = current_holdings.get(etf_sym, 0)
+
+                # Get latest price (check stock_data first, then fx_data)
+                sym_data = stock_data[stock_data["symbol"] == trade_symbol]
+                if sym_data.empty and not fx_data.empty:
+                    sym_data = fx_data[fx_data["symbol"] == symbol]
                 if sym_data.empty:
+                    logger.debug("Skipping %s: no price data found", symbol)
                     continue
                 price = float(sym_data.sort_values("timestamp")["close"].iloc[-1])
                 if price <= 0:
                     continue
 
+                # Cap FX ETF positions at $2000 max
+                _FX_ETF_MAX_VALUE = 2000.0
+                if is_fx:
+                    target_value = max(-_FX_ETF_MAX_VALUE, min(_FX_ETF_MAX_VALUE, target_value))
+
                 target_shares = int(target_value / price)
+                if is_fx and flip_side:
+                    target_shares = -target_shares
                 diff = target_shares - current_qty
 
                 if abs(diff) < 1:
@@ -1261,6 +1392,19 @@ async def run_daily_pipeline(is_manual: bool = False):
 
                 side = "buy" if diff > 0 else "sell"
                 qty = abs(diff)
+
+                if is_fx:
+                    symbol = trade_symbol  # Submit order with ETF ticker
+
+                # Cap sell qty at current holdings to avoid Alpaca rejection
+                # (position reversals require closing first, then opening opposite)
+                if side == "sell" and current_qty > 0:
+                    qty = min(qty, int(abs(current_qty)))
+                elif side == "buy" and current_qty < 0:
+                    qty = min(qty, int(abs(current_qty)))
+
+                if qty < 1:
+                    continue
 
                 # Circuit breaker re-check before each trade
                 if circuit_breaker is not None:
