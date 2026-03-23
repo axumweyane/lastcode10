@@ -75,6 +75,7 @@ from strategies.signals.publisher import SignalPublisher
 # Production trading infrastructure
 from trading.broker.alpaca import AlpacaBroker
 from trading.broker.oanda import OandaBroker, to_oanda_pair
+from trading.broker.ibkr import IBKRBroker
 from trading.broker.base import OrderRequest, OrderResult, OrderSide, OrderStatus
 from trading.execution.vwap import (
     VWAPExecutionModel,
@@ -303,6 +304,7 @@ circuit_breaker: Optional[CircuitBreaker] = None
 db_pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
 broker: Optional[AlpacaBroker] = None
 oanda_broker: Optional[OandaBroker] = None
+ibkr_broker: Optional[IBKRBroker] = None
 risk_manager: Optional[PortfolioRiskManager] = None
 bayesian_updater: Optional[BayesianWeightUpdater] = None
 USE_BAYESIAN_WEIGHTS = os.getenv("ENSEMBLE_USE_BAYESIAN_WEIGHTS", "false").lower() in (
@@ -338,6 +340,56 @@ prom_metrics: Optional[PrometheusMetrics] = (
 signal_guard = SignalVarianceGuard()
 leverage_gate = LeverageGate()
 exec_monitor = ExecutionFailureMonitor()
+
+# Daily budget limits per broker (hard caps)
+DAILY_BUDGET_FX = float(os.getenv("DAILY_BUDGET_FX", "2000"))
+DAILY_BUDGET_STOCKS = float(os.getenv("DAILY_BUDGET_STOCKS", "20000"))
+DAILY_BUDGET_OPTIONS = float(os.getenv("DAILY_BUDGET_OPTIONS", "5000"))
+
+
+class DailyBudgetTracker:
+    """Track daily notional spend per broker. Resets at midnight ET."""
+
+    def __init__(self):
+        self._spent: Dict[str, float] = {"fx": 0.0, "stocks": 0.0, "options": 0.0}
+        self._limits: Dict[str, float] = {
+            "fx": DAILY_BUDGET_FX,
+            "stocks": DAILY_BUDGET_STOCKS,
+            "options": DAILY_BUDGET_OPTIONS,
+        }
+        self._reset_date: Optional[date] = None
+
+    def _maybe_reset(self):
+        from zoneinfo import ZoneInfo
+
+        today_et = datetime.now(ZoneInfo("America/New_York")).date()
+        if self._reset_date != today_et:
+            self._spent = {"fx": 0.0, "stocks": 0.0, "options": 0.0}
+            self._reset_date = today_et
+
+    def check(self, broker_key: str, notional: float) -> bool:
+        """Return True if trade fits within daily budget."""
+        self._maybe_reset()
+        return (self._spent[broker_key] + abs(notional)) <= self._limits[broker_key]
+
+    def record(self, broker_key: str, notional: float):
+        """Record a completed trade's notional value."""
+        self._maybe_reset()
+        self._spent[broker_key] += abs(notional)
+
+    def status(self) -> Dict[str, Any]:
+        self._maybe_reset()
+        return {
+            broker: {
+                "spent": round(self._spent[broker], 2),
+                "limit": self._limits[broker],
+                "remaining": round(self._limits[broker] - self._spent[broker], 2),
+            }
+            for broker in self._spent
+        }
+
+
+budget_tracker = DailyBudgetTracker()
 
 
 # ============================================================
@@ -1348,6 +1400,139 @@ async def run_daily_pipeline(is_manual: bool = False):
                 target_value = pos.target_weight * state.portfolio_value
                 current_qty = current_holdings.get(symbol, 0)
 
+                # ── OPTIONS → IBKR (Interactive Brokers) ──
+                # Options strategies (deep_surrogates, tdgf, vol_arb) generate
+                # signals on underlying symbols. We convert these to ATM option
+                # contracts and route to IBKR: bullish → buy call, bearish → buy put.
+                # Options NEVER route to Alpaca — always IBKR or skip.
+                _OPTIONS_STRATEGIES = {"deep_surrogates", "tdgf", "vol_arb"}
+                # Check if any options strategy contributed to this position
+                is_options_signal = bool(
+                    hasattr(pos, "contributing_strategies")
+                    and pos.contributing_strategies
+                    and _OPTIONS_STRATEGIES & set(pos.contributing_strategies.keys())
+                )
+
+                if is_options_signal:
+                    opt_strats = [
+                        s for s in (pos.contributing_strategies or {})
+                        if s in _OPTIONS_STRATEGIES
+                    ]
+                    score = pos.combined_score if hasattr(pos, "combined_score") else 0
+                    direction = "LONG" if score > 0 else "SHORT"
+                    logger.info(
+                        "OPTIONS SIGNAL: %s %s %s score=%.3f → routing to %s",
+                        opt_strats, symbol, direction,
+                        score,
+                        "IBKR" if ibkr_broker is not None else "SKIPPED (no IBKR)",
+                    )
+
+                if is_options_signal and ibkr_broker is None:
+                    # Options must go to IBKR, never Alpaca
+                    logger.warning(
+                        "OPTIONS SIGNAL SKIPPED: %s — IBKR broker not connected",
+                        symbol,
+                    )
+                    continue  # Do NOT fall through to Alpaca
+
+                if is_options_signal and ibkr_broker is not None:
+                    # Act on ensemble-blended positions where options strategies contributed.
+                    # The combined_score is already diluted by ensemble weighting, so use
+                    # a low threshold (0.05) — positions have already passed optimizer filters.
+                    score = pos.combined_score if hasattr(pos, "combined_score") else 0
+                    if abs(score) < 0.05:
+                        continue
+
+                    # Get underlying stock price
+                    sym_data = stock_data[stock_data["symbol"] == symbol]
+                    if sym_data.empty:
+                        continue
+                    stock_price = float(sym_data.sort_values("timestamp")["close"].iloc[-1])
+                    if stock_price <= 0:
+                        continue
+
+                    # Bullish → buy call, Bearish → buy put
+                    right = "C" if score > 0 else "P"
+                    direction = "CALL" if right == "C" else "PUT"
+
+                    # Cap premium at $500 per contract
+                    _OPT_MAX_PREMIUM = 500.0
+
+                    # BUDGET CHECK: options ($500 max per contract)
+                    if not budget_tracker.check("options", _OPT_MAX_PREMIUM):
+                        logger.warning(
+                            "BUDGET LIMIT: skipped %s %s - daily options budget exhausted ($%.0f/$%.0f)",
+                            symbol, direction, budget_tracker.status()["options"]["spent"], DAILY_BUDGET_OPTIONS,
+                        )
+                        continue
+
+                    # Find ATM option contract (nearest monthly, 3-6 weeks out)
+                    option_ticker = await ibkr_broker.find_atm_option(
+                        symbol=symbol,
+                        right=right,
+                        stock_price=stock_price,
+                        max_premium=_OPT_MAX_PREMIUM,
+                    )
+                    if option_ticker is None:
+                        logger.warning(
+                            "No ATM %s option found for %s (price=$%.2f)",
+                            direction, symbol, stock_price,
+                        )
+                        continue
+
+                    # Buy 1 contract
+                    logger.info(
+                        "IBKR options order: BUY 1 %s (score=%.2f, underlying=%s @ $%.2f)",
+                        option_ticker, score, symbol, stock_price,
+                    )
+
+                    order_req = OrderRequest(
+                        ticker=option_ticker,
+                        side=OrderSide.BUY,
+                        quantity=1,
+                    )
+                    result = await ibkr_broker.submit_order(order_req)
+
+                    exec_monitor.record(bool(result and result.success))
+
+                    if result and result.success:
+                        fill_price = (
+                            result.raw.get("avgFillPrice", _OPT_MAX_PREMIUM)
+                            if result.raw else _OPT_MAX_PREMIUM
+                        )
+                        # Record actual premium (×100 for contract multiplier)
+                        budget_tracker.record("options", float(fill_price) * 100)
+                        trades_executed += 1
+                        log_trade(
+                            today, option_ticker, "buy", 1, float(fill_price),
+                            result.order_id or "", "ibkr_options",
+                            pos.combined_score,
+                            pos.confidence,
+                            {
+                                "underlying": symbol,
+                                "right": right,
+                                "stock_price": stock_price,
+                                "broker": "ibkr",
+                            },
+                        )
+                        if audit_logger:
+                            try:
+                                audit_logger.log_event(
+                                    "trade_executed",
+                                    symbol=option_ticker, side="buy", qty=1,
+                                    price=float(fill_price), broker="ibkr",
+                                    order_id=result.order_id,
+                                    underlying=symbol, right=right,
+                                )
+                            except Exception:
+                                pass
+                    else:
+                        logger.warning(
+                            "IBKR options order failed: %s — %s",
+                            option_ticker, result.message if result else "no result",
+                        )
+                    continue  # Skip Alpaca path for options
+
                 # Detect FX pairs
                 _FX_PAIRS = {"EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF"}
                 is_fx = symbol in _FX_PAIRS
@@ -1380,6 +1565,16 @@ async def run_daily_pipeline(is_manual: bool = False):
 
                     side = "buy" if diff > 0 else "sell"
                     qty = abs(diff)
+                    trade_notional = qty * price
+
+                    # BUDGET CHECK: forex
+                    if not budget_tracker.check("fx", trade_notional):
+                        logger.warning(
+                            "BUDGET LIMIT: skipped %s %s - daily fx budget exhausted ($%.0f/$%.0f)",
+                            symbol, side, budget_tracker.status()["fx"]["spent"], DAILY_BUDGET_FX,
+                        )
+                        continue
+
                     order_side = OrderSide.BUY if side == "buy" else OrderSide.SELL
 
                     logger.info(
@@ -1395,10 +1590,14 @@ async def run_daily_pipeline(is_manual: bool = False):
                     exec_monitor.record(bool(result and result.success))
 
                     if result and result.success:
+                        budget_tracker.record("fx", trade_notional)
                         trades_executed += 1
                         log_trade(
                             today, symbol, side, qty, price,
                             result.order_id or "", "oanda_fx",
+                            pos.combined_score,
+                            pos.confidence,
+                            {"target_weight": pos.target_weight, "broker": "oanda"},
                         )
                         if audit_logger:
                             try:
@@ -1473,6 +1672,15 @@ async def run_daily_pipeline(is_manual: bool = False):
                 if qty < 1:
                     continue
 
+                # BUDGET CHECK: stocks
+                stock_notional = qty * price
+                if not budget_tracker.check("stocks", stock_notional):
+                    logger.warning(
+                        "BUDGET LIMIT: skipped %s %s - daily stocks budget exhausted ($%.0f/$%.0f)",
+                        symbol, side, budget_tracker.status()["stocks"]["spent"], DAILY_BUDGET_STOCKS,
+                    )
+                    continue
+
                 # Circuit breaker re-check before each trade
                 if circuit_breaker is not None:
                     try:
@@ -1536,6 +1744,7 @@ async def run_daily_pipeline(is_manual: bool = False):
                 exec_monitor.record(bool(result and result.success))
 
                 if result and result.success:
+                    budget_tracker.record("stocks", stock_notional)
                     trades_executed += 1
                     order_id = result.order_id or ""
                     log_trade(
@@ -1896,6 +2105,21 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("OANDA not configured — FX will use Alpaca ETF proxies")
 
+    # IBKR broker for options execution
+    global ibkr_broker
+    ibkr_broker = None
+    _ibkr_port = os.getenv("IBKR_PORT", "")
+    if _ibkr_port:
+        try:
+            ibkr_broker = IBKRBroker()
+            await ibkr_broker.connect()
+            logger.info("IBKR broker connected for options execution")
+        except Exception as e:
+            logger.warning("IBKR broker failed to connect (options will skip execution): %s", e)
+            ibkr_broker = None
+    else:
+        logger.info("IBKR not configured — options strategies will generate signals only")
+
     # Load models (graceful — strategies fall back if models unavailable)
     model_manager = ModelManager()
     model_manager.load_all()
@@ -2176,6 +2400,7 @@ async def health():
         "infrastructure": {
             "broker_stocks": "AlpacaBroker" if broker is not None else "None",
             "broker_fx": "OandaBroker" if oanda_broker is not None else "Alpaca ETF fallback",
+            "broker_options": "IBKRBroker" if ibkr_broker is not None else "signals only",
             "notification_manager": notification_manager is not None,
             "audit_logger": audit_logger is not None,
             "circuit_breaker": circuit_breaker is not None,
@@ -2192,6 +2417,7 @@ async def health():
                 for d in mgr_status.details
             },
         }
+    result["daily_budgets"] = budget_tracker.status()
     if signal_publisher is not None:
         result["redis"] = signal_publisher.stats
     return result

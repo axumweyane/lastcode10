@@ -728,8 +728,16 @@ class TDGFModel(BaseTFTModel):
             return False
 
     def _quick_train(self):
-        """Quick self-training on default American put for out-of-box operation."""
-        logger.info("TDGF: quick self-training on default American put (BS, 1000 epochs)...")
+        """Quick self-training on default American put for out-of-box operation.
+
+        Uses the same PDE model type (self._pde_model) that will be used for
+        prediction, so the network's input dimensions match at inference time.
+        """
+        model_type = self._pde_model  # "heston" by default
+        logger.info(
+            "TDGF: quick self-training on default American put (%s, 1000 epochs)...",
+            model_type,
+        )
         default_params = {
             "spot": np.array([1.0]),
             "strike": np.array([1.0]),
@@ -737,8 +745,16 @@ class TDGFModel(BaseTFTModel):
             "tau": np.array([2.0]),
             "sigma": np.array([0.2]),
         }
+        # Heston model requires additional stochastic volatility parameters
+        if model_type in ("heston", "lifted_heston"):
+            default_params.update({
+                "kappa": np.array([2.0]),   # mean reversion speed
+                "theta": np.array([0.04]),  # long-run variance
+                "rho": np.array([-0.7]),    # correlation spot-vol
+                "v0": np.array([0.04]),     # initial variance
+            })
         metrics = self._solver.train(
-            model_type="black_scholes",
+            model_type=model_type,
             params=default_params,
             n_epochs=1000,
             learning_rate=1e-3,
