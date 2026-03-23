@@ -38,6 +38,7 @@ EXPECTED_TABLES = [
     "ohlcv", "fundamentals", "sentiment", "vix_data",
     "paper_trades", "paper_daily_snapshots", "paper_strategy_signals",
     "paper_risk_reports", "paper_execution_stats", "bayesian_weight_state",
+    "circuit_breaker_events",
 ]
 
 EXPECTED_STOCKS = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "JPM", "BAC", "XOM"]
@@ -285,6 +286,14 @@ def check_ohlcv_quality(cur, fix=False):
                f"{len(EXPECTED_STOCKS) - len(missing_stocks)}/{len(EXPECTED_STOCKS)} present" +
                (f" | Missing: {','.join(missing_stocks)}" if missing_stocks else ""))
     results.append(("ohlcv_stock_coverage", p))
+
+    # Symbol coverage — FX pairs (non-blocking)
+    missing_fx = [s for s in EXPECTED_FX if s not in db_symbols]
+    if missing_fx:
+        warn("FX coverage", f"Missing: {','.join(missing_fx)} (FX loaded separately)")
+    else:
+        status(True, "FX coverage", f"{len(EXPECTED_FX)}/{len(EXPECTED_FX)} present")
+    results.append(("ohlcv_fx_coverage", True))  # non-blocking
 
     # Outlier returns (>20% daily)
     outlier_ret = run_query(cur, """

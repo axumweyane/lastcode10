@@ -71,7 +71,7 @@ def check_system_resources():
     free_gb = free / (1024**3)
     total_gb = total / (1024**3)
     used_pct = used / total * 100
-    p = status(free_gb > 5, "Disk space",
+    p = status(used_pct < 80 and free_gb > 5, "Disk space",
                f"{free_gb:.1f} GB free / {total_gb:.0f} GB ({used_pct:.0f}% used)")
     results.append(("disk_space", p))
 
@@ -388,6 +388,68 @@ def check_network():
     return results
 
 
+# ── PART 9: REDIS MEMORY ──────────────────────────────────────────────
+
+def check_redis():
+    header("REDIS MEMORY")
+    results = []
+
+    redis_port = int(os.getenv("REDIS_PORT", "16379"))
+    # Try docker exec for redis-cli since host may not have it
+    out, rc = run_cmd(f"docker exec infra-redis-1 redis-cli INFO memory 2>/dev/null | grep -E 'used_memory_human|maxmemory_human|connected_clients|db0'")
+    if rc != 0 or not out:
+        # Try direct connection
+        out, rc = run_cmd(f"docker exec tp-redis redis-cli INFO memory 2>/dev/null | grep -E 'used_memory_human|maxmemory_human'")
+
+    if out:
+        for line in out.strip().split("\n"):
+            line = line.strip().rstrip("\r")
+            if "used_memory_human" in line and "peak" not in line:
+                mem = line.split(":")[-1].strip()
+                status(True, "Redis memory used", mem)
+            elif "maxmemory_human" in line:
+                maxm = line.split(":")[-1].strip()
+                status(True, "Redis max memory", maxm)
+        results.append(("redis_memory", True))
+    else:
+        warn("Redis memory", "could not query (redis-cli unavailable)")
+        results.append(("redis_memory", True))  # non-blocking
+
+    # Key count
+    out2, rc2 = run_cmd("docker exec infra-redis-1 redis-cli DBSIZE 2>/dev/null")
+    if rc2 == 0 and out2:
+        status(True, "Redis key count", out2.strip())
+
+    return results
+
+
+# ── PART 10: JOURNALCTL ERRORS ────────────────────────────────────────
+
+def check_journalctl():
+    header("JOURNALCTL (last 24h errors)")
+    results = []
+
+    out, rc = run_cmd("journalctl --user -u apex-paper-trader --since '24 hours ago' --no-pager -p err 2>/dev/null | wc -l")
+    if rc == 0 and out.strip():
+        try:
+            n_errors = int(out.strip())
+        except ValueError:
+            n_errors = 0
+        p = status(n_errors < 50, "Paper trader errors (24h)", f"{n_errors} error lines")
+        results.append(("journal_errors", p))
+
+        if n_errors > 0 and n_errors < 20:
+            worst, _ = run_cmd("journalctl --user -u apex-paper-trader --since '24 hours ago' --no-pager -p err --output=short 2>/dev/null | tail -3")
+            if worst:
+                for line in worst.strip().split("\n")[:3]:
+                    print(f"    {Y}{line[:100]}{RST}")
+    else:
+        warn("Journalctl", "could not query")
+        results.append(("journal_errors", True))  # non-blocking
+
+    return results
+
+
 # ── MAIN ──────────────────────────────────────────────────────────────
 
 def main():
@@ -407,6 +469,8 @@ def main():
     all_results.extend(check_systemd())
     all_results.extend(check_docker_logs())
     all_results.extend(check_network())
+    all_results.extend(check_redis())
+    all_results.extend(check_journalctl())
 
     # Summary
     passed = sum(1 for _, p in all_results if p)

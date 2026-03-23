@@ -301,6 +301,12 @@ def check_ensemble_risk():
         try:
             data = r.json()
             p = status(True, "Bayesian weights endpoint", f"{len(data)} entries" if isinstance(data, dict) else "OK")
+            # Check weights sum ~1.0 if non-empty
+            if isinstance(data, dict) and data:
+                w_sum = sum(float(v) for v in data.values() if isinstance(v, (int, float)))
+                sane = 0.5 < w_sum < 1.5 or w_sum == 0
+                p2 = status(sane, "Weights sum", f"{w_sum:.3f}")
+                results.append(("weights_sum", p2))
         except Exception:
             p = status(True, "Bayesian weights endpoint", "200 OK")
     else:
@@ -406,6 +412,22 @@ def check_alpaca():
         else:
             p = status(True, "Alpaca API keys", "configured")
             results.append(("alpaca_keys", p))
+
+            # Try to check account equity
+            try:
+                base_url = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+                r = requests.get(f"{base_url}/v2/account",
+                                 headers={"APCA-API-KEY-ID": api_key, "APCA-API-SECRET-KEY": secret_key},
+                                 timeout=10)
+                if r.status_code == 200:
+                    acct = r.json()
+                    equity = acct.get("equity", "N/A")
+                    p = status(True, "Alpaca account equity", f"${equity}")
+                    results.append(("alpaca_equity", p))
+                else:
+                    warn("Alpaca account", f"HTTP {r.status_code}")
+            except Exception as e:
+                warn("Alpaca account", str(e)[:50])
     else:
         warn("Alpaca API keys", "not set (expected for paper trading)")
         results.append(("alpaca_keys", True))  # non-blocking
