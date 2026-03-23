@@ -74,6 +74,7 @@ from strategies.signals.publisher import SignalPublisher
 
 # Production trading infrastructure
 from trading.broker.alpaca import AlpacaBroker
+from trading.broker.oanda import OandaBroker, to_oanda_pair
 from trading.broker.base import OrderRequest, OrderResult, OrderSide, OrderStatus
 from trading.execution.vwap import (
     VWAPExecutionModel,
@@ -301,6 +302,7 @@ audit_logger: Optional[AuditLogger] = None
 circuit_breaker: Optional[CircuitBreaker] = None
 db_pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
 broker: Optional[AlpacaBroker] = None
+oanda_broker: Optional[OandaBroker] = None
 risk_manager: Optional[PortfolioRiskManager] = None
 bayesian_updater: Optional[BayesianWeightUpdater] = None
 USE_BAYESIAN_WEIGHTS = os.getenv("ENSEMBLE_USE_BAYESIAN_WEIGHTS", "false").lower() in (
@@ -1346,27 +1348,93 @@ async def run_daily_pipeline(is_manual: bool = False):
                 target_value = pos.target_weight * state.portfolio_value
                 current_qty = current_holdings.get(symbol, 0)
 
-                # FX pair → CurrencyShares ETF mapping for Alpaca execution
+                # Detect FX pairs
+                _FX_PAIRS = {"EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF"}
+                is_fx = symbol in _FX_PAIRS
+
+                # ── FX PAIR → OANDA (direct forex) ──
+                if is_fx and oanda_broker is not None:
+                    # Get FX price from fx_data
+                    sym_data = fx_data[fx_data["symbol"] == symbol] if not fx_data.empty else pd.DataFrame()
+                    if sym_data.empty:
+                        logger.debug("Skipping FX %s: no price data", symbol)
+                        continue
+                    price = float(sym_data.sort_values("timestamp")["close"].iloc[-1])
+                    if price <= 0:
+                        continue
+
+                    # Cap FX position at $2000 notional
+                    _FX_MAX_VALUE = 2000.0
+                    target_value = max(-_FX_MAX_VALUE, min(_FX_MAX_VALUE, target_value))
+
+                    # OANDA uses units (e.g., 1000 EUR for EUR_USD)
+                    target_units = int(target_value / price)
+
+                    # Get current OANDA position for this pair
+                    oanda_pos = await oanda_broker.get_position(symbol)
+                    current_fx_qty = int(oanda_pos.quantity) if oanda_pos else 0
+                    diff = target_units - current_fx_qty
+
+                    if abs(diff) < 100:  # Min 100 units for FX
+                        continue
+
+                    side = "buy" if diff > 0 else "sell"
+                    qty = abs(diff)
+                    order_side = OrderSide.BUY if side == "buy" else OrderSide.SELL
+
+                    logger.info(
+                        "OANDA FX order: %s %s %d units (target=%d, current=%d)",
+                        side.upper(), symbol, qty, target_units, current_fx_qty,
+                    )
+
+                    order_req = OrderRequest(
+                        ticker=symbol, side=order_side, quantity=qty,
+                    )
+                    result = await oanda_broker.submit_order(order_req)
+
+                    exec_monitor.record(bool(result and result.success))
+
+                    if result and result.success:
+                        trades_executed += 1
+                        log_trade(
+                            today, symbol, side, qty, price,
+                            result.order_id or "", "oanda_fx",
+                        )
+                        if audit_logger:
+                            try:
+                                audit_logger.log_event(
+                                    "trade_executed",
+                                    symbol=symbol, side=side, qty=qty,
+                                    price=price, broker="oanda",
+                                    order_id=result.order_id,
+                                )
+                            except Exception:
+                                pass
+                    else:
+                        logger.warning(
+                            "OANDA FX order failed: %s %s — %s",
+                            symbol, side, result.message if result else "no result",
+                        )
+                    continue  # Skip Alpaca path for FX
+
+                # ── FX PAIR FALLBACK → Alpaca ETF proxies (if OANDA unavailable) ──
                 _FX_ETF_MAP = {
-                    "EURUSD": ("FXE", False),   # long EURUSD = long FXE
+                    "EURUSD": ("FXE", False),
                     "GBPUSD": ("FXB", False),
                     "AUDUSD": ("FXA", False),
-                    "USDJPY": ("FXY", True),    # long USDJPY = short FXY
+                    "USDJPY": ("FXY", True),
                     "USDCAD": ("FXC", True),
                     "USDCHF": ("FXF", True),
                 }
-
-                is_fx = symbol in _FX_ETF_MAP
                 trade_symbol = symbol
                 flip_side = False
 
                 if is_fx:
                     etf_sym, flip_side = _FX_ETF_MAP[symbol]
                     trade_symbol = etf_sym
-                    # Use ETF holdings for position diff
                     current_qty = current_holdings.get(etf_sym, 0)
 
-                # Get latest price (check stock_data first, then fx_data)
+                # ── STOCK / ETF FALLBACK → Alpaca ──
                 sym_data = stock_data[stock_data["symbol"] == trade_symbol]
                 if sym_data.empty and not fx_data.empty:
                     sym_data = fx_data[fx_data["symbol"] == symbol]
@@ -1378,8 +1446,8 @@ async def run_daily_pipeline(is_manual: bool = False):
                     continue
 
                 # Cap FX ETF positions at $2000 max
-                _FX_ETF_MAX_VALUE = 2000.0
                 if is_fx:
+                    _FX_ETF_MAX_VALUE = 2000.0
                     target_value = max(-_FX_ETF_MAX_VALUE, min(_FX_ETF_MAX_VALUE, target_value))
 
                 target_shares = int(target_value / price)
@@ -1397,7 +1465,6 @@ async def run_daily_pipeline(is_manual: bool = False):
                     symbol = trade_symbol  # Submit order with ETF ticker
 
                 # Cap sell qty at current holdings to avoid Alpaca rejection
-                # (position reversals require closing first, then opening opposite)
                 if side == "sell" and current_qty > 0:
                     qty = min(qty, int(abs(current_qty)))
                 elif side == "buy" and current_qty < 0:
@@ -1421,7 +1488,6 @@ async def run_daily_pipeline(is_manual: bool = False):
 
                 # VWAP execution or direct market order
                 if vwap_model is not None:
-                    # Compute average daily volume for ADV cap
                     adv = 0.0
                     if "volume" in sym_data.columns:
                         vol_series = sym_data["volume"].dropna()
@@ -1441,7 +1507,6 @@ async def run_daily_pipeline(is_manual: bool = False):
                     if prom_metrics is not None and vwap_result.total_filled > 0:
                         prom_metrics.observe_slippage(symbol, vwap_result.slippage_bps)
 
-                    # Synthesize OrderResult for downstream tracking
                     result = OrderResult(
                         success=(vwap_result.total_filled > 0),
                         order_id=(
@@ -1808,13 +1873,28 @@ async def lifespan(app: FastAPI):
     # Startup
     init_db()
 
-    # Production broker
+    # Production brokers: Alpaca for stocks, OANDA for FX
     broker = AlpacaBroker(
         api_key=ALPACA_API_KEY,
         secret_key=ALPACA_SECRET_KEY,
         base_url=ALPACA_BASE_URL,
     )
     await broker.connect()
+
+    global oanda_broker
+    oanda_broker = None
+    _oanda_token = os.getenv("OANDA_API_TOKEN", "")
+    _oanda_acct = os.getenv("OANDA_ACCOUNT_ID", "")
+    if _oanda_token and _oanda_acct:
+        try:
+            oanda_broker = OandaBroker()
+            await oanda_broker.connect()
+            logger.info("OANDA broker connected for FX execution")
+        except Exception as e:
+            logger.warning("OANDA broker failed to connect (FX will use Alpaca ETF fallback): %s", e)
+            oanda_broker = None
+    else:
+        logger.info("OANDA not configured — FX will use Alpaca ETF proxies")
 
     # Load models (graceful — strategies fall back if models unavailable)
     model_manager = ModelManager()
@@ -2094,7 +2174,8 @@ async def health():
         "enabled_strategies": state.enabled_strategies,
         "circuit_breaker_tripped": state.circuit_breaker_tripped,
         "infrastructure": {
-            "broker": "AlpacaBroker" if broker is not None else "None",
+            "broker_stocks": "AlpacaBroker" if broker is not None else "None",
+            "broker_fx": "OandaBroker" if oanda_broker is not None else "Alpaca ETF fallback",
             "notification_manager": notification_manager is not None,
             "audit_logger": audit_logger is not None,
             "circuit_breaker": circuit_breaker is not None,
